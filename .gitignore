@@ -1,0 +1,17 @@
+bin/
+obj/
+.vs/
+.vscode/
+dist/
+work/
+data/
+*.user
+*.suo
+*.tmp
+*.log
+.env
+.env.*
+token.dpapi
+preferences.json
+mnemonics.user.json
+smoke-test.json

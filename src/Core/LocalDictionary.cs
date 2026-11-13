@@ -1,0 +1,79 @@
+using System.Globalization;
+using System.IO;
+using System.Text.Json;
+
+namespace MemoLex.Core;
+public sealed class DictionaryEntry
+{
+    public string word { get; set; } = "";
+    public string phonetic { get; set; } = "";
+    public string definition { get; set; } = "";
+    public string translation { get; set; } = "";
+    public string pos { get; set; } = "";
+    public string collins { get; set; } = "";
+    public string oxford { get; set; } = "";
+    public string tag { get; set; } = "";
+    public string bnc { get; set; } = "";
+    public string frq { get; set; } = "";
+    public string exchange { get; set; } = "";
+}
+
+public sealed class LocalDictionary : IDisposable
+{
+    private readonly Dictionary<string, (long Offset, int Length)> _entries = new(StringComparer.OrdinalIgnoreCase);
+    private string[] _keys = [];
+    private readonly List<string> _sourceWords=[];
+    private FileStream? _data;
+    private readonly object _gate = new();
+    private readonly string _directory;
+    public LocalDictionary(string? directory = null) => _directory = directory ?? Path.Combine(AppContext.BaseDirectory, "data");
+    public int Count => _entries.Count;
+    public Task LoadAsync() => Task.Run(() =>
+    {
+        if(_data!=null)return;
+        var directory = _directory;
+        foreach (var line in File.ReadLines(Path.Combine(directory, "dictionary.index.tsv")))
+        {
+            var parts = line.Split('\t');
+            if (parts.Length == 3 && long.TryParse(parts[1], CultureInfo.InvariantCulture, out var offset)
+                && int.TryParse(parts[2], CultureInfo.InvariantCulture, out var length))
+            {
+                _entries.TryAdd(parts[0], (offset, length));
+                _sourceWords.Add(parts[0]);
+            }
+        }
+        _keys = _entries.Keys.Order(StringComparer.OrdinalIgnoreCase).ToArray();
+        _data = new FileStream(Path.Combine(directory, "dictionary.data"), FileMode.Open, FileAccess.Read, FileShare.Read);
+    });
+
+    public DictionaryEntry? Lookup(string word)
+    {
+        if (_data == null || !_entries.TryGetValue(word.Trim(), out var address)) return null;
+        lock (_gate)
+        {
+            var bytes = new byte[address.Length];
+            _data.Position = address.Offset;
+            _data.ReadExactly(bytes);
+            return JsonSerializer.Deserialize<DictionaryEntry>(bytes);
+        }
+    }
+    internal int SourceRowCount=>_sourceWords.Count;
+    internal string SourceWord(int id)=>_sourceWords[id];
+    internal string IndexPath=>Path.Combine(_directory,"dictionary.index.tsv");
+    internal DictionaryEntry? LookupBySourceId(int id)=>id>=0&&id<_sourceWords.Count?Lookup(_sourceWords[id]):null;
+    public IReadOnlyList<string> Suggest(string prefix, int count = 20)
+    {
+        prefix = prefix.Trim();
+        if (prefix.Length == 0 || _keys.Length == 0) return Array.Empty<string>();
+        var index = Array.BinarySearch(_keys, prefix, StringComparer.OrdinalIgnoreCase);
+        if (index < 0) index = ~index;
+        var result = new List<string>();
+        for (; index < _keys.Length && result.Count < count; index++)
+        {
+            if (!_keys[index].StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) break;
+            result.Add(_keys[index]);
+        }
+        return result;
+    }
+    public void Dispose() => _data?.Dispose();
+}

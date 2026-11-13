@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>MemoLex</AssemblyName>
+    <RootNamespace>MemoLex</RootNamespace>
+    <Version>1.0.0</Version>
+    <Product>墨墨搜词 MemoLex</Product>
+    <Description>离线英汉查词与墨墨云词本</Description>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Resource Include="Assets/owl-logo.png" />
+    <Resource Include="Assets/sponsor-wechat.jpg" />
+    <Resource Include="Assets/sponsor-alipay.jpg" />
+    <Resource Include="app.ico" />
+    <InternalsVisibleTo Include="MemoLex.UITests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,92 @@
+using System.Windows;
+using System.Windows.Controls;
+using MemoLex.Services;
+
+namespace MemoLex;
+
+public partial class MainWindow
+{
+    private readonly Dictionary<string,(DateTime At,CloudNotepad Pad)> _notepadCache=new();
+    private readonly Dictionary<string,Task<CloudNotepad>> _notepadLoads=new();
+    private int _membershipVersion;
+    private string _membershipWord="",_membershipPad="";
+    private bool _isMember;
+    private readonly HashSet<string> _deletedNotepads=new();
+    internal Func<Window,CloudNotepad,int,bool> ConfirmNotepadDeletion {get;set;}=NotepadDeletionDialog.Confirm;
+    private void RemoveNotepadSnapshot(string id)
+    {
+        _deletedNotepads.Add(id);_notepadCache.Remove(id);++_membershipVersion;_membershipWord=_membershipPad="";
+        var pads=NotepadCombo.Items.Cast<CloudNotepad>().Where(pad=>pad.Id!=id).ToArray();
+        _changingLists=true;
+        try{NotepadCombo.ItemsSource=pads;NotepadCombo.SelectedItem=pads.FirstOrDefault();}
+        finally{_changingLists=false;}
+        _preferences.NotepadId=(NotepadCombo.SelectedItem as CloudNotepad)?.Id;_preferences.Save();
+        CloudDetailText.Text=pads.Length==0?"还没有云词本，点击新建":$"{pads.Length} 个云词本 · 自动保存选择";
+        StatusText.Text="云词本已删除。";
+    }
+    private void CacheNotepad(CloudNotepad pad)=>_notepadCache[pad.Id]=(DateTime.UtcNow,pad);
+    private void ApplyNotepadSnapshot(CloudNotepad updated)
+    {
+        CacheNotepad(updated);
+        var selected=(NotepadCombo.SelectedItem as CloudNotepad)?.Id;
+        var pads=NotepadCombo.Items.Cast<CloudNotepad>().Select(pad=>pad.Id==updated.Id?updated:pad).ToArray();
+        _changingLists=true;
+        try{NotepadCombo.ItemsSource=pads;NotepadCombo.SelectedItem=pads.FirstOrDefault(pad=>pad.Id==selected);}
+        finally{_changingLists=false;}
+    }
+    private async Task<CloudNotepad> ReadNotepadAsync(string id)
+    {
+        if(_notepadLoads.TryGetValue(id,out var pending))return await pending;
+        var started=DateTime.UtcNow;var request=_api.GetNotepadAsync(id);_notepadLoads[id]=request;
+        try
+        {
+            var pad=await request;
+            if(_deletedNotepads.Contains(id))throw new MaiMemoException("这个云词本已删除，请选择其他词本。");
+            if(_notepadCache.TryGetValue(id,out var newer)&&newer.At>started)return newer.Pad;
+            CacheNotepad(pad);return pad;
+        }
+        finally{_notepadLoads.Remove(id);}
+    }
+    private async Task UpdateMembershipAsync(bool force=false)
+    {
+        var version=++_membershipVersion;var word=_word;var pad=NotepadCombo.SelectedItem as CloudNotepad;
+        _membershipWord=_membershipPad="";
+        if(!_ready||!_allowCloud||!_tokens.HasToken) {AddButton.IsEnabled=_allowCloud&&!_adding;return;}
+        if(pad==null){AddButton.Content="＋ 新建词本并加入";AddButton.IsEnabled=!_adding&&!_refreshing;EditNotepadButton.IsEnabled=false;return;}
+        AddButton.Content="读取词本…";AddButton.IsEnabled=false;EditNotepadButton.IsEnabled=!_adding&&!_refreshing;
+        try
+        {
+            CloudNotepad full;
+            if(!force&&_notepadCache.TryGetValue(pad.Id,out var cached)&&DateTime.UtcNow-cached.At<TimeSpan.FromMinutes(3))full=cached.Pad;
+            else full=await ReadNotepadAsync(pad.Id);
+            if(version!=_membershipVersion||word!=_word)return;
+            _membershipWord=word;_membershipPad=pad.Id;_isMember=MaiMemoClient.ContainsWord(full,word);
+            AddButton.Content=_isMember?"✓ 已加入 · 点击取消":"＋ 加入云词本";
+            AddButton.ToolTip=(_isMember?"从当前云词本移除这个单词":"加入当前云词本")+"（"+ShortcutLabel("toggleWord")+"）";
+            if(_isMember&&Core.NotepadContent.Words(full.Content).Count==1)AddButton.ToolTip="移除最后一个单词将删除整个云词本，需要额外确认。";
+            AddButton.IsEnabled=!_adding&&!_refreshing&&ValidWord(word);
+        }
+        catch(Exception error)
+        {
+            if(version!=_membershipVersion)return;
+            AddButton.Content="重试读取词本";AddButton.IsEnabled=!_adding&&!_refreshing;
+            StatusText.Text=UserError(error);
+        }
+    }
+    private async void EditNotepadButton_Click(object sender,RoutedEventArgs e)
+    {
+        if(_adding||_refreshing||NotepadCombo.SelectedItem is not CloudNotepad selected)return;
+        _adding=true;SetCloudWriteBusy(true);AddButton.IsEnabled=false;
+        try
+        {
+            var full=await _api.GetNotepadAsync(selected.Id);CacheNotepad(full);
+            NotepadEditor.Build(this,full,_api,updated=>
+            {
+                ApplyNotepadSnapshot(updated);
+                StatusText.Text="云词本修改已保存。";
+            },_dictionary,word=>LoadWordAsync(word),deleted:RemoveNotepadSnapshot,confirmDeletion:ConfirmNotepadDeletion).ShowDialog();
+        }
+        catch(Exception error){ShowError(error);}
+        finally{_adding=false;SetCloudWriteBusy(false);await UpdateMembershipAsync();}
+    }
+}
