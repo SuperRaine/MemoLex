@@ -452,13 +452,18 @@ internal sealed class UiFixture
             settings.Close();Check(startup.Writes==0,"Canceling settings changed startup registration");
             settings=SettingsDialog.Build(null!,tokens,prefs,out _,startupRegistration:startup);
             var settingsNav=(ListBox)settings.FindName("SettingsNav");
-            Check(settingsNav.Items.Cast<string>().SequenceEqual(new[]{"常规","快捷键","墨墨账号","赞助与关于"}),"Settings pages are not separated by purpose");
+            Check(settingsNav.Items.Cast<string>().SequenceEqual(new[]{"常规","快捷键","墨墨账号","反馈","赞助与关于"}),"Settings pages are not separated by purpose");
             var startupCheck=(CheckBox)settings.FindName("StartWithWindows");startupCheck.IsChecked=true;
             Render(settings,840,740,Path.Combine(_previews,"05-settings.png"));
             settingsNav.SelectedIndex=1;Render(settings,840,740,Path.Combine(_previews,"18-settings-shortcuts.png"));
             settingsNav.SelectedIndex=2;Render(settings,840,740,Path.Combine(_previews,"19-settings-account.png"));
             settingsNav.SelectedIndex=0;Check(startupCheck.IsChecked==true&&startup.Writes==0,"Switching settings pages loses or commits draft values");
             settingsNav.SelectedIndex=3;
+            Check(Equals(((Button)settings.FindName("FeedbackEmailButton")).Tag,"1623255609@qq.com")&&Equals(((Button)settings.FindName("CopyFeedbackQq")).Tag,"1132371819"),"Feedback contact details do not match the provided email and group");
+            Check(Equals(((Button)settings.FindName("FeedbackIssueButton")).Tag,SettingsDialog.RepositoryUrl+"/issues")&&SettingsDialog.IssueUrl=="https://github.com/SuperRaine/MemoLex/issues/new/choose","Feedback issue navigation points to the wrong repository");
+            Render(settings,840,740,Path.Combine(_previews,"24-settings-feedback.png"));
+            Pass("The feedback page exposes the supplied email, QQ group and new GitHub issue destination without sending messages");
+            settingsNav.SelectedIndex=4;
             var paymentTabs=(TabControl)settings.FindName("SponsorPaymentTabs");
             Check(paymentTabs.Items.Cast<TabItem>().Select(item=>item.Header).SequenceEqual(new[]{"微信支付","支付宝"}),"Both sponsor methods must be available");
             foreach(var name in new[]{"WechatPaymentImage","AlipayPaymentImage"})

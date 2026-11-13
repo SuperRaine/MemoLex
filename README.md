@@ -4,7 +4,7 @@
 
 **版本 1.0.0** · Windows x64 · .NET 8 WPF · MIT 开源
 
-[下载软件](https://github.com/SuperRaine/MemoLex/releases/latest) · [使用说明](使用说明.md)
+[下载软件](https://github.com/SuperRaine/MemoLex/releases/latest) · [使用说明](使用说明.md) · [提交反馈](https://github.com/SuperRaine/MemoLex/issues/new/choose)
 
 ## 功能
 
@@ -14,7 +14,7 @@
 - 墨墨云词本收藏、批量编辑、分组与 Ctrl/Shift 多选；整本删除单独确认。
 - 单词和段落翻译，双击 Ctrl+C 查询、可自定义全局快捷键。
 - 蓝色主题、自定义圆角标题栏、置顶、托盘、实时缩放、可选开机自启动。
-- 分页设置，以及自愿赞助入口。
+- 分页设置、邮箱 / QQ 群 / GitHub Issues 反馈，以及自愿赞助入口。
 
 ## 安装与运行
 
@@ -59,3 +59,9 @@ dotnet run --project tests-ui/MemoLex.UITests.csproj -c Release
 ## 赞助
 
 在“设置 → 赞助与关于”中使用微信或支付宝自愿赞助。感谢你支持项目的开发与维护。
+
+## 反馈
+
+- [GitHub Issues](https://github.com/SuperRaine/MemoLex/issues/new/choose)
+- 反馈邮箱：1623255609@qq.com
+- QQ 交流群：1132371819

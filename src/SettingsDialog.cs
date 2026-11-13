@@ -13,6 +13,9 @@ namespace MemoLex;
 internal static class SettingsDialog
 {
     internal const string RepositoryUrl="https://github.com/SuperRaine/MemoLex";
+    internal const string FeedbackEmail="1623255609@qq.com";
+    internal const string FeedbackQqGroup="1132371819";
+    internal const string IssueUrl=RepositoryUrl+"/issues/new/choose";
     public static SettingsResult Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null)
     {
         var dialog=Build(owner,store,preferences,out var tokenChanged,validateShortcuts);
@@ -82,9 +85,26 @@ internal static class SettingsDialog
         var tokenLink=new Button {Content="获取墨墨 Token",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,18,0,0)};
         tokenLink.Click+=(_,_)=>OpenLink("https://open.maimemo.com/open/api/v1/tokens/openapi","请在浏览器访问 open.maimemo.com 获取 Token。");account.Children.Add(tokenLink);
 
+        var feedback=Page("反馈","遇到问题或有新想法，欢迎通过以下方式联系。");
+        void FeedbackCard(string title,string description,string value,string buttonLabel,string name,Action action)
+        {
+            var card=new StackPanel {Margin=new Thickness(16)};
+            card.Children.Add(new TextBlock {Text=title,FontSize=15,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,6)});
+            card.Children.Add(InputDialog.Text(description));
+            var address=new TextBox {Text=value,IsReadOnly=true,BorderThickness=new Thickness(0),Background=Brushes.Transparent,Padding=new Thickness(0,6,0,6),FontSize=15,Foreground=new SolidColorBrush(Color.FromRgb(8,151,203))};card.Children.Add(address);
+            var button=new Button {Content=buttonLabel,Tag=value,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,8,0,0)};
+            button.Click+=(_,_)=>action();card.Children.Add(button);dialog.RegisterName(name,button);
+            feedback.Children.Add(new Border {Child=card,Background=new SolidColorBrush(Color.FromRgb(248,252,255)),BorderBrush=new SolidColorBrush(Color.FromRgb(225,237,247)),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(12),Margin=new Thickness(0,0,0,14)});
+        }
+        void CopyContact(string value,string message){try{Clipboard.SetText(value);status.Text=message;}catch{status.Text="复制失败，请选中上方文字手动复制。";}}
+        FeedbackCard("反馈邮箱","通过邮件反馈问题与建议。",FeedbackEmail,"写邮件","FeedbackEmailButton",()=>OpenLink("mailto:"+FeedbackEmail+"?subject="+Uri.EscapeDataString("墨墨搜词 1.0.0 反馈"),"无法打开邮件应用，可复制邮箱后手动发送。"));
+        FeedbackCard("QQ 交流群","复制群号，在 QQ 中搜索加入。",FeedbackQqGroup,"复制群号","CopyFeedbackQq",()=>CopyContact(FeedbackQqGroup,"QQ群号已复制。"));
+        FeedbackCard("GitHub Issues","提交问题、提出功能建议，跟踪处理进度。",RepositoryUrl+"/issues","提交 Issue","FeedbackIssueButton",()=>OpenLink(IssueUrl,"无法打开浏览器，可复制上方地址访问 Issues。"));
+        var copyEmail=new Button {Content="复制反馈邮箱",HorizontalAlignment=HorizontalAlignment.Left};copyEmail.Click+=(_,_)=>CopyContact(FeedbackEmail,"反馈邮箱已复制。");feedback.Children.Add(copyEmail);dialog.RegisterName("CopyFeedbackEmail",copyEmail);
+
         var support=Page("赞助与关于","墨墨搜词 MemoLex · 1.0.0");
         support.Children.Add(InputDialog.Text("如果墨墨搜词对你有帮助，欢迎自愿赞助，支持后续开发与维护。感谢你的支持！"));
-        var payments=new TabControl {Margin=new Thickness(0,16,0,12)};
+        var payments=new TabControl {Margin=new Thickness(0,16,0,12),BorderThickness=new Thickness(0),Background=Brushes.Transparent};
         foreach(var (label,asset,name) in new[]{("微信支付","sponsor-wechat.jpg","Wechat"),("支付宝","sponsor-alipay.jpg","Alipay")})
         {
             var picture=new Image {Source=new BitmapImage(new Uri("pack://application:,,,/MemoLex;component/Assets/"+asset)),MaxHeight=390,Stretch=Stretch.Uniform};RenderOptions.SetBitmapScalingMode(picture,BitmapScalingMode.HighQuality);
@@ -115,7 +135,7 @@ internal static class SettingsDialog
             }
             catch{status.Text="保存失败，请检查 Token 或本机文件权限。";}
         };
-        foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SaveSettings",save),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",pages[0].View),("SettingsShortcutsPage",pages[1].View),("SettingsAccountPage",pages[2].View),("SettingsSupportPage",pages[3].View),("SponsorPaymentTabs",payments)})dialog.RegisterName(name,control);
+        foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SaveSettings",save),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",pages[0].View),("SettingsShortcutsPage",pages[1].View),("SettingsAccountPage",pages[2].View),("SettingsFeedbackPage",pages[3].View),("SettingsSupportPage",pages[4].View),("SponsorPaymentTabs",payments)})dialog.RegisterName(name,control);
         changed=()=>tokenChanged;return dialog;
     }
 
