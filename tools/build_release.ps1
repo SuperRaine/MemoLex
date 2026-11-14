@@ -1,4 +1,4 @@
-param([string]$DataDirectory,[string]$DotnetCommand='dotnet')
+param([string]$DataDirectory,[string]$WebViewDirectory,[string]$DotnetCommand='dotnet')
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 if(-not $DataDirectory){$DataDirectory=Join-Path $repo 'data'}
@@ -11,6 +11,11 @@ $destination=Join-Path $repo 'dist/MemoLex'
 if($LASTEXITCODE -ne 0){throw 'Application build failed'}
 $targetData=Join-Path $destination 'data';New-Item -ItemType Directory -Path $targetData -Force | Out-Null
 Copy-Item -Path (Join-Path $data '*') -Destination $targetData -Recurse -Force
+if(-not $WebViewDirectory){$WebViewDirectory=Join-Path $repo 'webview2'}
+if(Test-Path -LiteralPath (Join-Path $WebViewDirectory 'msedgewebview2.exe')){
+    $webviewTarget=Join-Path $destination 'webview2';New-Item -ItemType Directory -Path $webviewTarget -Force | Out-Null
+    Copy-Item -Path (Join-Path $WebViewDirectory '*') -Destination $webviewTarget -Recurse -Force
+}else{Write-Warning 'Fixed WebView2 runtime was not supplied. The official login will require an installed Evergreen WebView2 runtime.'}
 foreach($file in Get-ChildItem -LiteralPath (Join-Path $repo 'mnemonics') -File){
     if($file.Name -in @('mnemonics.json','mnemonics.meta.json','Mnemonics-CC-BY-SA-3.0.txt','README-Mnemonics.txt')){Copy-Item -LiteralPath $file.FullName -Destination $targetData -Force}
 }

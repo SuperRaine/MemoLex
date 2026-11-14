@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>MemoLex</AssemblyName>
     <RootNamespace>MemoLex</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>墨墨搜词 MemoLex</Product>
     <Description>离线英汉查词与墨墨云词本</Description>
     <ApplicationIcon>app.ico</ApplicationIcon>
@@ -21,5 +21,15 @@
     <Resource Include="Assets/sponsor-alipay.jpg" />
     <Resource Include="app.ico" />
     <InternalsVisibleTo Include="MemoLex.UITests" />
+    <InternalsVisibleTo Include="MemoLex.LoginTests" />
+    <InternalsVisibleTo Include="MemoLex.HoverTests" />
+    <EmbeddedResource Include="Desktop/update.ps1" LogicalName="MemoLex.update.ps1" />
+    <EmbeddedResource Include="Private/DeepL.key" LogicalName="MemoLex.DeepL.key" Condition="Exists('Private/DeepL.key')" />
+    <Content Include="Native/*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="ThirdParty/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="Tesseract" Version="5.2.0" />
   </ItemGroup>
 </Project>

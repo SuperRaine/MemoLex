@@ -7,7 +7,7 @@ using System.Text;
 namespace MemoLex.Services;
 
 /// <summary>Windows user-bound DPAPI credentials. No token is written as plaintext.</summary>
-public sealed class TokenStore
+public sealed partial class TokenStore
 {
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("MemoLex.Token.v1");
     public static string TokenPath { get; } = Path.Combine(
@@ -27,44 +27,11 @@ public sealed class TokenStore
         finally{CryptographicOperations.ZeroMemory(bytes);}
     }
 
-    public string? GetToken()
-    {
-        if (!File.Exists(_tokenPath)) return null;
-        try
-        {
-            var encrypted = File.ReadAllBytes(_tokenPath);
-            if (encrypted.Length == 0 || encrypted.Length > 65536) return null;
-            var plain = Transform(encrypted, protect: false);
-            try { return Encoding.UTF8.GetString(plain); }
-            finally { CryptographicOperations.ZeroMemory(plain); }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException or Win32Exception)
-        {
-            return null;
-        }
-    }
+    public string? GetToken()=>ReadActiveToken();
 
     public void SaveToken(string token)
     {
-        token = (token ?? "").Trim();
-        if (token.Length is < 16 or > 512 || token.Any(char.IsWhiteSpace))
-            throw new ArgumentException("请粘贴完整的墨墨 API Token。", nameof(token));
-        var plain = Encoding.UTF8.GetBytes(token);
-        byte[] encrypted;
-        try { encrypted = Transform(plain, protect: true); }
-        finally { CryptographicOperations.ZeroMemory(plain); }
-        var folder = Path.GetDirectoryName(_tokenPath)!;
-        Directory.CreateDirectory(folder);
-        var temporaryPath = Path.Combine(folder, "token." + Guid.NewGuid().ToString("N") + ".tmp");
-        try
-        {
-            File.WriteAllBytes(temporaryPath, encrypted);
-            File.Move(temporaryPath, _tokenPath, overwrite: true);
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
-        }
+        SaveAccountToken(token,null,null,null,null);
     }
 
     public void DeleteToken()

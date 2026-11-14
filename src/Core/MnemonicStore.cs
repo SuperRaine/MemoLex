@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace MemoLex.Core;
 
-public sealed record StoredMnemonic(string Id,string NoteType,string Text,string? CloudId=null,string Origin="local");
+public sealed record StoredMnemonic(string Id,string NoteType,string Text,string? CloudId=null,string Origin="local",string? AccountKey=null);
 
 public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null)
 {
@@ -35,6 +35,37 @@ public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null
     public IReadOnlyList<StoredMnemonic> Get(string word)
     {
         lock(_gate)return (_saved.TryGetValue(word.Trim(),out var edited)?edited:_bundled.GetValueOrDefault(word.Trim())??[]).ToArray();
+    }
+    public IReadOnlyList<StoredMnemonic> Get(string word,string? accountKey)
+    {
+        lock(_gate)
+        {
+            if(_saved.TryGetValue(word.Trim(),out var saved))
+            {
+                var cloud=saved.Where(n=>n.Origin=="cloud"&&accountKey!=null&&n.AccountKey==accountKey).ToArray();
+                if(cloud.Length>0)return cloud;
+                var local=saved.Where(n=>n.Origin!="cloud").ToArray();if(local.Length>0)return local;
+            }
+            return (_bundled.GetValueOrDefault(word.Trim())??[]).ToArray();
+        }
+    }
+    public void SaveCloud(string word,IEnumerable<StoredMnemonic> notes,string accountKey)
+    {
+        lock(_gate)
+        {
+            var existing=_saved.GetValueOrDefault(word.Trim())??[];
+            Save(word,existing.Where(n=>n.Origin!="cloud"||n.AccountKey!=accountKey)
+                .Concat(notes.Select(n=>n with {Origin="cloud",AccountKey=accountKey})));
+        }
+    }
+    public void SaveEdit(string word,StoredMnemonic note,string? accountKey)
+    {
+        lock(_gate)
+        {
+            var existing=(_saved.GetValueOrDefault(word.Trim())??[]).ToList();
+            existing.RemoveAll(n=>n.Id==note.Id&&(n.Origin!="cloud"||n.AccountKey==accountKey));
+            existing.Add(note);Save(word,existing);
+        }
     }
     public void Save(string word,IEnumerable<StoredMnemonic> notes)
     {

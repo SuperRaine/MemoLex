@@ -7,6 +7,55 @@ using MemoLex.Services;
 var passed=0;
 void Check(bool condition,string message){if(!condition)throw new Exception(message);}
 async Task Test(string name,Func<Task> action){await action();passed++;Console.WriteLine("PASS "+name);}
+await Test("A parked pointer never starts OCR when video frames change and a stop is consumed only once",()=>
+{
+    var gate=new HoverMotionGate();var time=DateTimeOffset.UtcNow;var parked=new ScreenPoint(100,100);
+    gate.Observe(parked,time);
+    for(var frame=1;frame<=120;frame++){gate.Observe(parked,time.AddSeconds(frame));Check(!gate.TryBegin(time.AddSeconds(frame),500),"Stationary video rearmed recognition");}
+    var moved=new ScreenPoint(120,100);gate.Observe(moved,time.AddSeconds(121));
+    Check(!gate.TryBegin(time.AddSeconds(121).AddMilliseconds(499),500)&&gate.TryBegin(time.AddSeconds(121).AddMilliseconds(500),500),"Dwell timing failed");
+    for(var frame=122;frame<=240;frame++){gate.Observe(moved,time.AddSeconds(frame));Check(!gate.TryBegin(time.AddSeconds(frame),500),"A failed or completed stop started another OCR attempt");}
+    return Task.CompletedTask;
+});
+await Test("Hover jitter, cancellation and app activation require another intentional movement or modifier",()=>
+{
+    var gate=new HoverMotionGate();var now=DateTimeOffset.UtcNow;gate.Observe(new(20,20),now);gate.Observe(new(22,22),now.AddSeconds(1));
+    Check(!gate.TryBegin(now.AddSeconds(2),500),"Small pointer jitter rearmed lookup");
+    gate.Arm(new(22,22),now.AddSeconds(3));Check(gate.TryBegin(now.AddSeconds(4),500),"An explicit modifier could not start lookup");
+    gate.Suppress(new(22,22));Check(!gate.TryBegin(now.AddHours(1),500),"Dismissal retriggered lookup");
+    gate.Reset();gate.Observe(new(100,100),now.AddHours(2));Check(!gate.TryBegin(now.AddHours(3),500),"Re-enabling the app triggered a parked pointer");return Task.CompletedTask;
+});
+await Test("Frame stability accepts a static word and rejects changing picture content or locations",()=>
+{
+    var samples=Enumerable.Repeat((byte)180,288).ToArray();var first=new HoverSurface(new(20,20,100,30),samples);
+    Check(HoverSurfaces.Same(first,new(first.Bounds,(byte[])samples.Clone())),"Identical word was rejected");
+    Check(HoverSurfaces.Same(first,new(first.Bounds,samples.Select(x=>(byte)(x+2)).ToArray())),"Small rendering noise was rejected");
+    var changed=(byte[])samples.Clone();Array.Fill(changed,(byte)20,0,70);
+    Check(!HoverSurfaces.Same(first,new(first.Bounds,changed))&&!HoverSurfaces.Same(first,new(new(30,20,100,30),samples)),"Changing video or scroll position was treated as stable");return Task.CompletedTask;
+});
+await Test("Image words require reliable English letters rather than short or uncertain Chinese-like marks",()=>
+{
+    Check(HoverWords.IsReliableImageWord("insight",96,new(0,0,130,30)),"A clear English word was rejected");
+    Check(HoverWords.IsReliableImageWord("to",99,new(0,0,20,16)),"A high-confidence common short word was rejected");
+    foreach(var word in new[]{"I","a","la","III","llll","中文"})Check(!HoverWords.IsReliableImageWord(word,98,new(0,0,30,24)),"Short or non-English marks were accepted");
+    Check(!HoverWords.IsReliableImageWord("hello",60,new(0,0,70,24))&&HoverWords.Normalize("中文")==null,"Uncertain or Chinese text reached English lookup");return Task.CompletedTask;
+});
+await Test("Image hit testing accepts a nearby baseline but refuses gaps and ambiguous neighbours",()=>
+{
+    var word=new HoverWord("insight",new(10,10,46,12),"图片识别",96);
+    Check(HoverWords.AtPointer([word],new(28,24)) is {Word:"insight"} hit&&hit.Bounds.Contains(new(28,24)),"A pointer just below the ink missed its word");
+    Check(HoverWords.AtPointer([word],new(28,32))==null&&HoverWords.AtPointer([word],new(64,15))==null,"An empty area picked distant text");
+    var neighbour=new HoverWord("reader",new(59,10,44,12),"图片识别",96);
+    Check(HoverWords.AtPointer([word,neighbour],new(57.5,16))==null,"A gap between adjacent words picked an arbitrary neighbour");
+    return Task.CompletedTask;
+});
+await Test("Mixed accessible text keeps English word spans separate from Chinese and punctuation",()=>
+{
+    var text="中文insight，Q: talkative（健谈的）";var spans=HoverWords.AccessibleSpans(text);
+    Check(spans.Any(span=>span.Word=="insight"&&span.Start==2)&&spans.Any(span=>span.Word=="talkative")&&spans.Count(span=>span.IsChinese)==2,"Inline Chinese suppressed nearby English word spans");
+    foreach(var span in spans)Check(text.Substring(span.Start,span.Length).Length==span.Length&&(span.IsChinese?span.Word==null:HoverWords.Normalize(text.Substring(span.Start,span.Length))==span.Word),"Accessible substring offsets were not preserved");
+    return Task.CompletedTask;
+});
 await Test("Clipboard routes words, dictionary phrases, Chinese queries and paragraphs by language",()=>
 {
     ClipboardLookupRequest Route(string text)=>ClipboardLookup.Classify(text,word=>word=="ice cream");
@@ -89,6 +138,24 @@ await Test("A fresh profile includes the expanded mnemonic dataset and new memor
     Check(store.BundledCount>=10613&&store.Get("disagree").Any(note=>note.Text.Contains("agree")),"Bundled offline notes are missing");
     Check(store.Get("taste").Any(note=>note.Text.Contains("test"))&&store.Get("bitter").Any(note=>note.Text.Contains("逼他")),"New memory bridges are missing from a fresh profile");
 });
+await Test("Cloud mnemonic caches stay account-scoped and personal edits survive another account refresh",async()=>
+{
+    var root=Path.Combine(Path.GetTempPath(),"MemoLex.AccountNotes."+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);
+    try
+    {
+        var store=new MnemonicStore(Path.Combine(root,"personal.json"),Path.Combine(root,"missing.json"));await store.LoadAsync();
+        store.Save("insight",[new("local","拆词联想","本地个人助记")]);
+        store.SaveCloud("insight",[new("cloud:same","词根词缀","账号甲助记","same","cloud")],"account-a");
+        store.SaveCloud("insight",[new("cloud:same","词根词缀","账号乙助记","same","cloud")],"account-b");
+        Check(store.Get("insight","account-a").Single().Text=="账号甲助记"&&store.Get("insight","account-b").Single().Text=="账号乙助记","Cloud notes crossed accounts");
+        Check(store.Get("insight",null).Single().Text=="本地个人助记","Logged-out fallback exposed cached cloud content");
+        store.SaveEdit("insight",new("cloud:same","拆词联想","甲账号编辑后存到本地",Origin:"local"),"account-a");
+        Check(store.Get("insight","account-b").Single().Text=="账号乙助记","Local editing erased another account cache");
+        store.SaveCloud("insight",[],"account-b");
+        Check(store.Get("insight","account-b").Any(n=>n.Text=="本地个人助记")&&store.Get("insight","account-b").Any(n=>n.Text.Contains("编辑后")),"Empty cloud refresh erased personal notes");
+    }
+    finally{if(Path.GetFileName(root).StartsWith("MemoLex.AccountNotes."))Directory.Delete(root,true);}
+});
 await Test("UTF-8 segmentation preserves all text, paragraphs and surrogate pairs",()=>
 {
     var text=string.Concat(Enumerable.Repeat("A reader enjoys learning. 一位读者喜欢学习。😀\n\n",40));
@@ -113,6 +180,90 @@ await Test("Quota exhaustion does not become a fake translation",async()=>
 {
     using var client=new TranslationClient(new Handler(_=>Reply(new {responseStatus=403,responseData=new {translatedText="quota"}})));
     try{await client.TranslateAsync("A reader.");throw new Exception("Quota error accepted");}catch(TranslationException error){Check(error.Message.Contains("额度"),"Quota feedback missing");}
+});
+await Test("DeepL has priority, sends whole paragraphs by POST and isolates cache by credential and direction",async()=>
+{
+    var secret="00000000-0000-0000-0000-000000000000:fx";var calls=0;
+    using var client=new TranslationClient(new Handler(request=>
+    {
+        calls++;Check(request.Method==HttpMethod.Post&&request.RequestUri!.Host=="api-free.deepl.com"&&request.RequestUri.AbsolutePath=="/v2/translate","DeepL priority or free endpoint wrong");
+        Check(request.Headers.Authorization?.Scheme=="DeepL-Auth-Key"&&request.Headers.Authorization.Parameter==secret&&!request.RequestUri!.AbsoluteUri.Contains(secret),"DeepL auth was missing or leaked into URL");
+        using var body=JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+        Check(body.RootElement.GetProperty("text").GetArrayLength()==1&&body.RootElement.GetProperty("text")[0].GetString()!.Contains('\n'),"Paragraph context was split before DeepL");
+        Check(!body.RootElement.ToString().Contains(secret),"Key leaked into the text body");
+        return Reply(new{translations=new[]{new{text="读者喜欢学习。\n这是第二段。",detected_source_language="EN"}}});
+    }),()=>secret);
+    var text="A reader enjoys learning.\nThis is a second paragraph.";
+    Check((await client.TranslateAsync(text)).Contains("读者")&&client.LastProvider=="DeepL","DeepL translation not used");
+    await client.TranslateAsync(text);Check(calls==1,"DeepL cache missed");
+    secret="11111111-1111-1111-1111-111111111111:fx";await client.TranslateAsync(text);await client.TranslateAsync(text,"zh-CN|en");Check(calls==3,"Credential/direction caches collided");
+});
+await Test("DeepL authentication, quota and malformed data report explicit errors without exposing credentials",async()=>
+{
+    foreach(var code in new[]{403,456,200})
+    {
+        var calls=0;var secret="00000000-0000-0000-0000-000000000000";
+        using var client=new TranslationClient(new Handler(request=>
+        {
+            calls++;Check(request.RequestUri!.Host=="api.deepl.com","Pro key reached the wrong endpoint or a fallback");
+            return new HttpResponseMessage((HttpStatusCode)code){Content=new StringContent(JsonSerializer.Serialize(new{message=secret,translations=new object[]{}}))};
+        }),()=>secret);
+        try{await client.TranslateAsync("A reader.");throw new Exception("Invalid DeepL response became a translation");}
+        catch(TranslationException error){Check(calls==1&&!error.ToString().Contains(secret),"DeepL retried another provider or exposed a credential");}
+    }
+});
+await Test("DeepL connection and temporary service failures automatically use a credential-free backup",async()=>
+{
+    foreach(var code in new[]{0,408,429,500,503})
+    {
+        var primary=0;var backup=0;const string secret="00000000-0000-0000-0000-000000000000:fx";
+        using var client=new TranslationClient(new Handler(request=>
+        {
+            if(request.RequestUri!.Host=="api-free.deepl.com")
+            {
+                primary++;if(code==0)throw new HttpRequestException("Network unavailable");
+                return new HttpResponseMessage((HttpStatusCode)code){Content=new StringContent("{}")};
+            }
+            backup++;Check(request.RequestUri.Host=="api.mymemory.translated.net"&&request.Headers.Authorization==null&&!request.RequestUri.AbsoluteUri.Contains(secret),"A key leaked into the backup request");
+            return Reply(new{responseStatus=200,responseData=new{translatedText="备用译文"}});
+        }),()=>secret);
+        Check(await client.TranslateAsync("A reader.")=="备用译文"&&client.LastProvider=="MyMemory（DeepL 暂不可用）","Connection failure did not use or identify the backup");
+        await client.TranslateAsync("A different reader.");Check(primary==1&&backup==2,"A failed primary was retried during the short cooldown");
+    }
+});
+await Test("DeepL recovery retries the preferred provider without polluting its translation cache",async()=>
+{
+    var primary=0;var backup=0;
+    using var client=new TranslationClient(new Handler(request=>
+    {
+        if(request.RequestUri!.Host=="api-free.deepl.com")return ++primary==1?new HttpResponseMessage(HttpStatusCode.BadGateway){Content=new StringContent("{}")}:
+            Reply(new{translations=new[]{new{text="首选译文"}}});
+        backup++;return Reply(new{responseStatus=200,responseData=new{translatedText="备用译文"}});
+    }),()=>"00000000-0000-0000-0000-000000000000:fx",retryCooldown:TimeSpan.Zero);
+    Check(await client.TranslateAsync("A reader.")=="备用译文","Initial temporary outage did not fall back");
+    Check(await client.TranslateAsync("A reader.")=="首选译文"&&client.LastProvider=="DeepL"&&primary==2&&backup==1,"Backup result masked a recovered primary");
+});
+await Test("A DeepL timeout uses the backup while caller cancellation stops all translation",async()=>
+{
+    foreach(var userCancel in new[]{false,true})
+    {
+        var backup=0;using var cancel=new CancellationTokenSource();
+        using var client=new TranslationClient(new AsyncHandler(async(request,token)=>
+        {
+            if(request.RequestUri!.Host=="api-free.deepl.com")
+            {
+                if(userCancel)cancel.Cancel();
+                await Task.Delay(Timeout.Infinite,token);throw new Exception("Delay completed");
+            }
+            backup++;return Reply(new{responseStatus=200,responseData=new{translatedText="备用译文"}});
+        }),()=>"00000000-0000-0000-0000-000000000000:fx",deepLTimeout:TimeSpan.FromMilliseconds(50));
+        try
+        {
+            var result=await client.TranslateAsync("A reader.",cancellationToken:cancel.Token);
+            Check(!userCancel&&result=="备用译文"&&backup==1,"Timeout did not fall back exactly once");
+        }
+        catch(OperationCanceledException){Check(userCancel&&backup==0,"Canceled translation sent text to the backup");}
+    }
 });
 await Test("Long Chinese paragraphs retain word boundaries in translated English",async()=>
 {
@@ -174,9 +325,12 @@ await Test("Shipped phrases provide Chinese meanings, whole-word matches and inf
     using var dictionary=new LocalDictionary(path);await dictionary.LoadAsync();using var relations=new RelatedWords(dictionary,path);await relations.LoadAsync();
     var timer=System.Diagnostics.Stopwatch.StartNew();
     var take=await relations.LookupAsync("take");var taken=await relations.LookupAsync("taken");var afloat=await relations.LookupAsync("afloat");var production=await relations.LookupAsync("production");
+    var sense=await relations.LookupAsync("sense");var place=await relations.LookupAsync("place");
+    Check(sense.Phrases.Any(item=>item.Word=="make sense"&&item.Meaning.Contains("有道理")&&item.Meaning.Contains("讲得通"))&&sense.Phrases.Any(item=>item.Word=="make sense of"),"Common non-prepositional idiom was filtered out: "+string.Join(", ",sense.Phrases.Select(item=>item.Word)));
+    Check(place.Phrases.Any(item=>item.Word=="take place")&&!sense.Phrases.Any(item=>item.Word=="sense of humor"),"Common verb phrase was lost or a noun combination was included");
     Check(take.Phrases.Any(item=>item.Word=="take off"&&item.Meaning.Contains("起飞")),"Known phrase missing: "+string.Join(", ",take.Phrases.Select(item=>item.Word)));
     Check(taken.Phrases.Any(item=>item.Word=="take off"),"The base form did not supply relevant phrases: "+string.Join(", ",taken.Phrases.Select(item=>item.Word)));
-    Check(!afloat.Phrases.Any(item=>item.Word=="keep afloat")&&!production.Phrases.Any(item=>item.Word is "production line" or "mass production"),"Non-prepositional or noun phrases entered the results");
+    Check(!afloat.Phrases.Any(item=>item.Word=="keep afloat")&&!production.Phrases.Any(item=>item.Word is "production line" or "mass production"),"A technical-only phrase or ordinary noun combination entered the results");
     Check(!production.Phrases.Any(item=>item.Word is "cost of production" or "factors of production" or "line of production" or "means of production")&&!(await relations.LookupAsync("point")).Phrases.Any(item=>item.Word=="point of view"),"An internal preposition made a noun group look like a prepositional collocation");
     Check((await relations.LookupAsync("talk")).Phrases.Any(item=>item.Word=="talk about")&&(await relations.LookupAsync("spite")).Phrases.Any(item=>item.Word=="in spite of"),"Prepositional collocations are missing");
     Check(new[]{take,taken,afloat,production}.All(group=>group.Phrases.Count<=24&&group.Phrases.All(item=>item.Meaning==dictionary.Lookup(item.Word)?.translation&&item.Meaning.Any(c=>c is >= '\u3400' and <= '\u9fff'))),"A phrase meaning was missing, invented or unbounded");
@@ -270,4 +424,8 @@ static HttpResponseMessage Reply(object value)=>new(HttpStatusCode.OK){Content=n
 sealed class Handler(Func<HttpRequestMessage,HttpResponseMessage> respond) : HttpMessageHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken){cancellationToken.ThrowIfCancellationRequested();return Task.FromResult(respond(request));}
+}
+sealed class AsyncHandler(Func<HttpRequestMessage,CancellationToken,Task<HttpResponseMessage>> respond):HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken)=>respond(request,cancellationToken);
 }

@@ -10,6 +10,7 @@ public partial class MainWindow
     private CancellationTokenSource? _notesCts;
     private int _notesVersion;
     private StoredMnemonic[] _displayedNotes=[];
+    private string? MnemonicAccountKey=>_accountCredentialKey!=null&&_accountCredentialKey==_tokens.CredentialKey&&_tokens.ActiveAccount is {} account?account.Id+":"+_accountCredentialKey:null;
     private void RenderNotes(string word,IReadOnlyList<StoredMnemonic> notes,bool cloud=false)
     {
         if(word!=_word)return;
@@ -30,7 +31,12 @@ public partial class MainWindow
     {
         _notesCts?.Cancel();_notesCts?.Dispose();_notesCts=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         var token=_notesCts.Token;var version=++_notesVersion;
-        RenderNotes(word,_mnemonics.Get(word));NotesHintText.Text=LocalNotesHint();
+        var accountVersion=_accountVersion;var credential=_accountCredentialKey;
+        if(credential!=_tokens.CredentialKey){CheckAccountExpiry();return;}
+        bool Current()=>!token.IsCancellationRequested&&version==_notesVersion&&word==_word&&accountVersion==_accountVersion&&credential==_tokens.CredentialKey;
+        var cacheKey=(credential??"offline")+":"+word.ToLowerInvariant();
+        var accountKey=MnemonicAccountKey;
+        RenderNotes(word,_mnemonics.Get(word,accountKey));NotesHintText.Text=LocalNotesHint();
         if(!_allowCloud||!_tokens.HasToken)
         {
             SetAccountStatus(!_allowCloud?"离线模式":"未连接");
@@ -43,31 +49,35 @@ public partial class MainWindow
         try
         {
             Vocabulary? voc;IReadOnlyList<MemoNote> notes;
-            if(_cloudCache.TryGetValue(word,out var cached)&&DateTime.UtcNow-cached.Time<TimeSpan.FromMinutes(5)){voc=cached.Voc;notes=cached.Notes;}
+            if(_cloudCache.TryGetValue(cacheKey,out var cached)&&DateTime.UtcNow-cached.Time<TimeSpan.FromMinutes(5)){voc=cached.Voc;notes=cached.Notes;}
             else
             {
                 voc=await _api.ResolveWordAsync(word,token);token.ThrowIfCancellationRequested();
-                if(version!=_notesVersion||word!=_word)return;
+                if(!Current())return;
                 _vocabulary=voc;studyTask=LoadTodayStudyStatusAsync(word,voc);studyStarted=true;
                 notes=voc==null?[]:await _api.GetNotesAsync(voc.Id,token);
-                token.ThrowIfCancellationRequested();_cloudCache[word]=(DateTime.UtcNow,voc,notes);
+                token.ThrowIfCancellationRequested();if(!Current())return;_cloudCache[cacheKey]=(DateTime.UtcNow,voc,notes);
             }
-            if(token.IsCancellationRequested||version!=_notesVersion||word!=_word)return;
+            if(!Current())return;
             _vocabulary=voc;if(!studyStarted){studyTask=LoadTodayStudyStatusAsync(word,voc);studyStarted=true;}SetAccountStatus("已连接");
-            var usable=notes.Where(note=>!string.IsNullOrWhiteSpace(note.Text)).Select(note=>new StoredMnemonic("cloud:"+note.Id,note.NoteType,note.Text,note.Id,"cloud")).ToArray();
+            var usable=notes.Where(note=>!string.IsNullOrWhiteSpace(note.Text)).Select(note=>new StoredMnemonic("cloud:"+note.Id,note.NoteType,note.Text,note.Id,"cloud",accountKey)).ToArray();
             if(usable.Length>0)
             {
                 RenderNotes(word,usable,true);NotesHintText.Text=$"云端助记 · {usable.Length} 条，已覆盖本地显示";
-                try{_mnemonics.Save(word,usable);NotesHintText.Text+="并缓存";}
+                try{if(accountKey!=null)_mnemonics.SaveCloud(word,usable,accountKey);NotesHintText.Text+="并缓存";}
                 catch(Exception error)when(error is System.IO.IOException or UnauthorizedAccessException){NotesHintText.Text+="；本地缓存保存失败";}
             }
-            else NotesHintText.Text=LocalNotesHint()+" · 云端暂无助记";
+            else
+            {
+                if(accountKey!=null)_mnemonics.SaveCloud(word,[],accountKey);
+                RenderNotes(word,_mnemonics.Get(word,accountKey));NotesHintText.Text=LocalNotesHint()+" · 云端暂无助记";
+            }
             StatusText.Text="查询完成 · 助记可在本地编辑";
         }
         catch(OperationCanceledException){ }
         catch(Exception error)
         {
-            if(token.IsCancellationRequested||version!=_notesVersion||word!=_word)return;
+            if(!Current())return;
             NotesHintText.Text=LocalNotesHint()+" · "+UserError(error);SetAccountError(error);
             if(!studyStarted)FailTodayStudyLookup(word,error);
         }
@@ -81,26 +91,27 @@ public partial class MainWindow
     internal Window? CreateMnemonicEditor(StoredMnemonic? original)
     {
         if(!_ready||!ValidWord(_word))return null;
-        var word=_word;var note=original??new StoredMnemonic("local:"+Guid.NewGuid().ToString("N"),"词根词缀","");
+        var word=_word;var account=_accountVersion;var accountKey=MnemonicAccountKey;var note=original??new StoredMnemonic("local:"+Guid.NewGuid().ToString("N"),"词根词缀","");
         ++_notesVersion;_notesCts?.Cancel();NotesHintText.Text=LocalNotesHint();
         return MnemonicEditor.Build(this,word,note.NoteType,note.Text,_allowCloud&&_tokens.HasToken,async(type,text,sync)=>
         {
             var edited=note with {NoteType=type,Text=text,Origin="local"};
             void Persist(StoredMnemonic value)
             {
-                var current=_mnemonics.Get(word).ToList();var index=current.FindIndex(item=>item.Id==note.Id);
+                var current=_mnemonics.Get(word,accountKey).ToList();var index=current.FindIndex(item=>item.Id==note.Id);
                 if(index<0)current.Add(value);else current[index]=value;
-                _mnemonics.Save(word,current);_cloudCache.Remove(word);
+                _mnemonics.SaveEdit(word,value,accountKey);_cloudCache.Remove((_accountCredentialKey??"offline")+":"+word.ToLowerInvariant());
                 if(word==_word){RenderNotes(word,current,value.Origin=="cloud");NotesHintText.Text=value.Origin=="cloud"?"已同步到墨墨，并保存在本地。":"已保存到本地 · 下次查到云端助记时以云端为准。";}
             }
             Persist(edited);
             if(!sync)return;
+            if(account!=_accountVersion)throw new MaiMemoException("账号已变更，本地已保存，请重新打开助记后同步。");
             try
             {
                 var voc=_vocabulary?.Spelling.Equals(word,StringComparison.OrdinalIgnoreCase)==true?_vocabulary:await _api.ResolveWordAsync(word);
                 if(voc==null)throw new MaiMemoException("墨墨尚未收录这个单词。");
-                var saved=await _api.SaveNoteAsync(voc.Id,note.CloudId,type,text);
-                edited=edited with {CloudId=saved.Id,NoteType=saved.NoteType,Text=saved.Text,Origin="cloud"};
+                var saved=await _api.SaveNoteAsync(voc.Id,note.AccountKey==accountKey?note.CloudId:null,type,text,_accountCts.Token);
+                edited=edited with {CloudId=saved.Id,NoteType=saved.NoteType,Text=saved.Text,Origin="cloud",AccountKey=accountKey};
                 note=edited;Persist(edited);
             }
             catch(Exception error){SetAccountError(error);throw new MaiMemoException("本地已保存，云端同步未完成："+UserError(error));}

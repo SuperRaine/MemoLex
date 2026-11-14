@@ -64,6 +64,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<Vocabulary?> ResolveWordAsync(string spelling, CancellationToken cancellationToken = default)
     {
+        using var accountScope=BeginAccountOperation();
         spelling = CleanWord(spelling);
         try
         {
@@ -78,6 +79,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<IReadOnlyList<MemoNote>> GetNotesAsync(string vocId, CancellationToken cancellationToken = default)
     {
+        using var accountScope=BeginAccountOperation();
         var data = await SendAsync(HttpMethod.Get, "notes?voc_id=" + Uri.EscapeDataString(vocId), null, cancellationToken);
         return Array(data, "notes").Select(note => new MemoNote(Text(note, "id"), Text(note, "note_type", "助记"),
             Text(note, "note"), Text(note, "status"))).Where(note => note.Status != "DELETED").ToList();
@@ -85,6 +87,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<MemoNote> SaveNoteAsync(string vocId,string? noteId,string noteType,string text,CancellationToken cancellationToken=default)
     {
+        using var accountScope=BeginAccountOperation();
         text=text.Trim();noteType=noteType.Trim();
         noteId=string.IsNullOrWhiteSpace(noteId)?null:noteId;
         if(text.Length is <1 or >20000||string.IsNullOrWhiteSpace(noteType)||string.IsNullOrWhiteSpace(vocId))throw new ArgumentException("请填写有效的助记分类与内容。");
@@ -103,6 +106,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<IReadOnlyList<MemoInterpretation>> GetInterpretationsAsync(string vocId, CancellationToken cancellationToken = default)
     {
+        using var accountScope=BeginAccountOperation();
         var data = await SendAsync(HttpMethod.Get, "interpretations?voc_id=" + Uri.EscapeDataString(vocId), null, cancellationToken);
         return Array(data, "interpretations").Select(item => new MemoInterpretation(Text(item, "id"), Text(item, "interpretation"),
             Strings(item, "tags"), Text(item, "status"))).Where(item => item.Status != "DELETED").ToList();
@@ -110,6 +114,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<IReadOnlyList<MemoPhrase>> GetPhrasesAsync(string vocId, CancellationToken cancellationToken = default)
     {
+        using var accountScope=BeginAccountOperation();
         var data = await SendAsync(HttpMethod.Get, "phrases?voc_id=" + Uri.EscapeDataString(vocId), null, cancellationToken);
         return Array(data, "phrases").Select(item => new MemoPhrase(Text(item, "id"), Text(item, "phrase"),
             Text(item, "interpretation"), Text(item, "origin"), Text(item, "status"))).Where(item => item.Status != "DELETED").ToList();
@@ -117,6 +122,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<IReadOnlyList<CloudNotepad>> ListNotepadsAsync(CancellationToken cancellationToken = default)
     {
+        using var accountScope=BeginAccountOperation();
         const int pageSize = 10;
         var output = new List<CloudNotepad>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -140,6 +146,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<CloudNotepad> GetNotepadAsync(string id, CancellationToken cancellationToken = default)
     {
+        using var accountScope=BeginAccountOperation();
         var data = await SendAsync(HttpMethod.Get, "notepads/" + Uri.EscapeDataString(id), null, cancellationToken);
         if (!data.TryGetProperty("notepad", out var pad)) throw new MaiMemoException("墨墨没有返回完整云词本，请刷新后重试。");
         if (pad.ValueKind != JsonValueKind.Object || !pad.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.String
@@ -153,6 +160,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<AddWordResult> AddToNotepadAsync(string id, string word, CancellationToken cancellationToken = default)
     {
+        using var accountScope=BeginAccountOperation();
         word = CleanWord(word);
         await _writeGate.WaitAsync(cancellationToken);
         try
@@ -175,6 +183,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<RemoveWordResult> RemoveFromNotepadAsync(string id, string word, CancellationToken cancellationToken = default)
     {
+        using var accountScope=BeginAccountOperation();
         word = CleanWord(word);
         await _writeGate.WaitAsync(cancellationToken);
         try
@@ -193,6 +202,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<CloudNotepad> UpdateNotepadAsync(CloudNotepad original, string title, string brief, string content, CancellationToken cancellationToken = default)
     {
+        using var accountScope=BeginAccountOperation();
         title = title.Trim();
         if (title.Length is < 1 or > 100) throw new ArgumentException("云词本名称需为 1–100 个字符。");
         if (brief.Length > 2000 || content.Length > 300000) throw new ArgumentException("简介或词本内容过长，请缩短后保存。");
@@ -217,6 +227,7 @@ public sealed partial class MaiMemoClient : IDisposable
     }
     public async Task<CloudNotepad> DeleteNotepadAsync(CloudNotepad original,CancellationToken cancellationToken=default)
     {
+        using var accountScope=BeginAccountOperation();
         EnsureEditable(original);
         if(string.IsNullOrWhiteSpace(original.Id))throw new ArgumentException("无效云词本。");
         await _writeGate.WaitAsync(cancellationToken);
@@ -277,6 +288,7 @@ public sealed partial class MaiMemoClient : IDisposable
 
     public async Task<CloudNotepad> CreateNotepadAsync(string title, string? initialWord = null, CancellationToken cancellationToken = default)
     {
+        using var accountScope=BeginAccountOperation();
         title = (title ?? "").Trim();
         if (title.Length is < 1 or > 100) throw new ArgumentException("云词本名称需为 1–100 个字符。", nameof(title));
         var content = string.IsNullOrWhiteSpace(initialWord) ? "" : CleanWord(initialWord);
@@ -304,7 +316,9 @@ public sealed partial class MaiMemoClient : IDisposable
         var studyRequest=relativePath.StartsWith("memo/study/",StringComparison.Ordinal);
         var studyWrite=relativePath=="memo/study/add_words";
         var token = _tokens.GetToken();
-        if (string.IsNullOrWhiteSpace(token)) throw new MaiMemoException("请在设置中填写墨墨 API Token。");
+        if (string.IsNullOrWhiteSpace(token)) throw new MaiMemoException("请在设置中登录墨墨账号。");
+        var credential=TokenStore.Fingerprint(token)!;
+        ValidateAccount(_operationCredential.Value??credential);
         await _requestGate.WaitAsync(cancellationToken);
         try
         {
@@ -315,12 +329,14 @@ public sealed partial class MaiMemoClient : IDisposable
                 if (remaining > TimeSpan.Zero) await Task.Delay(remaining, cancellationToken);
             }
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            ValidateAccount(credential);
             timeout.CancelAfter(TimeSpan.FromSeconds(25));
             using var request = new HttpRequestMessage(method, relativePath);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             if (body != null) request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
             _lastRequest = Stopwatch.GetTimestamp();
             using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            ValidateAccount(credential);
             if (!response.IsSuccessStatusCode)
             {
                 if(response.StatusCode==HttpStatusCode.Unauthorized)ReportAuthentication(token,false);
@@ -340,6 +356,7 @@ public sealed partial class MaiMemoClient : IDisposable
             }
             memory.Position = 0;
             using var json = await JsonDocument.ParseAsync(memory, cancellationToken: timeout.Token);
+            ValidateAccount(credential);
             var root = json.RootElement;
             if (root.ValueKind != JsonValueKind.Object) throw studyWrite?new StudyAddUncertainException("墨墨没有返回有效的添加结果，请核对今日新学。"):new MaiMemoException("墨墨返回的数据格式有变化，请稍后重试。");
             if (root.TryGetProperty("success", out var success) && success.ValueKind == JsonValueKind.False)
@@ -355,6 +372,7 @@ public sealed partial class MaiMemoClient : IDisposable
             }
             ReportAuthentication(token,true);return root.Clone();
         }
+        catch (AccountChangedException){throw;}
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             if(studyWrite)throw new StudyAddUncertainException("添加请求超时，结果尚未确认，请核对今日新学。");

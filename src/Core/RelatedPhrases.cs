@@ -3,8 +3,15 @@ namespace MemoLex.Core;
 internal sealed class RelatedPhrases(LocalDictionary dictionary)
 {
     private readonly Lazy<Dictionary<string,int[]>> _index=new(()=>BuildIndex(dictionary));
+    // Supplement the terse ECDICT glosses for these common idioms; keep the source index unchanged.
+    private static readonly Dictionary<string,string> CommonMeanings=new(StringComparer.OrdinalIgnoreCase)
+        {{"make sense","有意义；有道理；讲得通"},{"make sense of","理解；弄懂"}};
     private static readonly HashSet<string> Prepositions=new(StringComparer.OrdinalIgnoreCase)
         {"about","above","across","after","against","along","among","around","at","before","behind","below","beneath","beside","besides","between","beyond","by","despite","down","during","except","for","from","in","inside","into","near","of","off","on","onto","out","outside","over","past","since","through","throughout","till","to","toward","towards","under","underneath","until","up","upon","via","with","within","without"};
+    private static readonly HashSet<string> CommonVerbHeads=new(StringComparer.OrdinalIgnoreCase)
+        {"be","have","make","take","give","get","keep","pay","catch","lose","leave","set","put","break","come","go","do","find","hold","run","turn","show","tell","let","send","bring","draw","meet","fall","feel","stand","save","raise","play","read","write","speak","talk","wish","want","need","look","watch","hear","listen","think","bear","change","call","cut","carry"};
+    private static readonly HashSet<string> CommonIdioms=new(StringComparer.OrdinalIgnoreCase)
+        {"make sense","make sense of","make a difference","make use of","make sure","take place","take care of","take part in","take advantage of","take into account","take a look","take a break","pay attention to","get rid of","have a look","have to","give up","in spite of","as well as","at least","in fact","by the way","on the other hand","as a result","in addition","in addition to","as soon as","be able to","be aware of","look forward to","look up","come up with","come true","turn out","bring about","carry out","put up with","keep in mind","keep up with","out of control","out of date","lose sight of","catch sight of","catch up with","in terms of","in charge of","according to","because of","due to"};
     private static Dictionary<string,int[]> BuildIndex(LocalDictionary dictionary)
     {
         var postings=new Dictionary<string,List<int>>(StringComparer.OrdinalIgnoreCase);
@@ -13,7 +20,7 @@ internal sealed class RelatedPhrases(LocalDictionary dictionary)
             var phrase=dictionary.SourceWord(id);
             if(phrase.Length>100||!phrase.Contains(' ')||phrase.Any(c=>!char.IsAsciiLetterLower(c)&&c is not (' ' or '\'' or '’' or '-' or '.')))continue;
             var tokens=phrase.Split(' ',StringSplitOptions.RemoveEmptyEntries);
-            if(tokens.Length is <2 or >7||!tokens.Any(Prepositions.Contains))continue;
+            if(tokens.Length is <2 or >7)continue;
             foreach(var token in tokens.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 if(!postings.TryGetValue(token,out var ids))postings[token]=ids=[];
@@ -89,33 +96,38 @@ internal sealed class RelatedPhrases(LocalDictionary dictionary)
         {
             if(predicates.TryGetValue(head,out var known))return known;
             var entry=dictionary.Lookup(head);
-            var valid=System.Text.RegularExpressions.Regex.IsMatch(entry?.translation??"",@"^\s*(?:v(?:t|i)?|a(?:dj)?|adv|ad)\.",System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var valid=System.Text.RegularExpressions.Regex.IsMatch(entry?.translation??"",@"(?:^|\n)\s*(?:v(?:t|i)?|a(?:dj)?)\.",System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if(!valid)
             {
                 var root=(entry?.exchange??"").Split('/').FirstOrDefault(field=>field.StartsWith("0:",StringComparison.Ordinal));
-                if(root!=null)valid=System.Text.RegularExpressions.Regex.IsMatch(dictionary.Lookup(root[2..])?.translation??"",@"^\s*(?:v(?:t|i)?|a(?:dj)?|adv|ad)\.",System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if(root!=null)valid=System.Text.RegularExpressions.Regex.IsMatch(dictionary.Lookup(root[2..])?.translation??"",@"(?:^|\n)\s*(?:v(?:t|i)?|a(?:dj)?)\.",System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             }
             return predicates[head]=valid;
         }
-        foreach(var item in candidates.OrderBy(item=>item.Match).ThenBy(item=>item.Particle).ThenBy(item=>item.Start).ThenBy(item=>item.Tokens).ThenBy(item=>item.Length).ThenBy(item=>item.Id).Take(256))
+        foreach(var item in candidates.OrderBy(item=>item.Match).ThenBy(item=>CommonIdioms.Contains(dictionary.SourceWord(item.Id))?0:1).ThenBy(item=>item.Particle).ThenBy(item=>item.Start).ThenBy(item=>item.Tokens).ThenBy(item=>item.Length).ThenBy(item=>item.Id).Take(256))
         {
             cancellation.ThrowIfCancellationRequested();
             var entry=dictionary.LookupBySourceId(item.Id);var meaning=entry?.translation;
             if(string.IsNullOrWhiteSpace(meaning)||!meaning.Any(c=>c is >= '\u3400' and <= '\u9fff'))continue;
+            if(CommonMeanings.TryGetValue(entry!.word,out var commonMeaning))meaning=commonMeaning;
             var tokens=entry!.word.Split(' ',StringSplitOptions.RemoveEmptyEntries);
             if(!Prepositions.Contains(tokens[0]))
             {
                 if(System.Text.RegularExpressions.Regex.IsMatch(meaning.TrimStart(),@"^(?:n|noun)\.",System.Text.RegularExpressions.RegexOptions.IgnoreCase))continue;
                 var end=tokens.Length-1;
                 while(end>0&&tokens[end].TrimEnd('.') is "sb" or "sth" or "somebody" or "someone" or "something" or "oneself" or "myself" or "yourself" or "himself" or "herself" or "itself" or "ourselves" or "themselves")end--;
+                var hasPreposition=tokens.Any(Prepositions.Contains);
+                if(!hasPreposition&&!CommonVerbHeads.Contains(tokens[0]))continue;
+                if(tokens.Contains("of",StringComparer.OrdinalIgnoreCase)&&!Prepositions.Contains(tokens[end])&&!CommonVerbHeads.Contains(tokens[0]))continue;
+                if(!Predicate(tokens[0]))continue;
                 if(!Prepositions.Contains(tokens[end]))
                 {
-                    if(tokens.Contains("of",StringComparer.OrdinalIgnoreCase)||meaning.TrimStart().StartsWith('[')||!Predicate(tokens[0]))continue;
+                    if(meaning.TrimStart().StartsWith('['))continue;
                 }
             }
             described.Add((new RelatedWord(entry!.word,meaning),item.Match,item.Particle,meaning.TrimStart().StartsWith('[')?1:0,item.Start,item.Tokens,item.Length));
         }
-        return described.OrderBy(item=>item.Match).ThenBy(item=>item.Particle).ThenBy(item=>item.Technical).ThenBy(item=>item.Start).ThenBy(item=>item.Tokens).ThenBy(item=>item.Length)
+        return described.OrderBy(item=>item.Match).ThenBy(item=>CommonIdioms.Contains(item.Phrase.Word)?0:1).ThenBy(item=>item.Particle).ThenBy(item=>item.Technical).ThenBy(item=>item.Start).ThenBy(item=>item.Tokens).ThenBy(item=>item.Length)
             .ThenBy(item=>item.Phrase.Word,StringComparer.OrdinalIgnoreCase).Take(24).Select(item=>item.Phrase).ToArray();
     }
 }

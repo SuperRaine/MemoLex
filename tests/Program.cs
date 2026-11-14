@@ -88,24 +88,24 @@ sealed class BackendTestFixture : IDisposable
             };
             using var api=Client(fake);var result=await api.AddToTodayAsync(new("v1","apple"));
             Check(result==new TodayStudyResult(TodayStudyStatus.Added,1)&&fake.Adds==1,"Addition was not verified");
-            Check(fake.Paths.SequenceEqual(new[]{"get_today_items","query_study_records","add_words","get_today_items"}),"Unexpected write, retry or read sequence");
+            Check(fake.Paths.SequenceEqual(new[]{"get_today_items","query_study_records","add_words","get_today_items","query_study_records"}),"Unexpected write, retry or read sequence");
         });
         await Test("Today new-word membership and existing review words are identified without writes",async()=>
         {
             foreach(var isNew in new[]{true,false})
             {
-                using var fake=new StudyHandler {InitiallyToday=true,IsNew=isNew};using var api=Client(fake);
+                using var fake=new StudyHandler {InitiallyToday=true,IsNew=isNew,StudyCount=isNew?null:3};using var api=Client(fake);
                 var result=await api.AddToTodayAsync(new("v1","apple"));
-                Check(result.Status==(isNew?TodayStudyStatus.AlreadyToday:TodayStudyStatus.AlreadyLearned)&&fake.Adds==0&&fake.Paths.Count==1,"Existing today word was changed");
+                Check(result.Status==(isNew?TodayStudyStatus.AlreadyToday:TodayStudyStatus.AlreadyLearned)&&fake.Adds==0,"Existing today word was changed");
             }
         });
-        await Test("Previously studied words are never advanced or reset by the new-word action",async()=>
+        await Test("Actual study counts distinguish planned words from learned words even with a first-study date",async()=>
         {
             foreach(var count in new[]{0,3})
             {
                 using var fake=new StudyHandler {StudyCount=count,FirstStudyDate=count==0?"2026-11-01T00:00:00+08:00":null};using var api=Client(fake);
                 var result=await api.AddToTodayAsync(new("v1","apple"));
-                Check(result.Status==TodayStudyStatus.AlreadyLearned&&fake.Adds==0,"An old study record was treated as a new word");
+                Check(result.Status==(count==0?TodayStudyStatus.Planned:TodayStudyStatus.AlreadyLearned)&&fake.Adds==0,"Planning was confused with actual study");
             }
         });
         await Test("Zero accepted words never produce a successful today-new result",async()=>
@@ -118,14 +118,15 @@ sealed class BackendTestFixture : IDisposable
         {
             using var fake=new StudyHandler {LoseAddResponse=true};using var api=Client(fake);
             var result=await api.AddToTodayAsync(new("v1","apple"));
-            Check(result.Status==TodayStudyStatus.AlreadyToday&&fake.Adds==1&&fake.Paths.Count==4,"Uncertain addition was not resolved by readback");
+            Check(result.Status==TodayStudyStatus.AlreadyToday&&fake.Adds==1&&fake.Paths.Count==5,"Uncertain addition was not resolved by readback");
         });
         await Test("Unconfirmed today status offers read-only verification even after the plan accepted the word",async()=>
         {
-            using var fake=new StudyHandler {HideAfterAdd=true,StudyCount=0};using var api=Client(fake);
+            using var fake=new StudyHandler {HideAfterAdd=true};using var api=Client(fake);
             var result=await api.AddToTodayAsync(new("v1","apple"));
-            Check(result.Status==TodayStudyStatus.PendingVerification&&result.AddedCount==1,"Plan acceptance was claimed as verified today membership");
-            Check((await api.AddToTodayAsync(new("v1","apple"),verifyOnly:true)).Status==TodayStudyStatus.PendingVerification&&fake.Adds==1,"Verification repeated a write");
+            Check(result.Status==TodayStudyStatus.PendingVerification&&result.AddedCount==1,"An accepted count without any synced learning data was called unlearned");
+            fake.StudyCount=0;
+            Check((await api.AddToTodayAsync(new("v1","apple"),verifyOnly:true)).Status==TodayStudyStatus.Planned&&fake.Adds==1,"Verification repeated a write");
         });
         await Test("Incomplete, wrong-ID and malformed learning data never authorize an unsafe study write",async()=>
         {
@@ -161,7 +162,7 @@ sealed class BackendTestFixture : IDisposable
             {
                 using var fake=new StudyHandler {StudyCount=mode=="learned"?3:mode=="planned"?0:null,InitiallyToday=mode=="today"};using var api=Client(fake);
                 var result=await api.GetTodayStudyStatusAsync(new("v1","apple"));
-                Check(result==(mode=="learned"?TodayStudyStatus.AlreadyLearned:mode=="today"?TodayStudyStatus.AlreadyToday:TodayStudyStatus.NotAdded)&&fake.Adds==0,"Read-only status was wrong or changed learning data");
+                Check(result==(mode=="learned"?TodayStudyStatus.AlreadyLearned:mode=="today"?TodayStudyStatus.AlreadyToday:mode=="planned"?TodayStudyStatus.Planned:TodayStudyStatus.NotAdded)&&fake.Adds==0,"Read-only status was wrong or changed learning data");
                 Check(fake.Paths[0]=="query_study_records"&&(mode!="learned"||fake.Paths.Count==1),"Known learned status did not come directly from its record");
             }
         });
@@ -179,7 +180,7 @@ sealed class BackendTestFixture : IDisposable
             try{await api.GetNotesAsync("v1");throw new Exception("Permission error accepted");}
             catch(MaiMemoException error){Check(error.StatusCode==HttpStatusCode.Forbidden&&accepted==1&&rejected==0,"Resource permission was reported as expired login");}
         });
-        await Test("Authentication events identify their original credential during an in-flight account switch",async()=>
+        await Test("An in-flight response from the previous account is discarded before authentication or caching",async()=>
         {
             var started=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var release=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var nextToken=Convert.ToHexString(RandomNumberGenerator.GetBytes(32));var events=new List<(string Key,bool Accepted)>();
@@ -190,9 +191,9 @@ sealed class BackendTestFixture : IDisposable
             });
             using var api=Client(fake);api.AuthenticationResult+=(key,ok)=>events.Add((key,ok));
             var old=api.GetNotesAsync("v1");await started.Task;Tokens.SaveToken(nextToken);var fresh=api.ResolveWordAsync("apple");release.SetResult();
-            try{await old;throw new Exception("Expected old-account auth failure");}catch(MaiMemoException error){Check(error.StatusCode==HttpStatusCode.Unauthorized,"Wrong old-account error");}
+            try{await old;throw new Exception("Expected old-account cancellation");}catch(AccountChangedException){}
             await fresh;
-            Check(events.SequenceEqual(new[]{(TokenStore.Fingerprint(_token)!,false),(TokenStore.Fingerprint(nextToken)!,true)}),"Auth events crossed credentials");
+            Check(events.SequenceEqual(new[]{(TokenStore.Fingerprint(nextToken)!,true)}),"Auth events crossed credentials");
             Tokens.SaveToken(_token);
         });
 
@@ -522,6 +523,7 @@ sealed class BackendTestFixture : IDisposable
             var broken=new ActivationFake {ThrowOnBring=true};try{new ForegroundWindow(broken).Activate((IntPtr)7,false);throw new Exception("Expected injected failure");}catch(InvalidOperationException){}
             Check(broken.Attachments.SequenceEqual(new[]{true,false}),"Input threads remained linked after failure");return Task.CompletedTask;
         });
+        await NewFeatureChecks.Run(Test,_folder);
         Console.WriteLine($"Backend tests: {_passed} passed, {_failed} failed. All HTTP responses were fake; the live token store was untouched.");
         return _failed == 0 ? 0 : 1;
     }

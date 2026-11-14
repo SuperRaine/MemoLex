@@ -15,14 +15,15 @@ public partial class MainWindow
     private string? _studyLoadingWord;
     private System.Windows.Threading.DispatcherTimer? _studyDayTimer;
     internal Func<Window,string,bool> ConfirmTodayStudy {get;set;}=TodayStudyConfirmationDialog.Confirm;
+    private bool LocallyConfirmedLearned(string word)=>_accountCredentialKey!=null&&_accountCredentialKey==_tokens.CredentialKey&&_preferences.IsConfirmedLearned(_tokens.ActiveAccount?.Id,word);
 
     private void StartTodayStudyClock()
     {
-        _studyDayTimer=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromMinutes(1)};
+        _studyDayTimer=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromSeconds(30)};
         _studyDayTimer.Tick+=(_,_)=>
         {
             var previous=_studyDate;UpdateTodayStudyButton();
-            if(previous!=_studyDate&&_ready&&_allowCloud&&_tokens.HasToken&&ValidWord(_word))
+            if((previous!=_studyDate||IsActive&&!FreshStudySnapshot(_word))&&_studyLoadingWord==null&&!_adding&&_ready&&_allowCloud&&_tokens.HasToken&&ValidWord(_word))
             {
                 PrepareTodayStudyLookup(_word,_lookupCts?.Token??CancellationToken.None);
                 _=RetryTodayStudyStatusAsync(_word);
@@ -36,16 +37,17 @@ public partial class MainWindow
         // Today follows the API's Beijing timezone, rather than the PC's timezone.
         var today=DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).DateTime);
         if(today!=_studyDate){_studyDate=today;_todayStudyStates.Clear();}
-        _todayStudyStates.TryGetValue(_word,out var snapshot);var state=snapshot?.Status;
-        var confirmed=state is TodayStudyStatus.Added or TodayStudyStatus.AlreadyToday;
+        _todayStudyStates.TryGetValue(_word,out var snapshot);var local=LocallyConfirmedLearned(_word);var state=local?TodayStudyStatus.AlreadyLearned:snapshot?.Status;
+        var confirmed=state is TodayStudyStatus.Added or TodayStudyStatus.AlreadyToday or TodayStudyStatus.Planned;
         var learned=state==TodayStudyStatus.AlreadyLearned;var pending=state==TodayStudyStatus.PendingVerification;
-        var loading=_studyLoadingWord==_word;var failed=snapshot?.Error!=null;var missing=snapshot?.Missing==true;
-        AddTodayButton.Content=_studyWordInFlight==_word?"正在处理…":loading?"读取学习状态…":confirmed?"✓ 已在今日新学":learned?"已学过的单词":missing?"墨墨未收录":failed?"重试学习状态":pending?"核对今日新学":"＋ 今日新学";
+        var syncRequired=state==TodayStudyStatus.SyncRequired;
+        var loading=!local&&_studyLoadingWord==_word;var failed=!local&&snapshot?.Error!=null;var missing=!local&&snapshot?.Missing==true;
+        AddTodayButton.Content=_studyWordInFlight==_word?"正在处理…":loading?"读取学习状态…":confirmed?"已计划新学":learned?"已学过的单词":missing?"墨墨未收录":failed?"重试学习状态":syncRequired?"学习记录待核对":pending?"核对今日新学":"＋ 今日新学";
         AddTodayButton.IsEnabled=_ready&&_allowCloud&&!_adding&&!_refreshing&&!loading&&ValidWord(_word)&&!confirmed&&!learned&&!missing;
-        AddTodayButton.ToolTip=failed?snapshot!.Error+"\n点击只重新读取学习状态，不添加单词。":missing?"墨墨词库未收录此拼写。":learned?"该词已有学习记录，不能重新作为新学单词添加。":confirmed?"已核对墨墨今日新学列表；不会重复提交。":pending?"上次结果尚未同步；点击只读取状态核对，不重复添加。":"添加到墨墨学习计划并提前到今日，再核对是否为新学单词。需先在墨墨 App 开启自动同步。";
+        AddTodayButton.ToolTip=local?"你已确认这个账号学过该词，已保存在本机；不会重复添加或改动墨墨的学习记录。":failed?snapshot!.Error+"\n点击只重新读取学习状态，不添加单词。":missing?"墨墨词库未收录此拼写。":learned?"该词已有实际学习记录，不能重新作为新学单词添加。":confirmed?"已加入新学计划，尚未学习；手机端完成自动同步后状态会刷新。":syncRequired?"接口只有次数为 1、没有反馈的占位记录，无法确认已学或未学。这不表示你没背过；点击仅核对，不添加或重置单词。可先在墨墨 App 同步学习数据，再核对。":pending?"上次结果尚未同步；点击只读取状态核对，不重复添加。":"添加到墨墨学习计划并提前到今日，再核对是否为新学单词。需先在墨墨 App 开启自动同步。";
     }
 
-    private bool FreshStudySnapshot(string word)=>_todayStudyStates.TryGetValue(word,out var cached)&&cached.Error==null&&DateTime.UtcNow-cached.CheckedAt<TimeSpan.FromMinutes(2);
+    private bool FreshStudySnapshot(string word)=>LocallyConfirmedLearned(word)||_todayStudyStates.TryGetValue(word,out var cached)&&cached.Error==null&&DateTime.UtcNow-cached.CheckedAt<TimeSpan.FromSeconds(15);
     private void PrepareTodayStudyLookup(string word,CancellationToken cancellation)
     {
         _studyLoadCts?.Cancel();_studyLoadCts?.Dispose();++_studyReadVersion;
@@ -71,7 +73,11 @@ public partial class MainWindow
             if(vocabulary==null){if(Current())_todayStudyStates[word]=new(DateTime.UtcNow,null,Missing:true);return;}
             var status=await _api.GetTodayStudyStatusAsync(vocabulary,cancellation);
             if(!Current())return;
-            if(status==TodayStudyStatus.NotAdded&&_todayStudyStates.TryGetValue(word,out var old)&&old.Status==TodayStudyStatus.PendingVerification)status=TodayStudyStatus.PendingVerification;
+            if(_todayStudyStates.TryGetValue(word,out var old))
+            {
+                if(old.Status==TodayStudyStatus.AlreadyLearned)status=TodayStudyStatus.AlreadyLearned;
+                else if(status==TodayStudyStatus.NotAdded&&old.Status==TodayStudyStatus.PendingVerification)status=TodayStudyStatus.PendingVerification;
+            }
             _todayStudyStates[word]=new(DateTime.UtcNow,status);
         }
         catch(OperationCanceledException){}
@@ -93,13 +99,14 @@ public partial class MainWindow
 
     private async void AddTodayButton_Click(object sender,RoutedEventArgs e)
     {
+        if(LocallyConfirmedLearned(_word)){UpdateTodayStudyButton();return;}
         if(!_ready||!_allowCloud||_adding||_refreshing||_studyLoadingWord==_word||!ValidWord(_word))return;
         UpdateTodayStudyButton();
         _todayStudyStates.TryGetValue(_word,out var snapshot);var saved=snapshot?.Status;
-        if(saved is TodayStudyStatus.Added or TodayStudyStatus.AlreadyToday or TodayStudyStatus.AlreadyLearned||snapshot?.Missing==true)return;
+        if(saved is TodayStudyStatus.Added or TodayStudyStatus.AlreadyToday or TodayStudyStatus.Planned or TodayStudyStatus.AlreadyLearned||snapshot?.Missing==true)return;
         if(!_tokens.HasToken){SettingsButton_Click(this,new RoutedEventArgs());return;}
         if(snapshot?.Error!=null){_todayStudyStates.Remove(_word);PrepareTodayStudyLookup(_word,_lookupCts?.Token??CancellationToken.None);await RetryTodayStudyStatusAsync(_word);return;}
-        var word=_word;var date=_studyDate;var account=_accountVersion;var verifyOnly=saved==TodayStudyStatus.PendingVerification;
+        var word=_word;var date=_studyDate;var account=_accountVersion;var verifyOnly=saved is TodayStudyStatus.PendingVerification or TodayStudyStatus.SyncRequired;
         _adding=true;
         SetCloudWriteBusy(true);AddButton.IsEnabled=false;
         string? message=null;
@@ -120,8 +127,10 @@ public partial class MainWindow
             if(date==_studyDate&&account==_accountVersion)_todayStudyStates[word]=new(DateTime.UtcNow,result.Status);
             message=result.Status switch
             {
-                TodayStudyStatus.Added=>$"已将「{word}」加入今日新学，已核对成功。",
-                TodayStudyStatus.AlreadyToday=>$"「{word}」已在今日新学中，已核对成功。",
+                TodayStudyStatus.Added=>$"「{word}」已计划新学，已在今日列表核对成功。",
+                TodayStudyStatus.AlreadyToday=>$"「{word}」已计划新学，不会重复添加。",
+                TodayStudyStatus.Planned=>$"「{word}」已计划新学，手机端同步后可查看今日安排。",
+                TodayStudyStatus.SyncRequired=>$"「{word}」的历史学习状态尚未同步，暂不能确认新学；请在墨墨 App 完成自动同步后重新核对，核对不会重复添加或重置单词。",
                 TodayStudyStatus.AlreadyLearned=>$"「{word}」已有学习记录或已在今日复习中，不能作为新学词重复添加。",
                 TodayStudyStatus.NotAdded=>$"墨墨本次未添加「{word}」；该词可能已在计划中，或单词上限不足。",
                 _=>result.AddedCount==1?$"「{word}」已加入学习计划，今日新学状态尚未同步；请打开墨墨 App 自动同步后点击核对。":$"「{word}」的今日新学结果尚未确认；请打开墨墨 App 自动同步后点击核对。"

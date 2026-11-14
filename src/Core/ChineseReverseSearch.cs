@@ -195,7 +195,7 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
                 var position=sense.Normalized.IndexOf(variant.Text,StringComparison.Ordinal);
                 if(position>0&&NegativePrefix.IsMatch(sense.Normalized[..position]))opposed=true;
                 var score=MeaningScore(sense,variant.Text)*variant.Weight;
-                if(score>0&&sense.Pos is "a" or "adj" &&entry.definition.Length>0&&!Regex.IsMatch(entry.definition,@"(?:^|\n)[as](?:\.|\s)"))score-=90;
+                if(score>0&&sense.Pos is "a" or "adj" &&entry.HasEnglishDefinition&&!entry.HasAdjectiveDefinition)score-=90;
                 if(score>0)positive=true;
                 if(score>bestMeaningScore){bestMeaningScore=score;meaning=sense.Text;}
                 if(score>best){best=score;meaning=sense.Text;kind=variant.Direct?"释义匹配":"近义表达";}
@@ -209,12 +209,12 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
             var bonus=latin.Length>0&&entry.word.Contains(latin,StringComparison.OrdinalIgnoreCase)?50:0;
             var familiarity=Familiarity(entry);
             if(Regex.IsMatch(entry.translation,@"(?:^|\n)\s*(?:abbr\.|缩写)",RegexOptions.IgnoreCase))familiarity-=140;
-            if(Regex.IsMatch(entry.definition,@"\b(?:archaic|obsolete|dialectal)\b",RegexOptions.IgnoreCase))familiarity-=100;
+            if(entry.HasHistoricalDefinition)familiarity-=100;
             var basis=entry.exchange.Split('/').FirstOrDefault(value=>value.StartsWith("0:",StringComparison.Ordinal));
             if(basis!=null)
             {
                 var baseWord=basis[2..];var baseEntry=dictionary.Lookup(baseWord);
-                var lexicalAdjective=Regex.IsMatch(entry.definition,@"(?:^|\n)[as](?:\.|\s)")&&!Regex.IsMatch(baseEntry?.definition??"",@"(?:^|\n)[as](?:\.|\s)");
+                var lexicalAdjective=entry.HasAdjectiveDefinition&&baseEntry?.HasAdjectiveDefinition!=true;
                 if(!lexicalAdjective)bases[entry.word]=baseWord;
             }
             results.Add(new(entry.word,entry.translation,meaning,kind,best+familiarity+bonus){IsExactMatch=exactSense!=null});

@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private HwndSource? _source;
     private dynamic? _speaker;
     private TrayIcon? _tray;
+    private MemoLex.Desktop.UpdateManager? _updates;
     private bool _exitRequested;
     private readonly bool _allowCloud;
     private readonly bool _desktopIntegration;
@@ -50,7 +51,7 @@ public partial class MainWindow : Window
         _allowCloud = allowCloud;
         _desktopIntegration=desktopIntegration;
         _api = api ?? new MaiMemoClient(_tokens);
-        _accountCredentialKey=_tokens.CredentialKey;_api.AuthenticationResult+=OnApiAuthenticationResult;
+        _accountCredentialKey=_tokens.CredentialKey;_api.ExpectedCredentialKey=_accountCredentialKey;_api.AuthenticationResult+=OnApiAuthenticationResult;
         _related=related??new RelatedWords(_dictionary);
         _translation=translation??new TranslationClient();
         _chinese=chinese??new ChineseReverseSearch(_dictionary);
@@ -67,7 +68,7 @@ public partial class MainWindow : Window
         AddButton.IsEnabled = false;
         AddTodayButton.IsEnabled = false;
         SpeakButton.IsEnabled = false;
-        Loaded += async (_, _) => {StartTodayStudyClock();await InitializeAsync();};
+        Loaded += async (_, _) => {StartTodayStudyClock();StartAccountClock();await InitializeAsync();RefreshHoverLookup();if(_desktopIntegration){_updates=new(_preferences,ExitApplication);_updates.Changed+=()=>{if(_updates.CanInstall)StatusText.Text=_updates.Status+" 设置 → 软件更新";};_updates.Start();if(!_preferences.OnboardingCompleted)StartOnboarding();}};
         SourceInitialized += (_, _) =>
         {
             InstallHotkey();
@@ -81,7 +82,9 @@ public partial class MainWindow : Window
         PreviewMouseDown += Window_PreviewMouseDown;
         Closed += (_, _) =>
         {
+            StopOnboardingOnExit();
             _doubleCopy?.Dispose();_clipboardCts?.Cancel();
+            _hover?.Dispose();_accountTimer?.Stop();_accountWatcher?.Dispose();_updates?.Dispose();
             _studyCts?.Cancel();
             _studyLoadCts?.Cancel();_accountCts.Cancel();_api.AuthenticationResult-=OnApiAuthenticationResult;
             _studyDayTimer?.Stop();
@@ -156,7 +159,8 @@ public partial class MainWindow : Window
             await _related.LoadAsync();
             await _chinese.LoadAsync();
             _ready = true;
-            DictionaryCountText.Text = $"ECDICT · {_dictionary.Count:N0} 词目";
+            DictionaryCountText.Text = _dictionary.EudicAvailable?$"欧路优先 · {_dictionary.EudicCount:N0} 词目":$"ECDICT · {_dictionary.Count:N0} 词目";
+            DictionaryCountText.ToolTip=_dictionary.EudicAvailable?$"本机欧路简明释义优先，未收录时回退 ECDICT（{_dictionary.Count:N0} 词目）。":_dictionary.EudicWarning??"内置离线词典";
             UpdateHistory();
             SearchBox.Text = _preferences.History.FirstOrDefault() ?? "serendipity";
             SearchBox.Focus();
@@ -215,7 +219,7 @@ public partial class MainWindow : Window
         var exchange = FormatExchange(entry?.exchange);
         FillWordLinks(ExchangeText, exchange, EmptyMatches, word);
         ExchangeCard.Visibility = exchange.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        WordMetaText.Text = entry == null ? "本地未收录 · 正在查询墨墨词库" : "ECDICT 英汉双解 · 离线可用";
+        WordMetaText.Text = entry == null ? "本地未收录 · 正在查询墨墨词库" : entry.source=="eudic-local-brief"?EudicLocalDictionary.SourceLabel+" · 离线可用":"ECDICT 英汉双解 · 离线可用";
         if (int.TryParse(entry?.bnc, out var frequency) && frequency > 0) WordMetaText.Text += $"  /  BNC 词频 #{frequency:N0}";
         RenderTags(entry);
         ResultScroll.ScrollToTop();
@@ -617,17 +621,16 @@ public partial class MainWindow : Window
         catch (Exception ex) { ShowError(ex); }
         finally { _adding = false; SetCloudWriteBusy(false); await UpdateMembershipAsync(); }
     }
-    private async void SettingsButton_Click(object sender, RoutedEventArgs e)
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (_adding || _refreshing) return;
         SettingsResult result;
         _editingSettings=true;ReleaseGlobalShortcut();
-        try{result=SettingsDialog.Edit(this,_tokens,_preferences,ValidateGlobalShortcut);}
-        finally{_editingSettings=false;RefreshGlobalShortcut();RefreshDoubleCopy();}
+        try{result=SettingsDialog.Edit(this,_tokens,_preferences,ValidateGlobalShortcut,ReloadAccountAsync,_updates?.CanInstall==true?"软件更新":!_tokens.HasToken?"墨墨账号":null,_updates,startOnboarding:StartOnboarding);}
+        finally{_editingSettings=false;RefreshGlobalShortcut();RefreshDoubleCopy();RefreshHoverLookup();}
         if (!result.Saved) return;
         UpdateShortcutHints();
         StatusText.Text = _preferences.CloseToTray ? "设置已保存 · 关闭窗口时最小化到托盘。" : "设置已保存 · 关闭窗口时直接退出。";
-        if (result.TokenChanged)await ReloadAccountAsync();
     }
     private void SetCloudWriteBusy(bool busy)
     {
@@ -665,6 +668,7 @@ public partial class MainWindow : Window
     }
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if(_onboardingTour?.HandleKey(e)==true)return;
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         if(key is Key.BrowserBack or Key.BrowserForward){e.Handled=true;await MoveNavigationAsync(key==Key.BrowserBack?-1:1);return;}
         if(ShortcutGestures.Match(_preferences,key,Keyboard.Modifiers) is { } command){e.Handled=true;await ExecuteShortcutAsync(command);}
@@ -688,9 +692,10 @@ public partial class MainWindow : Window
         if (message == 0x0312 && GlobalShortcuts.FirstOrDefault(item=>item.Id==wParam.ToInt32()).Command is { } command)
         {
             handled = true;
-            if(_editingSettings)return IntPtr.Zero;
+            if(_editingSettings||_screenTranslating)return IntPtr.Zero;
             Dispatcher.BeginInvoke(new Action(async () =>
             {
+                if(command=="screenshot"){await StartScreenshotTranslationAsync();return;}
                 RestoreWindow();
                 if(OwnedWindows.Cast<Window>().LastOrDefault(window=>window.IsVisible) is { } dialog)
                 {

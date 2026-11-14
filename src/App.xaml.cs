@@ -23,6 +23,9 @@ public partial class App : Application
                 using var dictionary = new LocalDictionary();
                 await dictionary.LoadAsync();
                 result["wordCount"] = dictionary.Count;
+                result["eudicAvailable"]=dictionary.EudicAvailable;
+                result["eudicBriefCount"]=dictionary.EudicCount;
+                result["preferredDefinitionSource"]=dictionary.Lookup("apple")?.source;
                 result["apple"] = dictionary.Lookup("APPLE")?.translation;
                 result["serendipity"] = dictionary.Lookup("serendipity")?.translation;
                 result["suggestions"] = dictionary.Suggest("serend", 8);
@@ -55,6 +58,7 @@ public partial class App : Application
                     result["noteCount"] = word == null ? null : (await api.GetNotesAsync(word.Id)).Count;
                 }
                 result["ok"] = dictionary.Count > 1000 && result["apple"] != null && (bool)result["missing"]! && (bool)result["synonymCheck"]! && (bool)result["relatedPhraseCheck"]! && (bool)result["chineseReverseCheck"]!&&(bool)result["localMnemonicCheck"]!;
+                if(e.Args.Contains("--dependencies")){var dependencies=await Desktop.DependencyProbe.RunAsync();result["dependencies"]=dependencies;result["ok"]=result["ok"] is true&&dependencies["ok"] is true;}
             }
             catch (Exception ex) { result["ok"] = false; result["errorType"] = ex.GetType().Name; }
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-test.json"), JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));

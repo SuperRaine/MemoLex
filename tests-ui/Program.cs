@@ -19,6 +19,7 @@ using System.Windows.Threading;
 using MemoLex;
 using MemoLex.Core;
 using MemoLex.Services;
+using MemoLex.Desktop;
 
 internal static class Program
 {
@@ -194,11 +195,11 @@ internal sealed class UiFixture
             File.WriteAllText(Path.Combine(_root,"seed-mnemonics.json"),JsonSerializer.Serialize(new Dictionary<string,StoredMnemonic[]>{{"talkative",[new("seed:talkative","词根词缀","本地初始助记 talk + -ative",Origin:"builtin")]}}));
             privateHandler.NotesBarrier=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var mnemonics=new MnemonicStore(Path.Combine(_root,"mnemonics.user.json"),Path.Combine(_root,"seed-mnemonics.json"));
-            var localDictionary=new LocalDictionary(data);
+            var localDictionary=new LocalDictionary(data);var paragraphHttp=new ParagraphHandler();
             var relatedData=Environment.GetEnvironmentVariable("MEMOLEX_DATA_DIR")??new[]{"outputs/MemoLex/data","../MemoLex/data","data"}.FirstOrDefault(value=>File.Exists(Path.Combine(value,"related.data")))??throw new Exception("Set MEMOLEX_DATA_DIR to the runtime data folder.");
             _reverseDictionary=new LocalDictionary(relatedData);await _reverseDictionary.LoadAsync();
             _window = new MainWindow(prefs, tokens, localDictionary, examples, api: new MaiMemoClient(tokens, privateHandler, TimeSpan.Zero),
-                related:new RelatedWords(localDictionary,relatedData),translation:new TranslationClient(new ParagraphHandler()),chinese:new ChineseReverseSearch(_reverseDictionary,relatedData),mnemonics:mnemonics);
+                related:new RelatedWords(localDictionary,relatedData),translation:new TranslationClient(paragraphHttp),chinese:new ChineseReverseSearch(_reverseDictionary,relatedData),mnemonics:mnemonics);
             var initializing=_window.InitializeAsync();
             await WaitAsync(()=>Blocks(Control<StackPanel>("NotesPanel")).Any(block=>string.Concat(block.Inlines.Select(InlineText)).Contains("本地初始助记")),"immediate local mnemonic");
             privateHandler.NotesBarrier.SetResult();privateHandler.NotesBarrier=null;
@@ -228,6 +229,14 @@ internal sealed class UiFixture
             tokens.SaveToken(firstToken);await _window.ReloadAccountAsync();await SearchAsync("talkative");
             Check(Control<Button>("AddTodayButton").Content.ToString()=="＋ 今日新学"&&Control<TextBlock>("CloudStatusText").Text=="已连接","The second account's learned cache leaked after switching back");
             Pass("Switching accounts clears learned-state caches and reloads the current word for the selected account");
+            var activeFirst=tokens.ActiveAccount!;var secondSaved=tokens.GetAccounts().Single(account=>account.Id!=activeFirst.Id);
+            var accountSettings=SettingsDialog.Build(null!,tokens,prefs,out _,accountChanged:_window.ReloadAccountAsync,initialPage:"墨墨账号");
+            var accountList=(ComboBox)accountSettings.FindName("AccountList");accountList.SelectedItem=accountList.Items.Cast<SavedAccount>().Single(account=>account.Id==secondSaved.Id);
+            await WaitAsync(()=>tokens.ActiveAccount?.Id==secondSaved.Id&&Control<Button>("AddTodayButton").Content.ToString()!.Contains("已学过"),"account selection immediately switches data");
+            Check(((TextBlock)accountSettings.FindName("AccountStatus")).Text.Contains(secondSaved.Name),"Selection and current-account heading disagree");
+            accountList.SelectedItem=accountList.Items.Cast<SavedAccount>().Single(account=>account.Id==activeFirst.Id);
+            await WaitAsync(()=>tokens.ActiveAccount?.Id==activeFirst.Id&&Control<Button>("AddTodayButton").Content.ToString()=="＋ 今日新学","account selection restores independent state");accountSettings.Close();
+            Pass("Selecting a saved account immediately switches credentials and reloads its independent learning state");
             Layout(1000,680);
             Check(Control<Button>("SettingsButton").ActualWidth > 90 && Control<TextBox>("SearchBox").ActualWidth > 100, "Compact controls collapsed");
             Check(SectionOffset("NotesSection")>SectionOffset("DefinitionSection") && SectionOffset("ExamplesSection")>SectionOffset("NotesSection"),"Definitions, mnemonics and examples are out of order");
@@ -363,16 +372,16 @@ internal sealed class UiFixture
             Click("AddTodayButton");await WaitAsync(()=>privateHandler.StudyAdds==1,"today-add request");
             Check(!Control<Button>("AddTodayButton").IsEnabled,"Today action remained enabled during a write");Click("AddTodayButton");
             Control<TextBox>("SearchBox").Text="reader";Click("SearchButton");await DrainAsync();
-            Check(!Control<Button>("AddTodayButton").Content.ToString()!.Contains("已在今日新学"),"The old word's success leaked into a new word");
+            Check(!Control<Button>("AddTodayButton").Content.ToString()!.Contains("已计划新学"),"The old word's success leaked into a new word");
             privateHandler.StudyBarrier.SetResult();privateHandler.StudyBarrier=null;await ReadyAsync("reader");
             await WaitAsync(()=>Control<Button>("AddTodayButton").IsEnabled,"complete today addition");
             await SearchAsync("talkative");
-            Check(Control<Button>("AddTodayButton").Content.ToString()!.Contains("已在今日新学")&&!Control<Button>("AddTodayButton").IsEnabled&&privateHandler.StudyAdds==1&&privateHandler.TodayStudyWords.Contains("voc-talkative")&&privateHandler.Writes==0,"Today membership, duplicate protection or notebook isolation failed");
+            Check(Control<Button>("AddTodayButton").Content.ToString()!.Contains("已计划新学")&&!Control<Button>("AddTodayButton").IsEnabled&&privateHandler.StudyAdds==1&&privateHandler.TodayStudyWords.Contains("voc-talkative")&&privateHandler.Writes==0,"Today membership, duplicate protection or notebook isolation failed");
             Pass("The today-new action captures its word, blocks double submission and restores the confirmed state on navigation");
 
             privateHandler.StudyAccepted=0;await SearchAsync("reader");Click("AddTodayButton");
             await WaitAsync(()=>Control<Button>("AddTodayButton").IsEnabled&&DisplayedText("StatusText").Contains("未添加"),"zero accepted study words");
-            Check(privateHandler.StudyAdds==2&&!Control<Button>("AddTodayButton").Content.ToString()!.Contains("已在今日新学"),"Zero accepted count became UI success");
+            Check(privateHandler.StudyAdds==2&&!Control<Button>("AddTodayButton").Content.ToString()!.Contains("已计划新学"),"Zero accepted count became UI success");
             Pass("A zero-count study response remains retryable and explains why the word was not added");
 
             privateHandler.PreviouslyLearned.Add("voc-learning");await SearchAsync("learning");Click("AddTodayButton");
@@ -381,13 +390,40 @@ internal sealed class UiFixture
             Pass("Previously learned words appear automatically during lookup without an add request");
 
             privateHandler.StudyAccepted=1;privateHandler.SuppressTodaySync=true;await SearchAsync("novel");Click("AddTodayButton");
-            await WaitAsync(()=>Control<Button>("AddTodayButton").IsEnabled&&Control<Button>("AddTodayButton").Content.ToString()!.Contains("核对"),"pending study synchronization");
+            await WaitAsync(()=>!Control<Button>("AddTodayButton").IsEnabled&&Control<Button>("AddTodayButton").Content.ToString()=="已计划新学","accepted plan awaiting phone synchronization");
             var confirmationsBeforeVerify=studyConfirmations;
-            Click("AddTodayButton");await WaitAsync(()=>Control<Button>("AddTodayButton").IsEnabled,"read-only today verification");
-            Check(privateHandler.StudyAdds==3&&Control<Button>("AddTodayButton").Content.ToString()!.Contains("核对"),"Pending verification repeated an add or claimed success");
+            Click("AddTodayButton");await DrainAsync();
+            Check(privateHandler.StudyAdds==3&&Control<Button>("AddTodayButton").Content.ToString()=="已计划新学","An accepted plan was added twice or confused with actual study");
             Check(studyConfirmations==confirmationsBeforeVerify,"Read-only verification asked for permission to add");
             privateHandler.SuppressTodaySync=false;
-            Pass("Unconfirmed today synchronization presents a read-only verification action without repeating the study write");
+            Pass("An accepted plan remains planned while phone synchronization is pending and never repeats the study write");
+
+            privateHandler.PlaceholderStudyWords.Add("voc-studycase");await SearchAsync("studycase");
+            Check(Control<Button>("AddTodayButton").Content.ToString()=="学习记录待核对"&&Control<Button>("AddTodayButton").IsEnabled,"An ambiguous count-one record was shown as planned new");
+            var confirmsBeforeSync=studyConfirmations;var addsBeforeSync=privateHandler.StudyAdds;
+            Click("AddTodayButton");await WaitAsync(()=>Control<Button>("AddTodayButton").Content.ToString()=="学习记录待核对","read-only placeholder status check");
+            Check(studyConfirmations==confirmsBeforeSync&&privateHandler.StudyAdds==addsBeforeSync,"Checking unknown learning status opened an add confirmation or wrote");
+            privateHandler.PreviouslyLearned.Add("voc-studycase");Click("AddTodayButton");
+            await WaitAsync(()=>Control<Button>("AddTodayButton").Content.ToString()!.Contains("已学过"),"synchronized historical learning");
+            Check(!Control<Button>("AddTodayButton").IsEnabled&&privateHandler.StudyAdds==addsBeforeSync,"Synchronized history did not block new learning");
+            Pass("Placeholder records show sync-required status and recheck without writing before resolving to learned");
+
+            privateHandler.PreviouslyLearned.Remove("voc-studycase");
+            var studySnapshots=(System.Collections.IDictionary)typeof(MainWindow).GetField("_todayStudyStates",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(_window)!;
+            var knownLearned=studySnapshots["studycase"]!;knownLearned.GetType().GetProperty("CheckedAt")!.SetValue(knownLearned,DateTime.UtcNow.AddMinutes(-5));
+            await SearchAsync("studycase");
+            Check(Control<Button>("AddTodayButton").Content.ToString()!.Contains("已学过")&&!Control<Button>("AddTodayButton").IsEnabled,"A placeholder response downgraded previously confirmed history");
+            Pass("A stale placeholder cannot downgrade learning already confirmed for the same account");
+            var localAccount=tokens.ActiveAccount!.Id;prefs.ConfirmLearned(localAccount,"novel");prefs.Save();
+            var readsBeforeLocal=privateHandler.StudyRequests;await SearchAsync("novel");
+            Check(Control<Button>("AddTodayButton").Content.ToString()!.Contains("已学过")&&!Control<Button>("AddTodayButton").IsEnabled&&Control<Button>("AddTodayButton").ToolTip.ToString()!.Contains("本机"),"Explicit account confirmation did not override an uncertain server plan");
+            Click("AddTodayButton");await DrainAsync();Check(privateHandler.StudyAdds==addsBeforeSync&&privateHandler.StudyRequests==readsBeforeLocal,"A locally confirmed word made a study request");
+            prefs.ConfirmedLearnedWords.Clear();prefs.Save();
+            Pass("An explicitly confirmed learned word displays immediately for that account and blocks further study requests");
+
+            privateHandler.PlaceholderStudyWords.Add("voc-business");privateHandler.TodayStudyWords.Add("voc-business");privateHandler.ReviewTodayStudyWords.Add("voc-business");await SearchAsync("business");
+            Check(Control<Button>("AddTodayButton").Content.ToString()!.Contains("已学过")&&!Control<Button>("AddTodayButton").IsEnabled&&privateHandler.StudyAdds==addsBeforeSync,"An unfinished review word was called a new plan");
+            Pass("An unfinished today-review item displays as learned before today's first response");
 
             await SearchAsync("talkative");
             await WaitAsync(()=>Control<Button>("AddButton").IsEnabled&&Control<Button>("AddButton").Content.ToString()!.Contains("取消"),"word membership");
@@ -414,6 +450,12 @@ internal sealed class UiFixture
             Check(Control<ToggleButton>("PhrasesToggle").IsChecked==true&&Math.Abs(Scroll.VerticalOffset-phraseScroll)<2,"Phrase navigation lost the expanded group or scroll position");
             Control<ToggleButton>("PhrasesToggle").IsChecked=false;
             Pass("Related phrases display Chinese meanings and navigate as whole phrases with Back restoring the group");
+            await SearchAsync("sense");Control<ToggleButton>("PhrasesToggle").IsChecked=true;
+            Check(Control<ToggleButton>("PhrasesToggle").Content.ToString()!.Contains("常用短语"),"The broadened phrase group still claims to be prepositions only");
+            ClickLink(Link(Control<StackPanel>("PhrasesPanel"),"make sense"));await ReadyAsync("make sense");
+            Check(DisplayedText("DefinitionText").Contains("有道理"),"The common idiom did not open its definition");await BackAsync("sense");
+            Check(Control<ToggleButton>("PhrasesToggle").IsChecked==true,"Back did not restore the common-phrase group");
+            Control<ToggleButton>("PhrasesToggle").IsChecked=false;Pass("Common idioms without prepositions display meanings and navigate with Back");
             Control<TextBox>("SearchBox").Text="rés";await DrainAsync();
             Check(Control<ListBox>("SuggestionList").Items.Cast<object>().Contains("resume"),"Accented input did not find the plain-spelling suggestion");
             Control<TextBox>("SearchBox").Text="résumé";Click("SearchButton");await ReadyAsync("resume");
@@ -443,6 +485,18 @@ internal sealed class UiFixture
             Click("BackButton");await WaitAsync(()=>Control<FrameworkElement>("TranslationView").Visibility==Visibility.Visible,"return to translated English");
             Check(Control<ComboBox>("TranslationDirectionCombo").SelectedIndex==1&&DisplayedText("TranslationOutputText").Contains("reader"),"Translated paragraph destination lost");
             Pass("Both original and translated paragraph words navigate and Back restores the complete translation view");
+            var translationsBeforeCapture=paragraphHttp.Calls;_window.CaptureTranslationText=()=>Task.FromResult<string?>(null);
+            await _window.StartScreenshotTranslationAsync();Check(paragraphHttp.Calls==translationsBeforeCapture,"Cancelling a screenshot sent text for translation");
+            _window.CaptureTranslationText=()=>Task.FromResult<string?>("A reader enjoys learning from a screenshot.");await _window.StartScreenshotTranslationAsync();
+            Check(Control<TextBox>("TranslationInput").Text.Contains("from a screenshot")&&DisplayedText("TranslationOutputText").Contains("健谈"),"Recognized screenshot text did not enter translation");
+            Check(Control<TextBlock>("TranslationSourceText").Inlines.OfType<Hyperlink>().Any(),"Screenshot text lost click-word links");
+            Pass("Screenshot cancellation never translates and recognized text opens editable translation with word links");
+            var beforeSingleWord=paragraphHttp.Calls;_window.CaptureTranslationText=()=>Task.FromResult<string?>("“talkative.”\n");await _window.StartScreenshotTranslationAsync();await ReadyAsync("talkative");
+            Check(Control<FrameworkElement>("ResultScroll").Visibility==Visibility.Visible&&paragraphHttp.Calls==beforeSingleWord,"A single OCR word was sent to paragraph translation");
+            Click("BackButton");await WaitAsync(()=>Control<FrameworkElement>("TranslationView").Visibility==Visibility.Visible,"back from screenshot word");
+            Check(Control<TextBox>("TranslationInput").Text.Contains("from a screenshot"),"Single-word screenshot lookup lost the previous paragraph view");
+            Pass("A one-word screenshot with surrounding punctuation opens word details without a translation request and supports Back");
+            _window.CaptureTranslationText=()=>Task.FromResult<string?>(null);
             await _window.ProcessClipboardTextAsync("talkative");await ReadyAsync("talkative");
             await _window.ProcessClipboardTextAsync("A talkative reader enjoys learning.");
             Check(Control<FrameworkElement>("TranslationView").Visibility==Visibility.Visible&&DisplayedText("TranslationOutputText").Contains("健谈"),"Clipboard paragraph did not translate");
@@ -518,11 +572,19 @@ internal sealed class UiFixture
             settings.Close();Check(startup.Writes==0,"Canceling settings changed startup registration");
             settings=SettingsDialog.Build(null!,tokens,prefs,out _,startupRegistration:startup);
             var settingsNav=(ListBox)settings.FindName("SettingsNav");
-            Check(settingsNav.Items.Cast<string>().SequenceEqual(new[]{"常规","快捷键","墨墨账号","反馈","赞助与关于"}),"Settings pages are not separated by purpose");
+            Check(settingsNav.Items.Cast<string>().SequenceEqual(new[]{"常规","快捷键","墨墨账号","反馈","赞助与关于","软件更新","鼠标取词"}),"Settings pages are not separated by purpose");
             var startupCheck=(CheckBox)settings.FindName("StartWithWindows");startupCheck.IsChecked=true;
             Render(settings,840,740,Path.Combine(_previews,"05-settings.png"));
             settingsNav.SelectedIndex=1;Render(settings,840,740,Path.Combine(_previews,"18-settings-shortcuts.png"));
             settingsNav.SelectedIndex=2;Render(settings,840,740,Path.Combine(_previews,"19-settings-account.png"));
+            Check(settings.FindName("AccountList") is ComboBox&&settings.FindName("OfficialLoginButton") is Button,"Official login and account switch controls missing");
+            settingsNav.SelectedIndex=5;Render(settings,840,740,Path.Combine(_previews,"25-settings-update.png"));
+            var autoUpdate=(CheckBox)settings.FindName("AutomaticUpdates");autoUpdate.IsChecked=false;
+            Check(!prefs.AutomaticUpdates&&((Button)settings.FindName("CheckUpdatesButton")).IsEnabled,"Disabling automatic update also disabled manual check");
+            ((ComboBox)settings.FindName("UpdateFrequency")).SelectedIndex=3;Check(prefs.UpdateFrequency=="weekly","Update frequency did not persist");
+            settingsNav.SelectedIndex=6;Render(settings,840,740,Path.Combine(_previews,"26-settings-hover.png"));
+            Check(((TextBox)settings.FindName("HoverDelayMs")).Text=="500"&&settings.FindName("HoverChinese")==null&&settings.FindName("HoverAutoAdd") is CheckBox{IsChecked:false},"Hover defaults are missing or still offer Chinese OCR");
+            Pass("Official account switching, optional hover controls and manual updates remain available with automatic updates disabled");
             settingsNav.SelectedIndex=0;Check(startupCheck.IsChecked==true&&startup.Writes==0,"Switching settings pages loses or commits draft values");
             settingsNav.SelectedIndex=3;
             Check(Equals(((Button)settings.FindName("FeedbackEmailButton")).Tag,"1623255609@qq.com")&&Equals(((Button)settings.FindName("CopyFeedbackQq")).Tag,"1132371819"),"Feedback contact details do not match the provided email and group");
@@ -540,6 +602,26 @@ internal sealed class UiFixture
             var paymentDialog=SettingsDialog.BuildPaymentDialog(null!,"微信支付","sponsor-wechat.jpg");
             Render(paymentDialog,640,880,Path.Combine(_previews,"23-payment-enlarged.png"));paymentDialog.Close();settings.Close();
             Pass("Settings pages retain unsaved values, keep saving fixed and offer both original sponsor codes with enlargement");
+            var originalWord=Word;var guideWrites=privateHandler.Writes;var guideAdds=privateHandler.StudyAdds;var guideTranslations=paragraphHttp.Calls;
+            _window.StartOnboarding();var tour=_window.ActiveTour!;Layout();await DrainAsync();
+            Check(tour.Index==0&&tour.Target==Control<TextBox>("SearchBox")&&tour.Overlay!.FocusBounds.Width>50,$"Guide did not spotlight the real search control: index={tour.Index}, target={tour.Target?.Name}, bounds={tour.Overlay?.FocusBounds}");
+            Check(FocusManager.GetFocusedElement(_window)==tour.Target,"Guide did not logically focus the target");
+            Render(_window,1120,800,Path.Combine(_previews,"28-onboarding-search.png"));
+            tour.Next();Check(tour.Target==Scroll,"Guide did not move to actual word details");tour.Next();Check(tour.Target==Control<Border>("CloudNotepadCard"),"Guide did not highlight cloud notebooks");
+            tour.Next();Layout();await DrainAsync();Check(Control<Grid>("TranslationView").Visibility==Visibility.Visible&&tour.Target==Control<TextBox>("TranslationInput"),"Guide did not navigate to the translation page");
+            Render(_window,1120,800,Path.Combine(_previews,"29-onboarding-translation.png"));
+            tour.Next();Check(tour.Target==Control<Button>("ScreenshotButton"),"Screenshot step did not target the actual button");tour.Next();
+            Check(tour.CurrentWindow!=_window&&((ListBox)tour.CurrentWindow!.FindName("SettingsNav")).SelectedItem?.ToString()=="墨墨账号","Guide did not open the account settings page");
+            Check(tour.Target==(FrameworkElement)tour.CurrentWindow.FindName("OfficialLoginButton"),"Account step did not highlight official login");
+            Render(tour.CurrentWindow,840,740,Path.Combine(_previews,"30-onboarding-account.png"));
+            tour.Next();Check(((ListBox)tour.CurrentWindow!.FindName("SettingsNav")).SelectedItem?.ToString()=="鼠标取词","Guide did not switch settings pages");
+            tour.Next();Render(tour.CurrentWindow!,680,520,Path.Combine(_previews,"31-onboarding-shortcuts-compact.png"));
+            Check(tour.Target==(FrameworkElement)tour.CurrentWindow!.FindName("ShortcutInput_screenshot")&&tour.Overlay!.FocusBounds.Width>20,"Shortcut step did not spotlight the real shortcut input");
+            var card=tour.Overlay!.CardBounds;Check(card.X>=0&&card.Y>=0&&card.Right<=680&&card.Bottom<=520,"Guide explanation overflows compact settings");
+            tour.Previous();tour.Next();tour.Next();await ReadyAsync(originalWord);
+            Check(_window.ActiveTour==null&&prefs.OnboardingCompleted&&privateHandler.Writes==guideWrites&&privateHandler.StudyAdds==guideAdds&&paragraphHttp.Calls==guideTranslations,"Guide changed cloud data or translated while demonstrating controls");
+            _window.StartOnboarding();_window.ActiveTour!.Skip();await ReadyAsync(originalWord);Check(prefs.OnboardingCompleted,"Skipping did not persist completion");
+            Pass("Onboarding navigates real pages, focuses and spotlights controls, stays within compact windows and supports previous, finish and skip");
             var startupKey=@"Software\MemoLex.Tests\"+Guid.NewGuid().ToString("N");
             try
             {
@@ -712,6 +794,56 @@ internal sealed class UiFixture
             var chineseEncoder=new PngBitmapEncoder();chineseEncoder.Frames.Add(BitmapFrame.Create(chineseShot));
             using(var chineseOutput=File.Create(Path.Combine(_previews,"12-chinese-search.png")))chineseEncoder.Save(chineseOutput);
             _window.Hide();
+            var visual=new DrawingVisual();using(var canvas=visual.RenderOpen())
+            {
+                canvas.DrawRectangle(Brushes.White,null,new Rect(0,0,600,100));
+                canvas.DrawText(new FormattedText("insight",System.Globalization.CultureInfo.InvariantCulture,FlowDirection.LeftToRight,new Typeface("Arial"),44,Brushes.Black,1),new Point(24,16));
+            }
+            var raster=new RenderTargetBitmap(600,100,96,96,PixelFormats.Pbgra32);raster.Render(visual);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(raster));using var imageBytes=new MemoryStream();png.Save(imageBytes);
+            using(var reader=new ScreenWordReader())
+            {
+                var hit=reader.Recognize(imageBytes.ToArray(),new ScreenPoint(70,46),new ScreenPoint(0,0),1);
+                Check(hit?.Word=="insight"&&hit.Bounds.Contains(new(70,46)),"Offline OCR failed to locate the word under the pointer");
+                Check(reader.Recognize(imageBytes.ToArray(),new ScreenPoint(550,90),new ScreenPoint(0,0),1)==null,"OCR selected text away from the pointer");
+                var original=ScreenWordReader.SurfaceFromPng(imageBytes.ToArray(),new(0,0),1,hit!.Bounds);
+                Check(HoverSurfaces.Same(original,ScreenWordReader.SurfaceFromPng(imageBytes.ToArray(),new(0,0),1,hit.Bounds)),"Static image sampling was unstable");
+                var changedVisual=new DrawingVisual();using(var draw=changedVisual.RenderOpen())draw.DrawRectangle(Brushes.Black,null,new Rect(0,0,600,100));
+                var changedImage=new RenderTargetBitmap(600,100,96,96,PixelFormats.Pbgra32);changedImage.Render(changedVisual);var changedPng=new PngBitmapEncoder();changedPng.Frames.Add(BitmapFrame.Create(changedImage));using var changedBytes=new MemoryStream();changedPng.Save(changedBytes);
+                Check(!HoverSurfaces.Same(original,ScreenWordReader.SurfaceFromPng(changedBytes.ToArray(),new(0,0),1,hit.Bounds)),"Disappearing video letters were considered unchanged");
+                foreach(var chineseText in new[]{"中文","洞察力","川口"})
+                {
+                    var chineseVisual=new DrawingVisual();using(var draw=chineseVisual.RenderOpen())
+                    {draw.DrawRectangle(Brushes.White,null,new Rect(0,0,600,100));draw.DrawText(new FormattedText(chineseText,System.Globalization.CultureInfo.InvariantCulture,FlowDirection.LeftToRight,new Typeface("Microsoft YaHei"),44,Brushes.Black,1),new Point(24,16));}
+                    var chineseImage=new RenderTargetBitmap(600,100,96,96,PixelFormats.Pbgra32);chineseImage.Render(chineseVisual);var chinesePng=new PngBitmapEncoder();chinesePng.Frames.Add(BitmapFrame.Create(chineseImage));using var chineseBytes=new MemoryStream();chinesePng.Save(chineseBytes);
+                    Check(reader.Recognize(chineseBytes.ToArray(),new(48,46),new(0,0),1)==null,"Chinese sample was returned as an English image word");
+                }
+            }
+            Pass("Bundled OCR identifies an image word at the pointer and rejects empty areas without screen capture or network");
+            Pass("Actual image stamps stay stable for a fixed word and reject a changed video frame");
+            var screenshotText=ScreenTextReader.ReadEnglish(imageBytes.ToArray());Check(screenshotText.Contains("insight",StringComparison.OrdinalIgnoreCase),"Screenshot paragraph OCR did not recognize the English image");
+            var selection=ScreenTranslationCapture.MapSelection(new System.Drawing.Point(180,90),new System.Drawing.Point(20,10),new System.Drawing.Size(200,100),new System.Drawing.Size(400,200));
+            Check(selection==new System.Drawing.Rectangle(40,20,320,160),"Reverse selection did not map display scaling to source pixels");
+            Check(ScreenTranslationCapture.MapSelection(new System.Drawing.Point(-10,-20),new System.Drawing.Point(250,200),new System.Drawing.Size(200,100),new System.Drawing.Size(400,200))==new System.Drawing.Rectangle(0,0,400,200),"Selection escaped the captured image");
+            Pass("Screenshot OCR reads English and region mapping handles reverse drag, scaling and clipped edges");
+            using(var popup=new HoverWindowLease())
+            {
+                popup.Window.ApplyAppearance(new Preferences{HoverTranslucent=true,HoverFontSize="large"});
+                popup.Window.SetContent(new("insight",new(0,0,100,30),"图片识别"),new(){word="insight",phonetic="/ˈɪnsaɪt/",translation="n. 洞察力；领悟；见识"},[new("preview","拆词联想","in sight 进入视线\n一切尽收眼底 → 洞察力")]);
+                Check(popup.Window.Opacity<1&&popup.Window.ShowActivated==false&&popup.Window.ShowInTaskbar==false,"Hover popup steals focus or ignores transparency");
+                Render(popup.Window,370,310,Path.Combine(_previews,"27-hover-shell.png"));
+            }
+            var configured=typeof(TranslationClient).Assembly.GetManifestResourceNames().Contains("MemoLex.DeepL.key");
+            Check(new TranslationClient().PreferredProvider==(configured?"DeepL":"MyMemory"),"Default translation provider does not match the optional bundled configuration");
+            Pass("The hover popup stays nonactivating and translation uses the configured provider without a key-edit control");
+            var expiredNotifications=0;_window.AccountExpiryNotification=_=>expiredNotifications++;
+            var activeKey=tokens.CredentialKey!;
+            var reportAuth=typeof(MainWindow).GetMethod("OnApiAuthenticationResult",BindingFlags.NonPublic|BindingFlags.Instance)!;
+            reportAuth.Invoke(_window,["stale-credential",false]);Check(tokens.HasToken,"A stale response logged out the current account");
+            reportAuth.Invoke(_window,[activeKey,false]);
+            await WaitAsync(()=>!tokens.HasToken&&expiredNotifications==1,"expired account notification");
+            Check(Control<TextBlock>("CloudStatusText").Text=="登录已过期"&&tokens.GetAccounts().Any(a=>a.NeedsLogin),"Expired login retained a usable token or lost the account");
+            reportAuth.Invoke(_window,[activeKey,false]);await DrainAsync();Check(expiredNotifications==1,"Expiry notification repeated for a stale response");
+            Pass("Current-account expiry logs out, clears its credential and notifies exactly once while stale responses are ignored");
             if(_nativeExecutable != null)
             {
                 VerifyNativeIcon(_nativeExecutable);
@@ -781,6 +913,10 @@ internal sealed class UiFixture
             SendMessage(handle,0x312,(IntPtr)0x4D4D,IntPtr.Zero);await DrainAsync();
             Check(_window.IsVisible&&_window.WindowState==WindowState.Normal&&Control<TextBox>("SearchBox").SelectedText==Control<TextBox>("SearchBox").Text,"Global quick search did not restore the hidden minimized window and select the query");
             Pass("The global quick-search message restores a hidden minimized window and selects its search text without desktop input");
+            var screenshotCalls=0;_window.CaptureTranslationText=()=>{screenshotCalls++;return Task.FromResult<string?>(null);};
+            SendMessage(handle,0x312,(IntPtr)MainWindow.GlobalShortcuts.Single(item=>item.Command=="screenshot").Id,IntPtr.Zero);await DrainAsync();
+            Check(screenshotCalls==1&&ShortcutDefinitions.All.Any(item=>item.Id=="screenshot"&&item.Global&&item.Default=="Ctrl+Alt+S"),"Global screenshot message did not invoke region capture");
+            Pass("The screenshot hotkey routes directly to capture and its global gesture is configurable");
             using var copyMonitor=new DoubleCopyMonitor(_=>{});
             Pass("Native resize minimums follow DPI, client bounds match WPF and the passive copy monitor installs and disposes");
         }
@@ -822,13 +958,19 @@ internal sealed class UiFixture
     {
         using var data=File.Create(Path.Combine(directory,"dictionary.data"));
         using var index=new StreamWriter(Path.Combine(directory,"dictionary.index.tsv"),false,new UTF8Encoding(false));
-        foreach(var word in new[]{"talkative","reader","learning","talk","talking","talked","readers","novel","slow","fast","empty","retry","loquacious","talkativeness","form","from","happy","localonly","talk about","small talk","resume","business","role","roles"})
+        foreach(var word in new[]{"talkative","reader","learning","talk","talking","talked","readers","novel","slow","fast","empty","retry","loquacious","talkativeness","form","from","happy","localonly","studycase","talk about","small talk","resume","business","role","roles","sense","make","make sense","make sense of"})
         {
-            var entry=new DictionaryEntry { word=word, phonetic="tɔːkətɪv", translation=word switch {"talkative"=>"adj. 健谈的，爱说话的；可用来形容 reader。","talk about"=>"谈论，讨论","small talk"=>"闲谈，寒暄","resume"=>"n. 简历；vt. 重新开始","business"=>"n. 业务；职责；公司","role"=>"n. 职责；角色","roles"=>"",_=>"n. 供界面测试使用的自编释义。"}, definition=word=="talkative"?"adj. Inclined to talk a great deal; fond of talking.":"A reader enjoys learning.",tag="cet4 cet6 ky",exchange=word switch {"talkative"=>"0:talk/i:talking","roles"=>"0:role",_=>""},collins="3",oxford="1" };
+            var entry=new DictionaryEntry { word=word, phonetic="tɔːkətɪv", translation=word switch {"talkative"=>"adj. 健谈的，爱说话的；可用来形容 reader。","talk"=>"n. 谈话\nv. 讲话；谈论","talk about"=>"谈论，讨论","small talk"=>"闲谈，寒暄","resume"=>"n. 简历；vt. 重新开始","business"=>"n. 业务；职责；公司","role"=>"n. 职责；角色","roles"=>"","sense"=>"n. 感觉；意义\nvt. 察觉","make"=>"vt. 制造；使成为","make sense"=>"有意义；有道理；讲得通","make sense of"=>"理解；弄清……的意思",_=>"n. 供界面测试使用的自编释义。"}, definition=word=="talkative"?"adj. Inclined to talk a great deal; fond of talking.":"A reader enjoys learning.",tag="cet4 cet6 ky",exchange=word switch {"talkative"=>"0:talk/i:talking","roles"=>"0:role",_=>""},collins="3",oxford="1" };
             var bytes=JsonSerializer.SerializeToUtf8Bytes(entry);
             index.WriteLine($"{word}\t{data.Position}\t{bytes.Length}"); data.Write(bytes);
         }
     }
+}
+
+internal sealed class HoverWindowLease:IDisposable
+{
+    internal HoverLookupWindow Window {get;}=new();
+    public void Dispose()=>Window.Close();
 }
 
 internal sealed class ExampleHandler : HttpMessageHandler
@@ -859,7 +1001,7 @@ internal sealed class PrivateHandler : HttpMessageHandler
     internal bool RestrictedStudyFailure;
     internal readonly HashSet<string> RestrictedLearned=[];
     internal TaskCompletionSource? StudyBarrier;
-    internal readonly HashSet<string> TodayStudyWords=[],StudyPlanWords=[],PreviouslyLearned=[];
+    internal readonly HashSet<string> TodayStudyWords=[],StudyPlanWords=[],PreviouslyLearned=[],PlaceholderStudyWords=[],ReviewTodayStudyWords=[];
     internal TaskCompletionSource? NotesBarrier;
     internal HashSet<string> NoNotesFor=[];
     internal string NoteText="talk 讲话 + -ative 表形容词，有…倾向的，有…性质的 → talkative 爱讲话的。\n联想：a talkative reader（健谈的读者）。";
@@ -882,12 +1024,12 @@ internal sealed class PrivateHandler : HttpMessageHandler
                 if(StudyAccepted==1){StudyPlanWords.Add(id);if(!SuppressTodaySync)TodayStudyWords.Add(id);}
                 return ExampleHandler.JsonResponse(new {success=true,data=new {added_count=StudyAccepted}});
             }
-            var requested=body.RootElement.GetProperty("voc_ids")[0].GetString()!;
-            if(path.EndsWith("/get_today_items"))return ExampleHandler.JsonResponse(new {success=true,data=new {today_items=TodayStudyWords.Contains(requested)?new[]{new {voc_id=requested,is_new=true}}:[]}});
+            var requested=body.RootElement.TryGetProperty("voc_ids",out var ids)?ids[0].GetString()!:"";
+            if(path.EndsWith("/get_today_items"))return ExampleHandler.JsonResponse(new {success=true,data=new {today_items=TodayStudyWords.Where(id=>requested.Length==0||id==requested).Select((id,index)=>new {voc_id=id,voc_spelling=id[4..],is_new=!ReviewTodayStudyWords.Contains(id),is_finished=false,order=index}).ToArray()}});
             if(path.EndsWith("/query_study_records"))
             {
                 var learned=restricted?RestrictedLearned.Contains(requested):PreviouslyLearned.Contains(requested);
-                return ExampleHandler.JsonResponse(new {success=true,data=new {records=StudyPlanWords.Contains(requested)||learned?new[]{new {voc_id=requested,study_count=learned?3:0}}:[]}});
+                return ExampleHandler.JsonResponse(new {success=true,data=new {records=StudyPlanWords.Contains(requested)||learned||PlaceholderStudyWords.Contains(requested)?new[]{new {voc_id=requested,study_count=learned?3:PlaceholderStudyWords.Contains(requested)?1:0,last_response="STUDY_RESPONSE_UNSPECIFIED"}}:[]}});
             }
             throw new Exception("Unexpected study route");
         }
@@ -924,8 +1066,10 @@ internal sealed class PrivateHandler : HttpMessageHandler
 }
 internal sealed class ParagraphHandler : HttpMessageHandler
 {
+    internal int Calls;
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken)
     {
+        Calls++;
         if(request.Headers.Authorization!=null)throw new Exception("Translation received an account token");
         var pair=ExampleHandler.Query(request.RequestUri!)["langpair"];
         return Task.FromResult(ExampleHandler.JsonResponse(new {responseStatus=200,responseData=new {translatedText=pair=="zh-CN|en"?"A talkative reader enjoys learning.":"一位健谈的读者享受学习。"}}));

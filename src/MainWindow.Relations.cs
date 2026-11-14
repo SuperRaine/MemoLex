@@ -12,7 +12,7 @@ public partial class MainWindow
     {
         SynonymsPanel.Children.Clear();SimilarPanel.Children.Clear();DerivativesPanel.Children.Clear();PhrasesPanel.Children.Clear();
         RelatedHintText.Text="读取中…";
-        SynonymsToggle.Content="近义词…";SimilarToggle.Content="形近词…";DerivativesToggle.Content="派生词…";PhrasesToggle.Content="介词搭配…";
+        SynonymsToggle.Content="近义词…";SimilarToggle.Content="形近词…";DerivativesToggle.Content="派生词…";PhrasesToggle.Content="常用短语…";
         try
         {
             var related=await _related.LookupAsync(word,cancellation);
@@ -33,7 +33,7 @@ public partial class MainWindow
             Render(SynonymsPanel,SynonymsToggle,"近义词",related.Synonyms);
             Render(SimilarPanel,SimilarToggle,"形近词",related.Similar);
             Render(DerivativesPanel,DerivativesToggle,"派生词",related.Derivatives);
-            Render(PhrasesPanel,PhrasesToggle,"介词搭配",related.Phrases);
+            Render(PhrasesPanel,PhrasesToggle,"常用短语",related.Phrases);
             RelatedHintText.Text=_related.Available?"离线词库":"本地词组";
         }
         catch(OperationCanceledException) { }

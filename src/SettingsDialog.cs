@@ -7,6 +7,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shell;
 using MemoLex.Core;
 using MemoLex.Services;
+using MemoLex.Desktop;
 
 namespace MemoLex;
 
@@ -17,13 +18,13 @@ internal static class SettingsDialog
     internal const string FeedbackQqGroup="1132371819";
     internal const string IssueUrl=RepositoryUrl+"/issues/new/choose";
     internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"1.1.0";
-    public static SettingsResult Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null)
+    public static SettingsResult Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null)
     {
-        var dialog=Build(owner,store,preferences,out var tokenChanged,validateShortcuts);
+        var dialog=Build(owner,store,preferences,out var tokenChanged,validateShortcuts,accountChanged:accountChanged,initialPage:initialPage,updates:updates,startOnboarding:startOnboarding);
         return new SettingsResult(dialog.ShowDialog()==true,tokenChanged());
     }
 
-    internal static Window Build(Window owner,TokenStore store,Preferences preferences,out Func<bool> changed,Func<Dictionary<string,string>,string?>? validateShortcuts=null,IStartupRegistration? startupRegistration=null)
+    internal static Window Build(Window owner,TokenStore store,Preferences preferences,out Func<bool> changed,Func<Dictionary<string,string>,string?>? validateShortcuts=null,IStartupRegistration? startupRegistration=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null)
     {
         var dialog=InputDialog.Shell(owner,"设置",out _);
         dialog.Width=Math.Min(840,SystemParameters.WorkArea.Width-60);dialog.Height=Math.Min(740,SystemParameters.WorkArea.Height-50);
@@ -64,7 +65,8 @@ internal static class SettingsDialog
         var autoStart=new CheckBox {Content="开机自启动",IsChecked=startupEnabled==true,IsEnabled=startupEnabled.HasValue,Margin=new Thickness(0,0,0,8)};
         general.Children.Add(autoStart);general.Children.Add(InputDialog.Text(startupReadError??"登录 Windows 时自动启动；取消勾选可关闭。"));
         var doubleCopy=new CheckBox {Content="连续按两次 Ctrl+C 自动查词 / 翻译",IsChecked=preferences.DoubleCopyEnabled,Margin=new Thickness(0,20,0,8)};
-        general.Children.Add(doubleCopy);general.Children.Add(InputDialog.Text("在其他应用选中文本后，750 毫秒内复制两次，唤起窗口查询。单词离线查询；段落自动判断语言并使用 MyMemory 翻译。"));
+        general.Children.Add(doubleCopy);general.Children.Add(InputDialog.Text("在其他应用选中文本后，750 毫秒内复制两次，唤起窗口查询。单词离线查询；段落自动判断语言，优先使用 DeepL，连接失败自动改用 MyMemory。"));
+        Divider(general);var guide=new Button{Content="查看新手引导",HorizontalAlignment=HorizontalAlignment.Left,IsEnabled=startOnboarding!=null};guide.Click+=(_,_)=>{dialog.Close();owner.Dispatcher.BeginInvoke(startOnboarding!);};general.Children.Add(guide);dialog.RegisterName("OpenOnboarding",guide);
 
         var shortcutsPage=Page("快捷键","点击输入框后按组合键，按 Delete 清除。保存后立即生效。");
         var shortcutInputs=new Dictionary<string,TextBox>();
@@ -74,17 +76,14 @@ internal static class SettingsDialog
             row.Children.Add(new TextBlock {Text=definition.Label,FontSize=12,TextWrapping=TextWrapping.Wrap,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0)});
             var input=new TextBox {Text=preferences.Shortcuts.GetValueOrDefault(definition.Id,definition.Default),IsReadOnly=true,Padding=new Thickness(9,8,9,8),FontSize=12,ToolTip="按组合键，Delete 清除"};
             input.PreviewKeyDown+=ShortcutGestures.Capture;Grid.SetColumn(input,1);row.Children.Add(input);shortcutsPage.Children.Add(row);shortcutInputs[definition.Id]=input;
+            dialog.RegisterName("ShortcutInput_"+definition.Id,input);
         }
         shortcutsPage.Children.Add(InputDialog.Text("标为“全局”的快捷键可从后台或托盘唤起软件。鼠标侧键也可前进、后退。"));
 
-        var account=Page("墨墨账号","连接云词本与个人助记。离线查词无需登录。");
-        var connection=new TextBlock {Text=store.HasToken?"已保存账号 Token":"尚未连接墨墨账号",FontSize=15,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(8,151,203)),Margin=new Thickness(0,0,0,14)};account.Children.Add(connection);
-        account.Children.Add(InputDialog.Text(store.HasToken?"需要更换时，在下方粘贴新 Token；留空将继续使用当前账号。":"粘贴墨墨开放 API Token，然后保存设置。"));
-        var secret=new PasswordBox {Padding=new Thickness(10),FontSize=15,Margin=new Thickness(0,16,0,12),MaxLength=512};account.Children.Add(secret);
-        account.Children.Add(InputDialog.Text("Token 使用 Windows 加密保存在当前用户下，仅发送给墨墨官方接口。"));
+        var tokenChanged=false;
+        var account=Page("墨墨账号","官方登录、记住账号，并在多个账号间自由切换。离线查词无需登录。");
+        account.Children.Add(AccountSettingsPanel.Build(dialog,store,async()=>{tokenChanged=true;if(accountChanged!=null)await accountChanged();}));
         void OpenLink(string url,string error){try{Process.Start(new ProcessStartInfo(url){UseShellExecute=true});}catch{status.Text=error;}}
-        var tokenLink=new Button {Content="获取墨墨 Token",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,18,0,0)};
-        tokenLink.Click+=(_,_)=>OpenLink("https://open.maimemo.com/open/api/v1/tokens/openapi","请在浏览器访问 open.maimemo.com 获取 Token。");account.Children.Add(tokenLink);
 
         var feedback=Page("反馈","遇到问题或有新想法，欢迎通过以下方式联系。");
         void FeedbackCard(string title,string description,string value,string buttonLabel,string name,Action action)
@@ -116,22 +115,28 @@ internal static class SettingsDialog
         support.Children.Add(payments);support.Children.Add(InputDialog.Text("点击收款码可放大查看。"));Divider(support);
         var sourceLink=new Button {Content="GitHub 开源项目",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,10,0,0)};
         sourceLink.Click+=(_,_)=>OpenLink(RepositoryUrl,"无法打开浏览器，请稍后重试。");support.Children.Add(sourceLink);
-        navigation.SelectionChanged+=(_,_)=>{if(navigation.SelectedIndex>=0)host.Content=pages[navigation.SelectedIndex].View;};navigation.SelectedIndex=0;
+        var updatePage=Page("软件更新","从 GitHub 获取最新版本，按你的习惯检查更新。");
+        var ownedUpdates=updates==null;updates??=new UpdateManager(preferences,()=>{});updatePage.Children.Add(updates.BuildPanel(dialog));
+        if(ownedUpdates)dialog.Closed+=(_,_)=>updates.Dispose();
+        dialog.RegisterName("SettingsUpdatePage",pages[5].View);
+        var hoverPage=Page("鼠标取词","悬停显示释义和助记，离开自动收起。");hoverPage.Children.Add(HoverSettingsPanel.Build(dialog,preferences,out var applyHover));
+        dialog.RegisterName("SettingsHoverPage",pages[6].View);
+        navigation.SelectionChanged+=(_,_)=>{if(navigation.SelectedIndex>=0)host.Content=pages[navigation.SelectedIndex].View;};
+        navigation.SelectedIndex=Math.Max(0,pages.FindIndex(page=>page.Title==initialPage));
 
-        var tokenChanged=false;
         save.Click+=(_,_)=>
         {
             try
             {
                 if(!ShortcutGestures.Normalize(shortcutInputs.ToDictionary(item=>item.Key,item=>item.Value.Text),out var shortcuts,out var shortcutError)){status.Text=shortcutError;return;}
                 var unavailable=validateShortcuts?.Invoke(shortcuts);if(unavailable!=null){status.Text=unavailable;return;}
+                if(!int.TryParse(((TextBox)dialog.FindName("HoverDelayMs")).Text,out var delay)||delay is <100 or >3000){navigation.SelectedIndex=6;status.Text="取词延迟需为 100–3000 毫秒。";return;}
                 if(startupEnabled.HasValue&&(autoStart.IsChecked==true)!=startupEnabled.Value)
                 {
                     try{startupRegistration.SetEnabled(autoStart.IsChecked==true);startupEnabled=autoStart.IsChecked==true;}
                     catch{navigation.SelectedIndex=0;status.Text="开机自启动设置失败，请检查当前用户权限后重试。";return;}
                 }
-                if(!string.IsNullOrWhiteSpace(secret.Password)){store.SaveToken(secret.Password.Trim());secret.Clear();tokenChanged=true;}
-                preferences.CloseToTray=tray.IsChecked==true;preferences.RememberCloseAction=rememberClose.IsChecked==true;
+                applyHover();preferences.CloseToTray=tray.IsChecked==true;preferences.RememberCloseAction=rememberClose.IsChecked==true;
                 preferences.DoubleCopyEnabled=doubleCopy.IsChecked==true;preferences.Shortcuts=shortcuts;preferences.Save();dialog.DialogResult=true;
             }
             catch{status.Text="保存失败，请检查 Token 或本机文件权限。";}

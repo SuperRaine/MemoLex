@@ -18,7 +18,7 @@ public partial class MainWindow
     }
     private async void DoubleCopyAsync(DoubleCopySignal signal)
     {
-        if(_editingSettings||!_ready||OwnedWindows.Cast<Window>().Any(window=>window.IsVisible))return;
+        if(_editingSettings||_screenTranslating||!_ready||OwnedWindows.Cast<Window>().Any(window=>window.IsVisible))return;
         DoubleCopyMonitor.GetWindowThreadProcessId(signal.Foreground,out var process);
         if(process==Environment.ProcessId)return;
         _clipboardCts?.Cancel();_clipboardCts?.Dispose();_clipboardCts=new();var cancellation=_clipboardCts.Token;

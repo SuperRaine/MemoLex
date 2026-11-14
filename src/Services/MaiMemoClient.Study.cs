@@ -3,36 +3,54 @@ using System.Text.Json;
 
 namespace MemoLex.Services;
 
-public enum TodayStudyStatus { Added, AlreadyToday, AlreadyLearned, NotAdded, PendingVerification }
+public enum TodayStudyStatus { Added, AlreadyToday, AlreadyLearned, NotAdded, PendingVerification, Planned, SyncRequired }
 public sealed record TodayStudyResult(TodayStudyStatus Status,int? AddedCount=null);
+public sealed record TodayStudyItem(string Id,string Spelling,bool IsNew,bool IsFinished,bool Responded,int Order);
 internal sealed class StudyAddUncertainException(string message) : MaiMemoException(message);
 
 public sealed partial class MaiMemoClient
 {
+    private enum StudyRecordState { Absent, Unstudied, Learned, Uncertain }
     /// <summary>Reads learning status without adding a word or advancing review.</summary>
     public async Task<TodayStudyStatus> GetTodayStudyStatusAsync(Vocabulary word,CancellationToken cancellationToken=default)
     {
+        using var accountScope=BeginAccountOperation();
         ArgumentNullException.ThrowIfNull(word);
         if(string.IsNullOrWhiteSpace(word.Id)||word.Id.Length>200||word.Id.Any(char.IsControl))throw new ArgumentException("无效的墨墨单词 ID。");
         var studied=await ReadStudiedWordAsync(word.Id,cancellationToken);
-        if(studied==true)return TodayStudyStatus.AlreadyLearned;
+        if(studied==StudyRecordState.Learned)return TodayStudyStatus.AlreadyLearned;
         var today=await ReadTodayWordAsync(word.Id,cancellationToken);
-        return today.HasValue?(today.Value?TodayStudyStatus.AlreadyToday:TodayStudyStatus.AlreadyLearned):TodayStudyStatus.NotAdded;
+        return Classify(today,studied);
+    }
+    private static TodayStudyStatus Classify(TodayStudyItem? today,StudyRecordState studied)
+    {
+        if(studied==StudyRecordState.Learned||today is {IsNew:false} or {IsFinished:true} or {Responded:true})return TodayStudyStatus.AlreadyLearned;
+        if(today is {IsNew:true})return TodayStudyStatus.AlreadyToday;
+        return studied switch{StudyRecordState.Unstudied=>TodayStudyStatus.Planned,StudyRecordState.Absent=>TodayStudyStatus.NotAdded,_=>TodayStudyStatus.SyncRequired};
+    }
+
+    public async Task<IReadOnlyList<TodayStudyItem>> GetTodayItemsAsync(CancellationToken cancellationToken=default)
+    {
+        using var accountScope=BeginAccountOperation();
+        var data=await SendAsync(HttpMethod.Post,"memo/study/get_today_items",new {limit=1000},cancellationToken);
+        return ParseToday(data,1000).OrderBy(item=>item.Order).ToArray();
     }
 
     /// <summary>Adds an unstudied word, advances it to today and verifies the server's new-word flag.</summary>
     public async Task<TodayStudyResult> AddToTodayAsync(Vocabulary word,bool verifyOnly=false,CancellationToken cancellationToken=default)
     {
+        using var accountScope=BeginAccountOperation();
         ArgumentNullException.ThrowIfNull(word);
         if(string.IsNullOrWhiteSpace(word.Id)||word.Id.Length>200||word.Id.Any(char.IsControl))throw new ArgumentException("无效的墨墨单词 ID。");
         await _writeGate.WaitAsync(cancellationToken);
         try
         {
             var today=await ReadTodayWordAsync(word.Id,cancellationToken);
-            if(today.HasValue)return new(today.Value?TodayStudyStatus.AlreadyToday:TodayStudyStatus.AlreadyLearned);
+            // Historical learning always takes precedence over today's possibly stale new-word flag.
             var record=await ReadStudiedWordAsync(word.Id,cancellationToken);
-            if(record==true)return new(TodayStudyStatus.AlreadyLearned);
-            if(verifyOnly)return new(record.HasValue?TodayStudyStatus.PendingVerification:TodayStudyStatus.NotAdded);
+            var current=Classify(today,record);
+            if(current!=TodayStudyStatus.NotAdded)return new(current);
+            if(verifyOnly)return new(TodayStudyStatus.NotAdded);
 
             int? added=null;
             try
@@ -47,7 +65,12 @@ public sealed partial class MaiMemoClient
             try
             {
                 today=await ReadTodayWordAsync(word.Id,cancellationToken);
-                if(today.HasValue)return new(today.Value?(added==1?TodayStudyStatus.Added:TodayStudyStatus.AlreadyToday):TodayStudyStatus.AlreadyLearned,added);
+                record=await ReadStudiedWordAsync(word.Id,cancellationToken);
+                if(today!=null||record!=StudyRecordState.Absent)
+                {
+                    var state=Classify(today,record);
+                    return new(state==TodayStudyStatus.AlreadyToday&&added==1?TodayStudyStatus.Added:state,added);
+                }
             }
             catch(MaiMemoException) { return new(TodayStudyStatus.PendingVerification,added); }
             return new(added==0?TodayStudyStatus.NotAdded:TodayStudyStatus.PendingVerification,added);
@@ -55,28 +78,48 @@ public sealed partial class MaiMemoClient
         finally{_writeGate.Release();}
     }
 
-    private async Task<bool?> ReadTodayWordAsync(string id,CancellationToken cancellationToken)
+    private async Task<TodayStudyItem?> ReadTodayWordAsync(string id,CancellationToken cancellationToken)
     {
         var data=await SendAsync(HttpMethod.Post,"memo/study/get_today_items",new {voc_ids=new[]{id}},cancellationToken);
-        if(!data.TryGetProperty("today_items",out var items)||items.ValueKind!=JsonValueKind.Array||items.GetArrayLength()>1)
+        var items=ParseToday(data,1);
+        if(items.Count==0)return null;
+        if(items[0].Id!=id)throw new MaiMemoException("今日学习数据与当前单词不一致，请稍后重试。");
+        return items[0];
+    }
+    private static IReadOnlyList<TodayStudyItem> ParseToday(JsonElement data,int max)
+    {
+        if(!data.TryGetProperty("today_items",out var items)||items.ValueKind!=JsonValueKind.Array||items.GetArrayLength()>max)
             throw new MaiMemoException("墨墨没有返回完整的今日学习数据，请先打开 App 并开启自动同步后重试。");
-        if(items.GetArrayLength()==0)return null;
-        var item=items[0];
-        if(item.ValueKind!=JsonValueKind.Object||Text(item,"voc_id")!=id||!item.TryGetProperty("is_new",out var isNew)||isNew.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-            throw new MaiMemoException("今日学习数据与当前单词不一致，请稍后重试。");
-        return isNew.GetBoolean();
+        var output=new List<TodayStudyItem>();var ids=new HashSet<string>(StringComparer.Ordinal);
+        foreach(var item in items.EnumerateArray())
+        {
+            if(item.ValueKind!=JsonValueKind.Object||Text(item,"voc_id").Length==0||!ids.Add(Text(item,"voc_id"))||!item.TryGetProperty("is_new",out var isNew)||isNew.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+                ||!item.TryGetProperty("is_finished",out var finished)||finished.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new MaiMemoException("今日学习数据不完整，请稍后重试。");
+            var response=Text(item,"first_response");
+            output.Add(new(Text(item,"voc_id"),Text(item,"voc_spelling"),isNew.GetBoolean(),finished.GetBoolean(),HasStudyResponse(response),item.TryGetProperty("order",out var order)&&order.TryGetInt32(out var n)?n:output.Count));
+        }
+        return output;
     }
 
-    // null: absent; false: in the plan but unstudied; true: previously studied.
-    private async Task<bool?> ReadStudiedWordAsync(string id,CancellationToken cancellationToken)
+    private static bool HasStudyResponse(string response)
+    {
+        if(response.StartsWith("STUDY_RESPONSE_",StringComparison.Ordinal))response=response[15..];
+        return response is "FAMILIAR" or "VAGUE" or "FORGET" or "WELL_FAMILIAR" or "CANCEL_WELL_FAMILIAR";
+    }
+    private async Task<StudyRecordState> ReadStudiedWordAsync(string id,CancellationToken cancellationToken)
     {
         var data=await SendAsync(HttpMethod.Post,"memo/study/query_study_records",new {voc_ids=new[]{id},limit=1},cancellationToken);
         if(!data.TryGetProperty("records",out var records)||records.ValueKind!=JsonValueKind.Array||records.GetArrayLength()>1)
             throw new MaiMemoException("墨墨没有返回完整的学习记录，请稍后重试。");
-        if(records.GetArrayLength()==0)return null;
+        if(records.GetArrayLength()==0)return StudyRecordState.Absent;
         var item=records[0];
         if(item.ValueKind!=JsonValueKind.Object||Text(item,"voc_id")!=id||!item.TryGetProperty("study_count",out var count)||count.ValueKind!=JsonValueKind.Number||!count.TryGetInt32(out var value)||value<0)
             throw new MaiMemoException("学习记录与当前单词不一致，请稍后重试。");
-        return value>0||!string.IsNullOrWhiteSpace(Text(item,"first_study_date"));
+        // The live service also creates count=1 + placeholder dates on newly planned words.
+        // Placeholder count=1 records do not establish either learned or unlearned status.
+        var response=Text(item,"last_response");
+        var familiar=item.TryGetProperty("tags",out var tags)&&(tags.ValueKind==JsonValueKind.String&&tags.GetString()=="WELL_FAMILIAR"||tags.ValueKind==JsonValueKind.Array&&tags.EnumerateArray().Any(tag=>tag.ValueKind==JsonValueKind.String&&tag.GetString()=="WELL_FAMILIAR"));
+        if(value>1||HasStudyResponse(response)||familiar)return StudyRecordState.Learned;
+        return value==0?StudyRecordState.Unstudied:StudyRecordState.Uncertain;
     }
 }

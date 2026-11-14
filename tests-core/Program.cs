@@ -39,6 +39,12 @@ try
         p = Preferences.Load(path); Check(!p.CloseToTray&&!p.DoubleCopyEnabled, "False was replaced by the default");
         p.CloseToTray = true; p.Save(); Check(Preferences.Load(path).CloseToTray, "Tray preference not saved");
     });
+    Test("User-confirmed learned words persist only for the explicitly selected account",path=>
+    {
+        var p=Preferences.Load(path);p.ConfirmLearned("account-a","talkative");p.ConfirmLearned("account-a","TALKATIVE");p.Save();p=Preferences.Load(path);
+        Check(p.IsConfirmedLearned("account-a","Talkative")&&p.ConfirmedLearnedWords["account-a"].Count==1,"The explicit confirmation did not persist or deduplicate");
+        Check(!p.IsConfirmedLearned("account-b","talkative")&&!p.IsConfirmedLearned(null,"talkative")&&!p.IsConfirmedLearned("account-a","reader"),"Learning crossed accounts, logged out state or words");
+    });
     Test("Repeated lookup updates time, count and recency without duplicates", path =>
     {
         var p = Preferences.Load(path);

@@ -11,6 +11,20 @@ public sealed class Preferences
     public bool CloseToTray { get; set; } = true;
     public bool RememberCloseAction { get; set; }
     public bool DoubleCopyEnabled { get; set; } = true;
+    public bool OnboardingCompleted {get;set;}
+    public Dictionary<string,List<string>> ConfirmedLearnedWords {get;set;}=[];
+    public bool HoverLookupEnabled {get;set;}=true;
+    public int HoverDelayMs {get;set;}=500;
+    public int HoverModifiers {get;set;}
+    public bool HoverNearest {get;set;}
+    public bool HoverTranslucent {get;set;}
+    public bool HoverAutoAdd {get;set;}
+    public string HoverFontSize {get;set;}="standard";
+    public bool AutomaticUpdates {get;set;}=true;
+    public string UpdateFrequency {get;set;}="daily";
+    public DateTimeOffset? LastUpdateCheck {get;set;}
+    public string? LastPublicVersion {get;set;}
+    public DateTimeOffset? LastSuccessfulUpdateCheck {get;set;}
     public string ExamplePaperType { get; set; } = "ALL";
     public Dictionary<string,string> Shortcuts {get;set;} = ShortcutDefinitions.All.ToDictionary(item=>item.Id,item=>item.Default);
     // Kept for migration and compatibility with the previous desktop version.
@@ -26,6 +40,9 @@ public sealed class Preferences
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { result = new(); }
         result._path = path;
         result.NormalizeHistory();
+        result.ConfirmedLearnedWords=(result.ConfirmedLearnedWords??[])
+            .Where(item=>!string.IsNullOrWhiteSpace(item.Key)&&item.Key.Length<=100&&item.Value!=null)
+            .ToDictionary(item=>item.Key,item=>item.Value.Where(UsableWord).Select(word=>word.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),StringComparer.Ordinal);
         result.Shortcuts??=[];
         foreach(var item in ShortcutDefinitions.All)if(!result.Shortcuts.TryGetValue(item.Id,out var value)||value==null)result.Shortcuts[item.Id]=item.Default;
         return result;
@@ -43,6 +60,13 @@ public sealed class Preferences
         History = SearchHistory.Select(item => item.Word).ToList();
     }
     private static bool UsableWord(string? word) => !string.IsNullOrWhiteSpace(word) && word.Trim().Length <= 100 && !word.Any(char.IsControl);
+    public bool IsConfirmedLearned(string? accountId,string word)=>accountId!=null&&ConfirmedLearnedWords.TryGetValue(accountId,out var words)&&words.Contains(word.Trim(),StringComparer.OrdinalIgnoreCase);
+    public void ConfirmLearned(string accountId,string word)
+    {
+        if(string.IsNullOrWhiteSpace(accountId)||accountId.Length>100||!UsableWord(word))throw new ArgumentException("请选择有效账号和单词。");
+        if(!ConfirmedLearnedWords.TryGetValue(accountId,out var words))ConfirmedLearnedWords[accountId]=words=[];
+        if(!words.Contains(word.Trim(),StringComparer.OrdinalIgnoreCase))words.Add(word.Trim());
+    }
     public void RecordLookup(string word, DateTimeOffset? when = null)
     {
         if (!UsableWord(word)) return;
@@ -83,6 +107,7 @@ public static class ShortcutDefinitions
 {
     public static IReadOnlyList<ShortcutDefinition> All {get;} = [
         new("clipboard","唤起并查询剪贴板（全局）","Ctrl+Alt+D",true),
+        new("screenshot","截图翻译（全局）","Ctrl+Alt+S",true),
         new("search","唤起快速查词（全局）","Ctrl+L",true),new("history","搜词历史","Ctrl+H"),
         new("toggleWord","加入 / 移除云词本","Ctrl+Enter"),new("back","后退","Alt+Left"),new("forward","前进","Alt+Right"),
         new("translation","打开段落翻译","Ctrl+T"),new("translate","开始段落翻译","Ctrl+Shift+Enter")];

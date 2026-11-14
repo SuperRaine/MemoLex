@@ -47,10 +47,12 @@ public partial class MainWindow
     }
     private void SetAccountStatus(string status)
     {
+        if(!_tokens.HasToken&&_tokens.HasExpiredSession)status="登录已过期";
         if(status=="已连接")status=_accountRejected?"登录失效":_accountAuthenticated?"已连接":"连接中";
         CloudStatusText.Text = status;
         CloudStatusText.Foreground = Brush(status == "已连接" ? "#087FAF" : status is "登录失效" or "连接受限" ? "#B58236" : "#8399AA");
-        SettingsButton.ToolTip = $"墨墨账号：{status}\n点击打开账号连接与应用设置";
+        var accountName=_tokens.ActiveAccount?.Name;
+        SettingsButton.ToolTip = $"墨墨账号：{accountName??"未选择账号"} · {status}\n点击打开账号连接与应用设置";
     }
 
     // Native pixel bounds keep a maximized custom window inside the current

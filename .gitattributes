@@ -8,3 +8,5 @@
 *.png binary
 *.jpg binary
 *.ico binary
+# Preserve the upstream license files verbatim.
+src/ThirdParty/* -whitespace

@@ -11,6 +11,8 @@ data/
 *.log
 .env
 .env.*
+src/Private/
+*.key
 token.dpapi
 preferences.json
 mnemonics.user.json

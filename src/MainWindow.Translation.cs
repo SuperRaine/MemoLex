@@ -6,12 +6,13 @@ namespace MemoLex;
 
 public partial class MainWindow
 {
-    private sealed record TranslationSnapshot(string Input,string Direction,string Output,string Source,double ScrollOffset);
+    private sealed record TranslationSnapshot(string Input,string Direction,string Output,string Source,double ScrollOffset,string Provider);
     private CancellationTokenSource? _translationCts;
     private int _translationVersion;
     private string _translatedText="",_translatedSource="";
+    private string _translatedProvider="DeepL";
     private string TranslationPair => (TranslationDirectionCombo.SelectedItem as ComboBoxItem)?.Tag as string??"en|zh-CN";
-    private TranslationSnapshot CaptureTranslation()=>new(TranslationInput.Text,TranslationPair,_translatedText,_translatedSource,TranslationScroll.VerticalOffset);
+    private TranslationSnapshot CaptureTranslation()=>new(TranslationInput.Text,TranslationPair,_translatedText,_translatedSource,TranslationScroll.VerticalOffset,_translatedProvider);
     private void TranslationScroll_ScrollChanged(object sender,ScrollChangedEventArgs e)
     {
         if(e.VerticalChange!=0&&ReferenceEquals(e.Source,TranslationScroll)&&_viewTarget==ViewTarget.Translation)RememberCurrentView();
@@ -41,9 +42,9 @@ public partial class MainWindow
         {
             TranslationInput.Text=snapshot.Input;
             TranslationDirectionCombo.SelectedIndex=snapshot.Direction=="zh-CN|en"?1:0;
-            _translatedText=snapshot.Output;_translatedSource=snapshot.Source;
+            _translatedText=snapshot.Output;_translatedSource=snapshot.Source;_translatedProvider=snapshot.Provider;
             RenderTranslationText();
-            TranslationHintText.Text=snapshot.Output.Length>0?"MyMemory · 原文与译文中的英文单词均可点击查词。":"点击翻译后，将段落发送到 MyMemory。";
+            TranslationHintText.Text=snapshot.Output.Length>0?_translatedProvider+" · 原文与译文中的英文单词均可点击查词。":"优先使用 "+_translation.PreferredProvider+"，DeepL 连接失败自动改用 MyMemory。";
             QueueViewRestore(_wordVersion,()=>{TranslationScroll.UpdateLayout();TranslationScroll.ScrollToVerticalOffset(snapshot.ScrollOffset);});
         }
         _navigating=false;UpdateNavigationButtons();
@@ -72,8 +73,8 @@ public partial class MainWindow
         {
             var translated=await _translation.TranslateAsync(text,pair,cancellation);
             if(version!=_translationVersion||_viewTarget!=ViewTarget.Translation)return;
-            _translatedText=translated;RenderTranslationText();
-            TranslationHintText.Text="MyMemory · 原文与译文中的英文单词均可点击查词。";
+            _translatedText=translated;_translatedProvider=_translation.LastProvider;RenderTranslationText();
+            TranslationHintText.Text=_translatedProvider+" · 原文与译文中的英文单词均可点击查词。";
             TranslationScroll.ScrollToTop();RememberCurrentView();
         }
         catch(OperationCanceledException){ }
