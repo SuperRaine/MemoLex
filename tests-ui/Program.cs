@@ -82,7 +82,7 @@ internal sealed class UiFixture
         }
         await DrainAsync();
     }
-    private async Task ReadyAsync(string word) => await WaitAsync(() => Word == word && !Control<TextBlock>("ExamplesHintText").Text.StartsWith("正在") && !Control<TextBlock>("NotesHintText").Text.StartsWith("正在")&&!Control<TextBlock>("RelatedHintText").Text.StartsWith("正在"), "lookup " + word);
+    private async Task ReadyAsync(string word) => await WaitAsync(() => Word == word && !Control<Button>("AddTodayButton").Content.ToString()!.StartsWith("读取学习状态") && !Control<TextBlock>("ExamplesHintText").Text.StartsWith("正在") && !Control<TextBlock>("NotesHintText").Text.StartsWith("正在")&&!Control<TextBlock>("RelatedHintText").Text.StartsWith("正在"), "lookup " + word);
     private async Task SearchAsync(string word)
     {
         Control<TextBox>("SearchBox").Text = word;
@@ -213,6 +213,21 @@ internal sealed class UiFixture
                 Check(position.Y >= 0 && position.Y + button.ActualHeight <= 57, name + " is outside title bar");
             }
             Pass("The real WPF view initializes with the owl resources, title controls, account and all five exam types");
+            var firstToken=tokens.GetToken()!;var secondToken=Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            privateHandler.RestrictedToken=secondToken;privateHandler.RestrictedLearned.Add("voc-talkative");
+            tokens.SaveToken(secondToken);await _window.ReloadAccountAsync();
+            Check(Control<TextBlock>("CloudStatusText").Text=="已连接"&&Control<TextBlock>("NotesHintText").Text.Contains("权限"),"A valid second account became offline after a notes permission error");
+            Check(Control<Button>("AddTodayButton").Content.ToString()!.Contains("已学过")&&!Control<Button>("AddTodayButton").IsEnabled&&privateHandler.StudyAdds==0,"An already learned word waited for an add click");
+            Pass("A second authenticated account stays connected with limited notes access and automatically shows its learned words");
+            privateHandler.RestrictedStudyFailure=true;await SearchAsync("talk");
+            Check(Control<TextBlock>("CloudStatusText").Text=="已连接"&&Control<Button>("AddTodayButton").Content.ToString()=="重试学习状态","Study permission failure invalidated login or became an unlearned word");
+            _window.ConfirmTodayStudy=(_,_)=>throw new Exception("Read-only status retry opened an add dialog");
+            privateHandler.RestrictedStudyFailure=false;Click("AddTodayButton");await WaitAsync(()=>Control<Button>("AddTodayButton").Content.ToString()=="＋ 今日新学"&&Control<Button>("AddTodayButton").IsEnabled,"read-only learning retry");
+            Check(privateHandler.StudyAdds==0,"Status retry changed learning data");
+            Pass("Study status failures remain local to the button and retry with reads while account login stays connected");
+            tokens.SaveToken(firstToken);await _window.ReloadAccountAsync();await SearchAsync("talkative");
+            Check(Control<Button>("AddTodayButton").Content.ToString()=="＋ 今日新学"&&Control<TextBlock>("CloudStatusText").Text=="已连接","The second account's learned cache leaked after switching back");
+            Pass("Switching accounts clears learned-state caches and reloads the current word for the selected account");
             Layout(1000,680);
             Check(Control<Button>("SettingsButton").ActualWidth > 90 && Control<TextBox>("SearchBox").ActualWidth > 100, "Compact controls collapsed");
             Check(SectionOffset("NotesSection")>SectionOffset("DefinitionSection") && SectionOffset("ExamplesSection")>SectionOffset("NotesSection"),"Definitions, mnemonics and examples are out of order");
@@ -221,7 +236,7 @@ internal sealed class UiFixture
             Pass("One scrolling page presents definitions, mnemonics and examples in order at both window sizes");
             Layout(760,520);await DrainAsync();Layout(760,520);
             var compactRoot=(FrameworkElement)_window.Content;
-            foreach(var name in new[]{"AddButton","ResultScroll","SettingsButton","DictionaryCountText"})
+            foreach(var name in new[]{"AddButton","AddTodayButton","ResultScroll","SettingsButton","DictionaryCountText"})
             {
                 var item=Control<FrameworkElement>(name);var point=item.TranslatePoint(new Point(),compactRoot);
                 Check(point.X>=0&&point.X+item.ActualWidth<=761&&point.Y+item.ActualHeight<=521,name+" clipped at minimum size");
@@ -329,6 +344,51 @@ internal sealed class UiFixture
             Check(privateHandler.Writes==0,"The read-only UI checks attempted a cloud write");
             Pass("The title pin toggles and persists, and UI checks never write to cloud data");
 
+            await SearchAsync("talkative");var studyConfirmations=0;var requestsBeforeCancel=privateHandler.StudyRequests;
+            _window.ConfirmTodayStudy=(_,word)=>{studyConfirmations++;Check(word=="talkative","Confirmation showed another word");return false;};
+            Click("AddTodayButton");await WaitAsync(()=>Control<Button>("AddTodayButton").IsEnabled&&DisplayedText("StatusText").Contains("已取消"),"cancel today confirmation");
+            Check(studyConfirmations==1&&privateHandler.StudyRequests==requestsBeforeCancel&&privateHandler.StudyAdds==0,"Cancellation contacted the study API or added the word");
+            _window.ConfirmTodayStudy=(_,_)=>{studyConfirmations++;Check(!Control<Button>("AddTodayButton").IsEnabled,"A second add can run while confirmation is open");return true;};
+            Pass("Today addition waits for explicit sync confirmation and cancellation sends no study request");
+
+            var syncConfirmed=false;var syncDialog=TodayStudyConfirmationDialog.Build(null!,"talkative",()=>syncConfirmed=true);
+            Check(((TextBlock)syncDialog.FindName("TodayStudySyncPath")).Text=="墨墨背单词 → 我的 → 学习数据同步 → 学习数据自动同步","Sync reminder path is incorrect");
+            Check(((Button)syncDialog.FindName("CancelTodayStudy")).IsDefault&&((Button)syncDialog.FindName("CancelTodayStudy")).IsCancel&&!((Button)syncDialog.FindName("ConfirmTodayStudy")).IsDefault,"Confirmation does not require an explicit affirmative choice");
+            Render(syncDialog,560,350,Path.Combine(_previews,"25-today-sync-confirmation.png"));Click((Button)syncDialog.FindName("CancelTodayStudy"));Check(!syncConfirmed,"Cancel confirmed addition");
+            syncDialog=TodayStudyConfirmationDialog.Build(null!,"talkative",()=>syncConfirmed=true);syncDialog.Close();Check(!syncConfirmed,"Closing the reminder confirmed addition");
+            syncDialog=TodayStudyConfirmationDialog.Build(null!,"talkative",()=>syncConfirmed=true);Click((Button)syncDialog.FindName("ConfirmTodayStudy"));Check(syncConfirmed,"Explicit sync confirmation did not continue addition");
+            Pass("The sync reminder shows the requested settings path and only its affirmative button confirms addition");
+
+            privateHandler.StudyBarrier=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Click("AddTodayButton");await WaitAsync(()=>privateHandler.StudyAdds==1,"today-add request");
+            Check(!Control<Button>("AddTodayButton").IsEnabled,"Today action remained enabled during a write");Click("AddTodayButton");
+            Control<TextBox>("SearchBox").Text="reader";Click("SearchButton");await DrainAsync();
+            Check(!Control<Button>("AddTodayButton").Content.ToString()!.Contains("已在今日新学"),"The old word's success leaked into a new word");
+            privateHandler.StudyBarrier.SetResult();privateHandler.StudyBarrier=null;await ReadyAsync("reader");
+            await WaitAsync(()=>Control<Button>("AddTodayButton").IsEnabled,"complete today addition");
+            await SearchAsync("talkative");
+            Check(Control<Button>("AddTodayButton").Content.ToString()!.Contains("已在今日新学")&&!Control<Button>("AddTodayButton").IsEnabled&&privateHandler.StudyAdds==1&&privateHandler.TodayStudyWords.Contains("voc-talkative")&&privateHandler.Writes==0,"Today membership, duplicate protection or notebook isolation failed");
+            Pass("The today-new action captures its word, blocks double submission and restores the confirmed state on navigation");
+
+            privateHandler.StudyAccepted=0;await SearchAsync("reader");Click("AddTodayButton");
+            await WaitAsync(()=>Control<Button>("AddTodayButton").IsEnabled&&DisplayedText("StatusText").Contains("未添加"),"zero accepted study words");
+            Check(privateHandler.StudyAdds==2&&!Control<Button>("AddTodayButton").Content.ToString()!.Contains("已在今日新学"),"Zero accepted count became UI success");
+            Pass("A zero-count study response remains retryable and explains why the word was not added");
+
+            privateHandler.PreviouslyLearned.Add("voc-learning");await SearchAsync("learning");Click("AddTodayButton");
+            await WaitAsync(()=>Control<Button>("AddTodayButton").Content.ToString()!.Contains("已学过"),"previous study record");
+            Check(!Control<Button>("AddTodayButton").IsEnabled&&privateHandler.StudyAdds==2,"A previously studied word was written as new");
+            Pass("Previously learned words appear automatically during lookup without an add request");
+
+            privateHandler.StudyAccepted=1;privateHandler.SuppressTodaySync=true;await SearchAsync("novel");Click("AddTodayButton");
+            await WaitAsync(()=>Control<Button>("AddTodayButton").IsEnabled&&Control<Button>("AddTodayButton").Content.ToString()!.Contains("核对"),"pending study synchronization");
+            var confirmationsBeforeVerify=studyConfirmations;
+            Click("AddTodayButton");await WaitAsync(()=>Control<Button>("AddTodayButton").IsEnabled,"read-only today verification");
+            Check(privateHandler.StudyAdds==3&&Control<Button>("AddTodayButton").Content.ToString()!.Contains("核对"),"Pending verification repeated an add or claimed success");
+            Check(studyConfirmations==confirmationsBeforeVerify,"Read-only verification asked for permission to add");
+            privateHandler.SuppressTodaySync=false;
+            Pass("Unconfirmed today synchronization presents a read-only verification action without repeating the study write");
+
             await SearchAsync("talkative");
             await WaitAsync(()=>Control<Button>("AddButton").IsEnabled&&Control<Button>("AddButton").Content.ToString()!.Contains("取消"),"word membership");
             Click("AddButton");await WaitAsync(()=>privateHandler.Writes==1&&Control<Button>("AddButton").IsEnabled,"remove cloud word");
@@ -364,6 +424,12 @@ internal sealed class UiFixture
             Check(Blocks(Examples).SelectMany(block=>block.Inlines.OfType<Hyperlink>()).Any(link=>Equals(link.ToolTip,"查询 talkative")&&link.Background is SolidColorBrush brush&&brush.Color.A>0),"English keyword highlight missing");
             Check(Blocks(Examples).SelectMany(block=>block.Inlines.OfType<Run>()).Any(run=>run.Text.Contains("健谈")&&run.Background is SolidColorBrush brush&&brush.Color.A>0),"Translated keyword highlight missing");
             Pass("English example keywords and matching Chinese meaning spans are highlighted");
+
+            await SearchAsync("business");
+            var businessHighlights=Blocks(Examples).SelectMany(block=>block.Inlines.OfType<Run>()).Where(run=>run.Background is SolidColorBrush brush&&brush.Color.A>0).Select(run=>run.Text).ToArray();
+            Check(businessHighlights.Contains("业务"),"The direct Chinese meaning of business was not highlighted");
+            Check(!businessHighlights.Any(text=>text.Contains("职责")),"Business incorrectly highlighted the meaning of the competing inflected word roles");
+            Pass("Chinese example highlights preserve business meaning and reject the competing roles base-form meaning");
 
             Click("TranslationModeButton");Control<TextBox>("TranslationInput").Text="A talkative reader enjoys learning.";Click("TranslateButton");
             Layout();await DrainAsync();
@@ -756,9 +822,9 @@ internal sealed class UiFixture
     {
         using var data=File.Create(Path.Combine(directory,"dictionary.data"));
         using var index=new StreamWriter(Path.Combine(directory,"dictionary.index.tsv"),false,new UTF8Encoding(false));
-        foreach(var word in new[]{"talkative","reader","learning","talk","talking","talked","readers","novel","slow","fast","empty","retry","loquacious","talkativeness","form","from","happy","localonly","talk about","small talk","resume"})
+        foreach(var word in new[]{"talkative","reader","learning","talk","talking","talked","readers","novel","slow","fast","empty","retry","loquacious","talkativeness","form","from","happy","localonly","talk about","small talk","resume","business","role","roles"})
         {
-            var entry=new DictionaryEntry { word=word, phonetic="tɔːkətɪv", translation=word switch {"talkative"=>"adj. 健谈的，爱说话的；可用来形容 reader。","talk about"=>"谈论，讨论","small talk"=>"闲谈，寒暄","resume"=>"n. 简历；vt. 重新开始",_=>"n. 供界面测试使用的自编释义。"}, definition=word=="talkative"?"adj. Inclined to talk a great deal; fond of talking.":"A reader enjoys learning.",tag="cet4 cet6 ky",exchange=word=="talkative"?"0:talk/i:talking":"",collins="3",oxford="1" };
+            var entry=new DictionaryEntry { word=word, phonetic="tɔːkətɪv", translation=word switch {"talkative"=>"adj. 健谈的，爱说话的；可用来形容 reader。","talk about"=>"谈论，讨论","small talk"=>"闲谈，寒暄","resume"=>"n. 简历；vt. 重新开始","business"=>"n. 业务；职责；公司","role"=>"n. 职责；角色","roles"=>"",_=>"n. 供界面测试使用的自编释义。"}, definition=word=="talkative"?"adj. Inclined to talk a great deal; fond of talking.":"A reader enjoys learning.",tag="cet4 cet6 ky",exchange=word switch {"talkative"=>"0:talk/i:talking","roles"=>"0:role",_=>""},collins="3",oxford="1" };
             var bytes=JsonSerializer.SerializeToUtf8Bytes(entry);
             index.WriteLine($"{word}\t{data.Position}\t{bytes.Length}"); data.Write(bytes);
         }
@@ -774,7 +840,9 @@ internal sealed class ExampleHandler : HttpMessageHandler
         if(word=="slow") await Task.Delay(180,cancellationToken);
         if(word=="retry"&&!_retryFailed) { _retryFailed=true;return new HttpResponseMessage(HttpStatusCode.TooManyRequests); }
         var total=word=="empty"?0:20;
-        var phrases=Enumerable.Range(offset,Math.Min(10,Math.Max(0,total-offset))).Select(i=>new { phrase_id=$"{word}-{paper}-{i}",phrase_en=$"A {word} reader enjoys learning.",phrase_zh="一位健谈的读者享受学习的过程。（自编测试句）",source=$"{paper} · 示例 {i+1}",highlight=new {context=new {phrase=$"A <span>{word}</span> reader enjoys learning."}} });
+        var english=word=="business"?"Learning about the business will help you understand how your roles fit into the bigger picture.":$"A {word} reader enjoys learning.";
+        var translation=word=="business"?"摸清业务能让你有机会理解自己的职责如何适配整体布局。":"一位健谈的读者享受学习的过程。（自编测试句）";
+        var phrases=Enumerable.Range(offset,Math.Min(10,Math.Max(0,total-offset))).Select(i=>new { phrase_id=$"{word}-{paper}-{i}",phrase_en=english,phrase_zh=translation,source=$"{paper} · 示例 {i+1}",highlight=new {context=new {phrase=english.Replace(word,$"<span>{word}</span>")}} });
         return JsonResponse(new {success=true,data=new {total=new {value=total},phrases}});
     }
     internal static Dictionary<string,string> Query(Uri uri)=>uri.Query.TrimStart('?').Split('&',StringSplitOptions.RemoveEmptyEntries).Select(pair=>pair.Split('=',2)).ToDictionary(pair=>pair[0],pair=>Uri.UnescapeDataString(pair[1]));
@@ -785,6 +853,13 @@ internal sealed class PrivateHandler : HttpMessageHandler
     internal int Writes;
     internal int Deletes;private bool _deleted;
     internal int NoteWrites;
+    internal int StudyAdds,StudyAccepted=1,StudyRequests;
+    internal bool SuppressTodaySync;
+    internal string? RestrictedToken;
+    internal bool RestrictedStudyFailure;
+    internal readonly HashSet<string> RestrictedLearned=[];
+    internal TaskCompletionSource? StudyBarrier;
+    internal readonly HashSet<string> TodayStudyWords=[],StudyPlanWords=[],PreviouslyLearned=[];
     internal TaskCompletionSource? NotesBarrier;
     internal HashSet<string> NoNotesFor=[];
     internal string NoteText="talk 讲话 + -ative 表形容词，有…倾向的，有…性质的 → talkative 爱讲话的。\n联想：a talkative reader（健谈的读者）。";
@@ -793,7 +868,29 @@ internal sealed class PrivateHandler : HttpMessageHandler
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken)
     {
         var path=request.RequestUri!.AbsolutePath;
+        var restricted=RestrictedToken!=null&&request.Headers.Authorization?.Parameter==RestrictedToken;
         object data;
+        if(path.Contains("/memo/study/",StringComparison.Ordinal))
+        {
+            StudyRequests++;
+            if(restricted&&RestrictedStudyFailure)return new HttpResponseMessage(HttpStatusCode.Forbidden);
+            using var body=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+            if(path.EndsWith("/add_words"))
+            {
+                StudyAdds++;if(StudyBarrier!=null)await StudyBarrier.Task.WaitAsync(cancellationToken);
+                var id=body.RootElement.GetProperty("words")[0].GetProperty("id").GetString()!;
+                if(StudyAccepted==1){StudyPlanWords.Add(id);if(!SuppressTodaySync)TodayStudyWords.Add(id);}
+                return ExampleHandler.JsonResponse(new {success=true,data=new {added_count=StudyAccepted}});
+            }
+            var requested=body.RootElement.GetProperty("voc_ids")[0].GetString()!;
+            if(path.EndsWith("/get_today_items"))return ExampleHandler.JsonResponse(new {success=true,data=new {today_items=TodayStudyWords.Contains(requested)?new[]{new {voc_id=requested,is_new=true}}:[]}});
+            if(path.EndsWith("/query_study_records"))
+            {
+                var learned=restricted?RestrictedLearned.Contains(requested):PreviouslyLearned.Contains(requested);
+                return ExampleHandler.JsonResponse(new {success=true,data=new {records=StudyPlanWords.Contains(requested)||learned?new[]{new {voc_id=requested,study_count=learned?3:0}}:[]}});
+            }
+            throw new Exception("Unexpected study route");
+        }
         if(request.Method==HttpMethod.Delete&&path.EndsWith("/notepads/pad-test")){Deletes++;var beforeDelete=Pad();_deleted=true;return ExampleHandler.JsonResponse(new {success=true,data=new {notepad=beforeDelete}});}
         if(request.Method==HttpMethod.Post&&path.EndsWith("/notepads/pad-test"))
         {
@@ -814,6 +911,7 @@ internal sealed class PrivateHandler : HttpMessageHandler
         }
         else if(path.EndsWith("/notes"))
         {
+            if(restricted)return new HttpResponseMessage(HttpStatusCode.Forbidden);
             if(NotesBarrier is { } barrier)await barrier.Task.WaitAsync(cancellationToken);
             var word=ExampleHandler.Query(request.RequestUri)["voc_id"][4..];
             data=NoNotesFor.Contains(word)?new {notes=Array.Empty<object>()}:(object)new {notes=new[]{new{id="note-1",note_type="词根词缀",note=NoteText,status="PUBLISHED"}}};

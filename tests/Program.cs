@@ -73,6 +73,129 @@ sealed class BackendTestFixture : IDisposable
             }
         });
 
+        await Test("Today new-word addition uses the documented memo route and verifies the server new-word flag", async () =>
+        {
+            using var fake=new StudyHandler();
+            fake.CheckRequest=request=>
+            {
+                Check(request.RequestUri!.Host=="open.maimemo.com"&&request.Headers.Authorization?.Parameter==_token,"Wrong credential destination");
+                if(!request.RequestUri.AbsolutePath.EndsWith("/add_words"))return;
+                using var body=JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                var root=body.RootElement;
+                Check(request.Method==HttpMethod.Post&&request.RequestUri.AbsolutePath=="/open/api/v1/memo/study/add_words","Wrong study path or method");
+                Check(root.GetProperty("words").GetArrayLength()==1&&root.GetProperty("words")[0].GetProperty("id").GetString()=="v1"&&root.GetProperty("advance").GetBoolean(),"Wrong add/advance body");
+                Check(!root.ToString().Contains(_token),"Token leaked into the request body");
+            };
+            using var api=Client(fake);var result=await api.AddToTodayAsync(new("v1","apple"));
+            Check(result==new TodayStudyResult(TodayStudyStatus.Added,1)&&fake.Adds==1,"Addition was not verified");
+            Check(fake.Paths.SequenceEqual(new[]{"get_today_items","query_study_records","add_words","get_today_items"}),"Unexpected write, retry or read sequence");
+        });
+        await Test("Today new-word membership and existing review words are identified without writes",async()=>
+        {
+            foreach(var isNew in new[]{true,false})
+            {
+                using var fake=new StudyHandler {InitiallyToday=true,IsNew=isNew};using var api=Client(fake);
+                var result=await api.AddToTodayAsync(new("v1","apple"));
+                Check(result.Status==(isNew?TodayStudyStatus.AlreadyToday:TodayStudyStatus.AlreadyLearned)&&fake.Adds==0&&fake.Paths.Count==1,"Existing today word was changed");
+            }
+        });
+        await Test("Previously studied words are never advanced or reset by the new-word action",async()=>
+        {
+            foreach(var count in new[]{0,3})
+            {
+                using var fake=new StudyHandler {StudyCount=count,FirstStudyDate=count==0?"2026-11-01T00:00:00+08:00":null};using var api=Client(fake);
+                var result=await api.AddToTodayAsync(new("v1","apple"));
+                Check(result.Status==TodayStudyStatus.AlreadyLearned&&fake.Adds==0,"An old study record was treated as a new word");
+            }
+        });
+        await Test("Zero accepted words never produce a successful today-new result",async()=>
+        {
+            using var fake=new StudyHandler {AddedCount=0};using var api=Client(fake);
+            var result=await api.AddToTodayAsync(new("v1","apple"));
+            Check(result.Status==TodayStudyStatus.NotAdded&&result.AddedCount==0&&fake.Adds==1,"A zero count became success");
+        });
+        await Test("A lost add response is checked once without repeating the study write",async()=>
+        {
+            using var fake=new StudyHandler {LoseAddResponse=true};using var api=Client(fake);
+            var result=await api.AddToTodayAsync(new("v1","apple"));
+            Check(result.Status==TodayStudyStatus.AlreadyToday&&fake.Adds==1&&fake.Paths.Count==4,"Uncertain addition was not resolved by readback");
+        });
+        await Test("Unconfirmed today status offers read-only verification even after the plan accepted the word",async()=>
+        {
+            using var fake=new StudyHandler {HideAfterAdd=true,StudyCount=0};using var api=Client(fake);
+            var result=await api.AddToTodayAsync(new("v1","apple"));
+            Check(result.Status==TodayStudyStatus.PendingVerification&&result.AddedCount==1,"Plan acceptance was claimed as verified today membership");
+            Check((await api.AddToTodayAsync(new("v1","apple"),verifyOnly:true)).Status==TodayStudyStatus.PendingVerification&&fake.Adds==1,"Verification repeated a write");
+        });
+        await Test("Incomplete, wrong-ID and malformed learning data never authorize an unsafe study write",async()=>
+        {
+            foreach(var mode in new[]{"missing-today","wrong-today","missing-record","wrong-record"})
+            {
+                using var fake=new StudyHandler {BadData=mode};using var api=Client(fake);
+                try{await api.AddToTodayAsync(new("v1","apple"));throw new Exception("Incomplete study data accepted");}
+                catch(MaiMemoException){Check(fake.Adds==0,"Bad preflight data reached a study write");}
+            }
+            using var malformed=new StudyHandler {BadData="bad-count",HideAfterAdd=true};using var malformedApi=Client(malformed);
+            Check((await malformedApi.AddToTodayAsync(new("v1","apple"))).Status==TodayStudyStatus.PendingVerification&&malformed.Adds==1,"Malformed add count was accepted or retried");
+        });
+        await Test("Study permission rejection and caller cancellation do not trigger a write retry",async()=>
+        {
+            using var fake=new StudyHandler {Rejected=true};using var api=Client(fake);
+            try{await api.AddToTodayAsync(new("v1","apple"));throw new Exception("Study permission error accepted");}
+            catch(MaiMemoException error){Check(error.StatusCode==HttpStatusCode.Forbidden&&fake.Adds==1&&fake.Paths.Count==3,"A rejected study write was retried");}
+            using var canceled=new CancellationTokenSource();canceled.Cancel();
+            var calls=fake.Paths.Count;
+            try{await api.AddToTodayAsync(new("v1","apple"),cancellationToken:canceled.Token);throw new Exception("Cancellation ignored");}
+            catch(OperationCanceledException){Check(fake.Paths.Count==calls,"Canceled study action sent HTTP");}
+        });
+        await Test("Concurrent today-add actions serialize and observe the first confirmed addition",async()=>
+        {
+            using var fake=new StudyHandler();using var api=Client(fake);
+            var results=await Task.WhenAll(api.AddToTodayAsync(new("v1","apple")),api.AddToTodayAsync(new("v1","apple")));
+            Check(results.Count(r=>r.Status==TodayStudyStatus.Added)==1&&results.Count(r=>r.Status==TodayStudyStatus.AlreadyToday)==1&&fake.Adds==1,"Concurrent actions added twice");
+        });
+
+        await Test("Learning status reads identify learned, today-new and unlearned words without an add request",async()=>
+        {
+            foreach(var mode in new[]{"learned","today","new","planned"})
+            {
+                using var fake=new StudyHandler {StudyCount=mode=="learned"?3:mode=="planned"?0:null,InitiallyToday=mode=="today"};using var api=Client(fake);
+                var result=await api.GetTodayStudyStatusAsync(new("v1","apple"));
+                Check(result==(mode=="learned"?TodayStudyStatus.AlreadyLearned:mode=="today"?TodayStudyStatus.AlreadyToday:TodayStudyStatus.NotAdded)&&fake.Adds==0,"Read-only status was wrong or changed learning data");
+                Check(fake.Paths[0]=="query_study_records"&&(mode!="learned"||fake.Paths.Count==1),"Known learned status did not come directly from its record");
+            }
+        });
+        await Test("Incomplete status data remains an error without inferring an unlearned word",async()=>
+        {
+            using var fake=new StudyHandler {BadData="missing-record"};using var api=Client(fake);
+            try{await api.GetTodayStudyStatusAsync(new("v1","apple"));throw new Exception("Bad learning state became unlearned");}
+            catch(MaiMemoException){Check(fake.Adds==0&&fake.Paths.Count==1,"A failed status query caused further actions");}
+        });
+        await Test("Permission-limited token errors do not invalidate an authenticated account",async()=>
+        {
+            using var fake=new FakeHandler(request=>request.RequestUri!.AbsolutePath.EndsWith("/vocabulary")?Envelope(new {voc=new {id="v1",spelling="apple"}}):Reply("""{"success":false,"errors":[{"code":"TOKEN_PERMISSION_DENIED"}]}"""));
+            using var api=Client(fake);var accepted=0;var rejected=0;api.AuthenticationResult+=(_,ok)=>{if(ok)accepted++;else rejected++;};
+            await api.ResolveWordAsync("apple");
+            try{await api.GetNotesAsync("v1");throw new Exception("Permission error accepted");}
+            catch(MaiMemoException error){Check(error.StatusCode==HttpStatusCode.Forbidden&&accepted==1&&rejected==0,"Resource permission was reported as expired login");}
+        });
+        await Test("Authentication events identify their original credential during an in-flight account switch",async()=>
+        {
+            var started=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var release=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var nextToken=Convert.ToHexString(RandomNumberGenerator.GetBytes(32));var events=new List<(string Key,bool Accepted)>();
+            using var fake=new FakeHandler(async request=>
+            {
+                if(request.RequestUri!.AbsolutePath.EndsWith("/notes")){started.SetResult();await release.Task;return Reply("{}",HttpStatusCode.Unauthorized);}
+                return Envelope(new {voc=new {id="v1",spelling="apple"}});
+            });
+            using var api=Client(fake);api.AuthenticationResult+=(key,ok)=>events.Add((key,ok));
+            var old=api.GetNotesAsync("v1");await started.Task;Tokens.SaveToken(nextToken);var fresh=api.ResolveWordAsync("apple");release.SetResult();
+            try{await old;throw new Exception("Expected old-account auth failure");}catch(MaiMemoException error){Check(error.StatusCode==HttpStatusCode.Unauthorized,"Wrong old-account error");}
+            await fresh;
+            Check(events.SequenceEqual(new[]{(TokenStore.Fingerprint(_token)!,false),(TokenStore.Fingerprint(nextToken)!,true)}),"Auth events crossed credentials");
+            Tokens.SaveToken(_token);
+        });
+
         await Test("Normal notes, interpretations and phrases parse content", async () =>
         {
             using var fake = new FakeHandler(request => request.RequestUri!.AbsolutePath.Split('/').Last() switch
@@ -440,6 +563,41 @@ sealed class FakeHandler : HttpMessageHandler
     {
         cancellationToken.ThrowIfCancellationRequested();
         return _respond(request);
+    }
+}
+
+sealed class StudyHandler : HttpMessageHandler
+{
+    internal bool InitiallyToday,IsNew=true,LoseAddResponse,HideAfterAdd,Rejected;
+    internal int? StudyCount;
+    internal string? FirstStudyDate,BadData;
+    internal int AddedCount=1,Adds;
+    internal readonly List<string> Paths=[];
+    internal Action<HttpRequestMessage>? CheckRequest;
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();CheckRequest?.Invoke(request);
+        var path=request.RequestUri!.Segments.Last();Paths.Add(path);
+        object value;
+        switch(path)
+        {
+            case "get_today_items":
+                if(BadData=="missing-today")value=new {};
+                else value=new {today_items=InitiallyToday||(Adds>0&&AddedCount>0&&!HideAfterAdd)||BadData=="wrong-today"?new[]{new {voc_id=BadData=="wrong-today"?"different":"v1",voc_spelling="apple",is_new=IsNew,is_finished=false,order=1}}:[]};
+                break;
+            case "query_study_records":
+                if(BadData=="missing-record")value=new {};
+                else value=new {records=StudyCount.HasValue||BadData=="wrong-record"?new[]{new {voc_id=BadData=="wrong-record"?"different":"v1",voc_spelling="apple",study_count=StudyCount??0,first_study_date=FirstStudyDate}}:[],count=0};
+                break;
+            case "add_words":
+                Adds++;
+                if(LoseAddResponse)throw new HttpRequestException("Simulated response loss");
+                if(Rejected)return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden));
+                value=BadData=="bad-count"?new {added_count="invalid"}:(object)new {added_count=AddedCount};
+                break;
+            default:throw new Exception("Unexpected study request: "+path);
+        }
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(JsonSerializer.Serialize(new {success=true,data=value}),Encoding.UTF8,"application/json")});
     }
 }
 

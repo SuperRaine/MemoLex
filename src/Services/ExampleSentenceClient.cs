@@ -15,7 +15,7 @@ public sealed record PaperTypeChoice(string Value, string Label)
         new PaperTypeChoice("COLLEGE_ENTRANCE_EXAM", "高考") };
 }
 public sealed record ExampleSentence(string Id, string English, string Translation, string Source,
-    string? OptionLabel, string ContextEnglish, string ContextTranslation, IReadOnlySet<string> MatchedWords, IReadOnlySet<string>? MatchedTranslations = null)
+    string? OptionLabel, string ContextEnglish, string ContextTranslation, IReadOnlySet<string> MatchedWords, IReadOnlySet<string>? MatchedTranslations = null,bool TranslationAligned=true)
 {
     public bool IsOption => OptionLabel != null;
 }
@@ -115,7 +115,8 @@ public sealed class ExampleSentenceClient : IDisposable
                         if (translation.Length == 0) translation = ExampleText.CleanMarkup(Text(option, "translation"));
                         break;
                     }
-            if (translation.Length == 0 && optionLabel == null) translation = contextTranslation;
+            var translationAligned=true;
+            if (translation.Length == 0 && optionLabel == null){translation=contextTranslation;translationAligned=english.Equals(contextEnglish,StringComparison.Ordinal);}
             var highlight = Property(Property(phrase, "highlight"), "context");
             var highlightedText = Text(highlight, "phrase");
             var highlightedOptions = Property(highlight, "options");
@@ -125,7 +126,7 @@ public sealed class ExampleSentenceClient : IDisposable
                 ExampleText.CleanMarkup(Text(phrase, "source")), optionLabel,
                 optionLabel != null && contextEnglish != english ? contextEnglish : "",
                 optionLabel != null ? contextTranslation : "", ExampleText.HighlightedWords(highlightedText),
-                ExampleText.HighlightedPhrases(Text(highlight,"translation"))));
+                ExampleText.HighlightedPhrases(Text(highlight,"translation")),translationAligned));
         }
         return new ExamplePage(result, totalCount, offset, phrases.GetArrayLength());
     }

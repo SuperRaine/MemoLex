@@ -50,6 +50,7 @@ public partial class MainWindow : Window
         _allowCloud = allowCloud;
         _desktopIntegration=desktopIntegration;
         _api = api ?? new MaiMemoClient(_tokens);
+        _accountCredentialKey=_tokens.CredentialKey;_api.AuthenticationResult+=OnApiAuthenticationResult;
         _related=related??new RelatedWords(_dictionary);
         _translation=translation??new TranslationClient();
         _chinese=chinese??new ChineseReverseSearch(_dictionary);
@@ -64,8 +65,9 @@ public partial class MainWindow : Window
         UpdatePinAppearance();
         SetAccountStatus(!_allowCloud ? "离线模式" : _tokens.HasToken ? "连接中" : "未连接");
         AddButton.IsEnabled = false;
+        AddTodayButton.IsEnabled = false;
         SpeakButton.IsEnabled = false;
-        Loaded += async (_, _) => await InitializeAsync();
+        Loaded += async (_, _) => {StartTodayStudyClock();await InitializeAsync();};
         SourceInitialized += (_, _) =>
         {
             InstallHotkey();
@@ -80,6 +82,9 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _doubleCopy?.Dispose();_clipboardCts?.Cancel();
+            _studyCts?.Cancel();
+            _studyLoadCts?.Cancel();_accountCts.Cancel();_api.AuthenticationResult-=OnApiAuthenticationResult;
+            _studyDayTimer?.Stop();
             _lookupCts?.Cancel();
             _notesCts?.Cancel();
             _examplesCts?.Cancel();
@@ -201,6 +206,7 @@ public partial class MainWindow : Window
         _vocabulary = null;
         AddButton.Content = "＋ 加入云词本";
         AddButton.IsEnabled = !_adding;
+        PrepareTodayStudyLookup(word,cancellation);
         SpeakButton.IsEnabled = true;
         var entry = _dictionary.Lookup(word);
         WordText.Text = entry?.word ?? word;
@@ -335,9 +341,9 @@ public partial class MainWindow : Window
         }
         card.Children.Add(BuildSentenceText(sentence.English, matches, sourceWord));
         if (sentence.Translation.Length > 0)
-            card.Children.Add(BuildExampleTranslation(sentence.Translation,sourceWord,matches,sentence.MatchedTranslations));
+            card.Children.Add(BuildExampleTranslation(sentence.Translation,sentence.English,sourceWord,matches,sentence.MatchedTranslations,sentence.TranslationAligned));
         if (sentence.IsOption && sentence.ContextTranslation.Length > 0)
-            card.Children.Add(BuildExampleTranslation("原题译文："+sentence.ContextTranslation,sourceWord,matches,sentence.MatchedTranslations));
+            card.Children.Add(BuildExampleTranslation("原题译文："+sentence.ContextTranslation,sentence.ContextEnglish,sourceWord,matches,sentence.MatchedTranslations));
         ExamplesPanel.Children.Add(new Border { Child = card, Background = Brushes.White, BorderBrush = Brush("#E2EBF3"), BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(11), Padding = new Thickness(20, 17, 20, 18), Margin = new Thickness(0, 0, 0, 12) });
     }
@@ -369,19 +375,18 @@ public partial class MainWindow : Window
             block.Inlines.Add(link);
         }
     }
-    private TextBlock BuildExampleTranslation(string text,string sourceWord,IReadOnlySet<string> matches,IReadOnlySet<string>? explicitTerms)
+    private TextBlock BuildExampleTranslation(string text,string english,string sourceWord,IReadOnlySet<string> matches,IReadOnlySet<string>? explicitTerms,bool aligned=true)
     {
-        var terms=new HashSet<string>(TextHighlights.ChineseMeanings(_dictionary.Lookup(sourceWord)?.translation));
-        if(explicitTerms!=null)terms.UnionWith(explicitTerms);
-        var bases=new HashSet<string>(StringComparer.OrdinalIgnoreCase){sourceWord};
-        foreach(var matched in matches.Take(12))
+        string? Meaning(string word)
         {
-            bases.Add(matched);var entry=_dictionary.Lookup(matched);terms.UnionWith(TextHighlights.ChineseMeanings(entry?.translation));
-            foreach(var form in (entry?.exchange??"").Split('/'))
-                if(form.StartsWith("0:",StringComparison.Ordinal)){var basis=form[2..];bases.Add(basis);terms.UnionWith(TextHighlights.ChineseMeanings(_dictionary.Lookup(basis)?.translation));}
+            var entry=_dictionary.Lookup(word);var values=new List<string>();
+            if(!string.IsNullOrWhiteSpace(entry?.translation))values.Add(entry.translation);
+            foreach(var item in (entry?.exchange??"").Split('/'))
+                if(item.StartsWith("0:",StringComparison.Ordinal)&&_dictionary.Lookup(item[2..])?.translation is {Length:>0} definition)values.Add(definition);
+            if((word.EndsWith("'s",StringComparison.OrdinalIgnoreCase)||word.EndsWith("’s",StringComparison.OrdinalIgnoreCase))&&_dictionary.Lookup(word[..^2])?.translation is {Length:>0} possessiveBase)values.Add(possessiveBase);
+            return values.Count==0?null:string.Join('\n',values);
         }
-        if(!terms.Any(term=>text.Contains(term,StringComparison.OrdinalIgnoreCase)))
-            foreach(var basis in bases)foreach(var synonym in _related.SynonymSpellings(basis).Take(10))terms.UnionWith(TextHighlights.ChineseMeanings(_dictionary.Lookup(synonym)?.translation));
+        var terms=TextHighlights.TranslationTerms(english,text,sourceWord,matches,Meaning,explicitTerms,aligned);
         var block=new TextBlock { TextWrapping=TextWrapping.Wrap,FontSize=13,LineHeight=23,Foreground=Brush("#7D93A6"),Margin=new Thickness(0,11,0,0) };
         foreach(var part in TextHighlights.Split(text,terms))
             if(part.Highlighted)block.Inlines.Add(new Run(part.Text){Background=Brush("#DEF4FF"),Foreground=Brush("#087FAF"),FontWeight=FontWeights.SemiBold});
@@ -506,12 +511,15 @@ public partial class MainWindow : Window
         if (_refreshing) return;
         if (!_tokens.HasToken) { SetAccountStatus("未连接"); CloudDetailText.Text = "点击标题栏连接墨墨账号"; return; }
         _refreshing = true;
+        var account=_accountVersion;var accountToken=_accountCts.Token;
+        UpdateTodayStudyButton();
         _notepadCache.Clear();
         RefreshNotepadsButton.IsEnabled = false;
         SettingsButton.IsEnabled = false;
         try
         {
-            var pads = (await _api.ListNotepadsAsync()).Where(pad=>!_deletedNotepads.Contains(pad.Id)).ToArray();
+            var pads = (await _api.ListNotepadsAsync(accountToken)).Where(pad=>!_deletedNotepads.Contains(pad.Id)).ToArray();
+            if(account!=_accountVersion||accountToken.IsCancellationRequested)return;
             _changingLists = true;
             NotepadCombo.ItemsSource = pads;
             NotepadCombo.SelectedItem = pads.FirstOrDefault(x => x.Id == (selectId ?? _preferences.NotepadId)) ?? pads.FirstOrDefault();
@@ -521,8 +529,9 @@ public partial class MainWindow : Window
             CloudDetailText.Text = pads.Length == 0 ? "还没有云词本，点击新建" : $"{pads.Length} 个云词本 · 自动保存选择";
             SetAccountStatus("已连接");
         }
-        catch (Exception ex) { SetAccountError(ex); CloudDetailText.Text = UserError(ex); }
-        finally { _changingLists = false; _refreshing = false; RefreshNotepadsButton.IsEnabled = !_adding; SettingsButton.IsEnabled = !_adding; await UpdateMembershipAsync(); }
+        catch (OperationCanceledException)when(account!=_accountVersion||accountToken.IsCancellationRequested){}
+        catch (Exception ex) { if(account==_accountVersion){SetAccountError(ex);CloudDetailText.Text=UserError(ex);} }
+        finally { if(account==_accountVersion){_changingLists = false; _refreshing = false; RefreshNotepadsButton.IsEnabled = !_adding; SettingsButton.IsEnabled = !_adding; await UpdateMembershipAsync(); UpdateTodayStudyButton();} }
     }
     private async void RefreshNotepadsButton_Click(object sender, RoutedEventArgs e) => await RefreshNotepadsAsync();
     private async void NotepadCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -618,15 +627,7 @@ public partial class MainWindow : Window
         if (!result.Saved) return;
         UpdateShortcutHints();
         StatusText.Text = _preferences.CloseToTray ? "设置已保存 · 关闭窗口时最小化到托盘。" : "设置已保存 · 关闭窗口时直接退出。";
-        if (result.TokenChanged)
-        {
-            _lookupCts?.Cancel();
-            _cloudCache.Clear();
-            var view = CaptureView();
-            if(view.Target==ViewTarget.Translation){await RefreshNotepadsAsync();RestoreTranslationView(view);}
-            else if(view.Target==ViewTarget.ChineseSearch&&view.Chinese is { } chinese)await Task.WhenAll(RefreshNotepadsAsync(),SearchChineseAsync(chinese.Query,false,false,chinese));
-            else await Task.WhenAll(RefreshNotepadsAsync(), LoadWordAsync(_word, recordHistory: false, addNavigationEntry: false, restore: view));
-        }
+        if (result.TokenChanged)await ReloadAccountAsync();
     }
     private void SetCloudWriteBusy(bool busy)
     {
@@ -635,6 +636,7 @@ public partial class MainWindow : Window
         CreateNotepadButton.IsEnabled = !busy;
         RefreshNotepadsButton.IsEnabled = !busy;
         EditNotepadButton.IsEnabled=!busy&&NotepadCombo.SelectedItem is CloudNotepad;
+        UpdateTodayStudyButton();
     }
     private void PinButton_Click(object sender, RoutedEventArgs e)
     {

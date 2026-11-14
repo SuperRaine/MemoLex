@@ -82,11 +82,12 @@ await Test("An unreadable personal mnemonic file remains intact instead of being
     }
     finally{Directory.Delete(folder,true);}
 });
-await Test("The offline mnemonic dataset contains the 3259 reviewed starting entries",async()=>
+await Test("A fresh profile includes the expanded mnemonic dataset and new memory bridges",async()=>
 {
     var data=Environment.GetEnvironmentVariable("MEMOLEX_DATA_DIR")??"outputs/MemoLex/data";
     var store=new MnemonicStore(Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".missing"),Path.Combine(data,"mnemonics.json"));await store.LoadAsync();
-    Check(store.BundledCount==3259&&store.Get("disagree").Single().Text.Contains("agree"),"Reviewed offline notes are missing");
+    Check(store.BundledCount>=10613&&store.Get("disagree").Any(note=>note.Text.Contains("agree")),"Bundled offline notes are missing");
+    Check(store.Get("taste").Any(note=>note.Text.Contains("test"))&&store.Get("bitter").Any(note=>note.Text.Contains("逼他")),"New memory bridges are missing from a fresh profile");
 });
 await Test("UTF-8 segmentation preserves all text, paragraphs and surrogate pairs",()=>
 {
@@ -136,6 +137,19 @@ await Test("Translated keyword highlighting uses exact longest meanings and pres
     Check(string.Concat(parts.Select(part=>part.Text))==text,"Highlighting lost text");
     Check(parts.Where(part=>part.Highlighted).Select(part=>part.Text).SequenceEqual(new[]{"健谈的","爱讲话"}),"Meaning spans are wrong");
     Check(!TextHighlights.Split("译文没有对应词。",terms).Any(part=>part.Highlighted),"An unrelated Chinese word was highlighted");return Task.CompletedTask;
+});
+await Test("Translation highlighting rejects another word's meaning and uncertain locations",()=>
+{
+    var definitions=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase){["business"]="n. 业务；生意；职责；公司",["role"]="n. 角色；职责",["company"]="n. 公司",["talkative"]="adj. 健谈的；爱讲话的"};
+    string? Lookup(string word)=>definitions.GetValueOrDefault(word);
+    var terms=TextHighlights.TranslationTerms("Learning about the business will help you understand your role.","摸清业务，理解自己的职责。","business",new HashSet<string>{"business"},Lookup);
+    Check(terms.SetEquals(new[]{"业务"}),"Business incorrectly claimed the translation of role");
+    Check(TextHighlights.TranslationTerms("The business has expanded.","这家公司扩大了。","business",new HashSet<string>{"business"},Lookup).SetEquals(new[]{"公司"}),"An unambiguous dictionary meaning was lost");
+    Check(TextHighlights.TranslationTerms("The business has expanded.","业务变多，业务扩大了。","business",new HashSet<string>{"business"},Lookup).Count==0,"Repeated uncertain locations were guessed");
+    Check(TextHighlights.TranslationTerms("The role matters.","这项职责很重要。","business",new HashSet<string>{"business"},Lookup).Count==0,"Translation marked a word absent from the source");
+    Check(TextHighlights.TranslationTerms("The business has expanded.","业务扩大了。","business",new HashSet<string>{"business"},Lookup,aligned:false).Count==0,"A whole-context fallback was treated as aligned");
+    Check(TextHighlights.TranslationTerms("A talkative reader.","一个健谈的读者。","talkative",new HashSet<string>{"talkative"},Lookup).SetEquals(new[]{"健谈的","健谈"}),"Reliable direct highlights were lost");
+    return Task.CompletedTask;
 });
 await Test("Spelling similarity supports insertions, deletions and transpositions",()=>
 {

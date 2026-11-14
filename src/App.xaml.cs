@@ -38,13 +38,16 @@ public partial class App : Application
                 using var chinese=new ChineseReverseSearch(dictionary);await chinese.LoadAsync();
                 var reverse=await chinese.SearchAsync("快乐",120);
                 result["chineseReverseCheck"]=reverse.Items.Take(10).Any(item=>item.Word=="happy")&&reverse.Items.Any(item=>item.Word=="cheerful");
-                var mnemonics=new MnemonicStore();await mnemonics.LoadAsync();
+                var mnemonics=new MnemonicStore(Path.Combine(Path.GetTempPath(),"MemoLex-smoke-"+Guid.NewGuid().ToString("N"),"unused.json"));await mnemonics.LoadAsync();
                 result["localMnemonicCount"]=mnemonics.BundledCount;
-                result["localMnemonicCheck"]=mnemonics.BundledCount==3259;
-                var tokenStore = new TokenStore();
-                result["tokenReadable"] = tokenStore.HasToken && !string.IsNullOrEmpty(tokenStore.GetToken());
-                if (e.Args.Contains("--online") && tokenStore.HasToken)
+                result["localMnemonicCheck"]=mnemonics.BundledCount>=10613
+                    &&mnemonics.Get("taste").Any(note=>note.Text.Contains("test")&&note.Text.Contains("tasty"))
+                    &&mnemonics.Get("bitter").Any(note=>note.Text.Contains("逼他"))
+                    &&mnemonics.Get("insight").Any(note=>note.Text.Contains("sight")&&note.Text.Contains("洞察力"));
+                if (e.Args.Contains("--online"))
                 {
+                    var tokenStore = new TokenStore();
+                    if (!tokenStore.HasToken) throw new InvalidOperationException("Online smoke test needs an account.");
                     using var api = new MaiMemoClient(tokenStore);
                     var word = await api.ResolveWordAsync("serendipity");
                     result["apiWord"] = word?.Spelling;

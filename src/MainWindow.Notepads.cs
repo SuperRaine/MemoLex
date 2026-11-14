@@ -37,15 +37,16 @@ public partial class MainWindow
     private async Task<CloudNotepad> ReadNotepadAsync(string id)
     {
         if(_notepadLoads.TryGetValue(id,out var pending))return await pending;
-        var started=DateTime.UtcNow;var request=_api.GetNotepadAsync(id);_notepadLoads[id]=request;
+        var account=_accountVersion;var started=DateTime.UtcNow;var request=_api.GetNotepadAsync(id,_accountCts.Token);_notepadLoads[id]=request;
         try
         {
             var pad=await request;
+            if(account!=_accountVersion)throw new OperationCanceledException();
             if(_deletedNotepads.Contains(id))throw new MaiMemoException("这个云词本已删除，请选择其他词本。");
             if(_notepadCache.TryGetValue(id,out var newer)&&newer.At>started)return newer.Pad;
             CacheNotepad(pad);return pad;
         }
-        finally{_notepadLoads.Remove(id);}
+        finally{if(_notepadLoads.GetValueOrDefault(id)==request)_notepadLoads.Remove(id);}
     }
     private async Task UpdateMembershipAsync(bool force=false)
     {

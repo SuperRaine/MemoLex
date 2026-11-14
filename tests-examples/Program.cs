@@ -71,6 +71,14 @@ await Test("Explicit phrase translation takes priority and context is a text fal
     var item = (await client.SearchAsync("learn")).Items.Single();
     Check(item.English == "A & B\nlearn." && item.Translation == "专门的译文", "Text/translation fallback failed");
 });
+await Test("A whole-context translation is not assumed aligned with a shorter example",async()=>
+{
+    var phrase=new {phrase_id="partial",phrase_en="The business grew.",phrase_zh="",source="测试",context=new {phrase="They discussed roles. The business grew.",translation="他们讨论职责，公司发展了。"}};
+    using var fake=new ProbeHandler((_,_)=>Task.FromResult(Reply(new {total=1,phrases=new[]{phrase}})));
+    using var client=new ExampleSentenceClient(fake,TimeSpan.Zero);
+    var item=(await client.SearchAsync("business")).Items.Single();
+    Check(item.Translation=="他们讨论职责，公司发展了。"&&!item.TranslationAligned,"Context fallback was treated as an exact sentence alignment");
+});
 await Test("Cache distinguishes query, paper type and page, preserving pagination", async () =>
 {
     var calls = 0;

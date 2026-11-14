@@ -20,6 +20,9 @@ public partial class MainWindow
             MainContentGrid.Margin=compact?new Thickness(15,15,15,13):new Thickness(27,21,27,17);
             WordCard.Padding=compact?new Thickness(18):new Thickness(27,23,27,24);
             WordText.FontSize=compact?32:42;
+            WordActions.Orientation=compact?System.Windows.Controls.Orientation.Vertical:System.Windows.Controls.Orientation.Horizontal;
+            AddTodayButton.Margin=compact?new Thickness(0,6,0,0):new Thickness(8,0,0,0);
+            AddTodayButton.Padding=compact?new Thickness(10,7,10,7):new Thickness(12,11,12,11);
         }
     }
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
@@ -44,12 +47,11 @@ public partial class MainWindow
     }
     private void SetAccountStatus(string status)
     {
+        if(status=="已连接")status=_accountRejected?"登录失效":_accountAuthenticated?"已连接":"连接中";
         CloudStatusText.Text = status;
         CloudStatusText.Foreground = Brush(status == "已连接" ? "#087FAF" : status is "登录失效" or "连接受限" ? "#B58236" : "#8399AA");
         SettingsButton.ToolTip = $"墨墨账号：{status}\n点击打开账号连接与应用设置";
     }
-    private void SetAccountError(Exception error) => SetAccountStatus(error is MaiMemoException { StatusCode: HttpStatusCode.Unauthorized }
-        ? "登录失效" : error is MaiMemoException { StatusCode: HttpStatusCode.TooManyRequests } ? "连接受限" : "暂时离线");
 
     // Native pixel bounds keep a maximized custom window inside the current
     // monitor's work area, including monitors with negative desktop coordinates.

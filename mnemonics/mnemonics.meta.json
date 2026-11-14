@@ -1,0 +1,28 @@
+{
+  "words": 10614,
+  "target_words": 10613,
+  "covered_target_words": 10613,
+  "legacy_family_lists_rewritten": 2773,
+  "legacy_family_categories_remaining": 0,
+  "individually_rewritten_to_new_standard": 4024,
+  "other_notes_pending_new_standard_review": 6589,
+  "scope": "Generated local notes for the requested vocabulary and public exam lists. Coverage is not a claim that every note has been rewritten to the latest standard.",
+  "aliases": [
+    {
+      "source": "cliché",
+      "alias": "cliche"
+    },
+    {
+      "source": "coupd􀆳état",
+      "alias": "coup d'etat"
+    },
+    {
+      "source": "résumé",
+      "alias": "resume"
+    }
+  ],
+  "personal_profiles_included": false,
+  "cloud_content_included": false,
+  "license": "CC-BY-SA-3.0",
+  "sha256": "52b975b85e1398c5b2f42ee001b77712519258a6190b9891814cd8d672fdd083"
+}

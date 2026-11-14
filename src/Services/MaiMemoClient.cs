@@ -34,7 +34,7 @@ public sealed class EmptyNotepadException(CloudNotepad notepad) : MaiMemoExcepti
 }
 
 /// <summary>All authenticated requests are sent only to the fixed MaiMemo HTTPS origin.</summary>
-public sealed class MaiMemoClient : IDisposable
+public sealed partial class MaiMemoClient : IDisposable
 {
     private const string ApiBase = "https://open.maimemo.com/open/api/v1/";
     private readonly TokenStore _tokens;
@@ -44,6 +44,8 @@ public sealed class MaiMemoClient : IDisposable
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private long _lastRequest;
     private bool _disposed;
+    internal event Action<string,bool>? AuthenticationResult;
+    private void ReportAuthentication(string token,bool accepted)=>AuthenticationResult?.Invoke(TokenStore.Fingerprint(token)!,accepted);
 
     public MaiMemoClient(TokenStore tokens) : this(tokens, new HttpClientHandler { AllowAutoRedirect = false }, TimeSpan.FromMilliseconds(1650)) { }
 
@@ -56,7 +58,7 @@ public sealed class MaiMemoClient : IDisposable
             BaseAddress = new Uri(ApiBase),
             Timeout = Timeout.InfiniteTimeSpan
         };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("MemoLex/1.4");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("MemoLex/"+(typeof(MaiMemoClient).Assembly.GetName().Version?.ToString(3)??"1.0.3"));
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }
 
@@ -299,6 +301,8 @@ public sealed class MaiMemoClient : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (relativePath.StartsWith('/') || !Uri.TryCreate(relativePath, UriKind.Relative, out _))
             throw new ArgumentException("无效接口路径。", nameof(relativePath));
+        var studyRequest=relativePath.StartsWith("memo/study/",StringComparison.Ordinal);
+        var studyWrite=relativePath=="memo/study/add_words";
         var token = _tokens.GetToken();
         if (string.IsNullOrWhiteSpace(token)) throw new MaiMemoException("请在设置中填写墨墨 API Token。");
         await _requestGate.WaitAsync(cancellationToken);
@@ -317,7 +321,12 @@ public sealed class MaiMemoClient : IDisposable
             if (body != null) request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
             _lastRequest = Stopwatch.GetTimestamp();
             using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
-            if (!response.IsSuccessStatusCode) throw SafeHttpError(response.StatusCode);
+            if (!response.IsSuccessStatusCode)
+            {
+                if(response.StatusCode==HttpStatusCode.Unauthorized)ReportAuthentication(token,false);
+                if(studyWrite&&(int)response.StatusCode>=500)throw new StudyAddUncertainException("墨墨暂未确认添加结果，请核对今日新学。");
+                throw SafeHttpError(response.StatusCode);
+            }
             if (response.Content.Headers.ContentLength is > 16 * 1024 * 1024) throw new MaiMemoException("墨墨返回的数据过大，请使用较小的云词本。");
             await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
             using var memory = new MemoryStream();
@@ -332,18 +341,24 @@ public sealed class MaiMemoClient : IDisposable
             memory.Position = 0;
             using var json = await JsonDocument.ParseAsync(memory, cancellationToken: timeout.Token);
             var root = json.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) throw new MaiMemoException("墨墨返回的数据格式有变化，请稍后重试。");
+            if (root.ValueKind != JsonValueKind.Object) throw studyWrite?new StudyAddUncertainException("墨墨没有返回有效的添加结果，请核对今日新学。"):new MaiMemoException("墨墨返回的数据格式有变化，请稍后重试。");
             if (root.TryGetProperty("success", out var success) && success.ValueKind == JsonValueKind.False)
-                throw SafeApiError(root);
+            {
+                var error=SafeApiError(root);
+                if(error.StatusCode==HttpStatusCode.Unauthorized)ReportAuthentication(token,false);
+                throw error;
+            }
             if (root.TryGetProperty("data", out var data))
             {
-                if (data.ValueKind != JsonValueKind.Object) throw new MaiMemoException("墨墨没有返回可用数据，请刷新后重试。");
-                return data.Clone();
+                if (data.ValueKind != JsonValueKind.Object) throw studyWrite?new StudyAddUncertainException("墨墨没有返回有效的添加结果，请核对今日新学。"):new MaiMemoException("墨墨没有返回可用数据，请刷新后重试。");
+                ReportAuthentication(token,true);return data.Clone();
             }
-            return root.Clone();
+            ReportAuthentication(token,true);return root.Clone();
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            if(studyWrite)throw new StudyAddUncertainException("添加请求超时，结果尚未确认，请核对今日新学。");
+            if(studyRequest)throw new MaiMemoException("读取学习数据超时，请确认墨墨 App 已开启自动同步后重试。");
             if(method==HttpMethod.Delete)throw new MaiMemoException("请求超时，删除结果尚未确认。请重新载入云词本检查后再操作。");
             throw new MaiMemoException(method == HttpMethod.Post
                 ? "请求超时，保存结果尚未确认。请刷新云词本检查后再操作。"
@@ -351,6 +366,8 @@ public sealed class MaiMemoClient : IDisposable
         }
         catch (HttpRequestException)
         {
+            if(studyWrite)throw new StudyAddUncertainException("添加时连接中断，结果尚未确认，请核对今日新学。");
+            if(studyRequest)throw new MaiMemoException("暂时无法读取学习数据，请检查网络及墨墨 App 的自动同步。");
             if(method==HttpMethod.Delete)throw new MaiMemoException("连接中断，删除结果尚未确认。请重新载入云词本检查后再操作。");
             throw new MaiMemoException(method == HttpMethod.Post
                 ? "网络连接中断，保存结果尚未确认。请刷新云词本检查后再操作。"
@@ -358,6 +375,8 @@ public sealed class MaiMemoClient : IDisposable
         }
         catch (JsonException)
         {
+            if(studyWrite)throw new StudyAddUncertainException("添加结果无法读取，请核对今日新学。");
+            if(studyRequest)throw new MaiMemoException("墨墨的学习数据格式有变化，请稍后重试。");
             if(method==HttpMethod.Delete)throw new MaiMemoException("删除结果无法读取，请重新载入云词本确认。");
             throw new MaiMemoException(method == HttpMethod.Post
                 ? "墨墨的保存结果无法读取。请先刷新云词本确认结果，再决定是否重试。"
@@ -381,6 +400,8 @@ public sealed class MaiMemoClient : IDisposable
     {
         // Inspect classification only. Never expose upstream bodies or supplied credentials in an exception.
         var errors = root.TryGetProperty("errors", out var value) ? value.ToString().ToUpperInvariant() : "";
+        if(errors.Contains("FORBIDDEN")||errors.Contains("PERMISSION")||errors.Contains("SCOPE")||errors.Contains("ACCESS_DENIED"))
+            return new MaiMemoException("此 Token 没有访问该接口的权限，请检查墨墨开放 API 设置。",HttpStatusCode.Forbidden);
         if (errors.Contains("TOKEN") || errors.Contains("UNAUTHORIZED") || errors.Contains("AUTHENTICATION"))
             return new MaiMemoException("Token 无效或已过期，请在设置中更新。", HttpStatusCode.Unauthorized);
         if (errors.Contains("RATE") || errors.Contains("TOO_MANY"))

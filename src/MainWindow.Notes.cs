@@ -39,17 +39,21 @@ public partial class MainWindow
             return;
         }
         NotesHintText.Text="正在核对云端助记 · 已先显示本地内容…";
+        var studyStarted=false;var studyTask=Task.CompletedTask;
         try
         {
             Vocabulary? voc;IReadOnlyList<MemoNote> notes;
             if(_cloudCache.TryGetValue(word,out var cached)&&DateTime.UtcNow-cached.Time<TimeSpan.FromMinutes(5)){voc=cached.Voc;notes=cached.Notes;}
             else
             {
-                voc=await _api.ResolveWordAsync(word,token);notes=voc==null?[]:await _api.GetNotesAsync(voc.Id,token);
+                voc=await _api.ResolveWordAsync(word,token);token.ThrowIfCancellationRequested();
+                if(version!=_notesVersion||word!=_word)return;
+                _vocabulary=voc;studyTask=LoadTodayStudyStatusAsync(word,voc);studyStarted=true;
+                notes=voc==null?[]:await _api.GetNotesAsync(voc.Id,token);
                 token.ThrowIfCancellationRequested();_cloudCache[word]=(DateTime.UtcNow,voc,notes);
             }
             if(token.IsCancellationRequested||version!=_notesVersion||word!=_word)return;
-            _vocabulary=voc;SetAccountStatus("已连接");
+            _vocabulary=voc;if(!studyStarted){studyTask=LoadTodayStudyStatusAsync(word,voc);studyStarted=true;}SetAccountStatus("已连接");
             var usable=notes.Where(note=>!string.IsNullOrWhiteSpace(note.Text)).Select(note=>new StoredMnemonic("cloud:"+note.Id,note.NoteType,note.Text,note.Id,"cloud")).ToArray();
             if(usable.Length>0)
             {
@@ -65,7 +69,9 @@ public partial class MainWindow
         {
             if(token.IsCancellationRequested||version!=_notesVersion||word!=_word)return;
             NotesHintText.Text=LocalNotesHint()+" · "+UserError(error);SetAccountError(error);
+            if(!studyStarted)FailTodayStudyLookup(word,error);
         }
+        finally{await studyTask;}
     }
     private void EditNotesButton_Click(object sender,RoutedEventArgs e)=>OpenMnemonicEditor(_displayedNotes.FirstOrDefault());
     private void OpenMnemonicEditor(StoredMnemonic? original)

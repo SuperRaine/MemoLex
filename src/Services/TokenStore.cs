@@ -18,6 +18,14 @@ public sealed class TokenStore
     internal TokenStore(string tokenPath) => _tokenPath = tokenPath;
 
     public bool HasToken => GetToken() is { Length: > 0 };
+    internal string? CredentialKey=>Fingerprint(GetToken());
+    internal static string? Fingerprint(string? token)
+    {
+        if(string.IsNullOrEmpty(token))return null;
+        var bytes=Encoding.UTF8.GetBytes(token);
+        try{return Convert.ToHexString(SHA256.HashData(bytes));}
+        finally{CryptographicOperations.ZeroMemory(bytes);}
+    }
 
     public string? GetToken()
     {
