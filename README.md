@@ -2,6 +2,8 @@
 
 Windows 英汉查词工具，支持离线查词、中文反查、助记、真题例句和墨墨云词本。
 
+**本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。**
+
 [下载软件](https://github.com/SuperRaine/MemoLex/releases/latest) · [使用说明](使用说明.md) · [问题反馈](https://github.com/SuperRaine/MemoLex/issues/new/choose)
 
 ## 下载
@@ -27,11 +29,9 @@ Windows 英汉查词工具，支持离线查词、中文反查、助记、真题
 
 首次启动可跟随新手引导熟悉功能。详细操作见[使用说明](使用说明.md)。
 
-## 反馈与支持
+## 反馈
 
 [GitHub Issues](https://github.com/SuperRaine/MemoLex/issues/new/choose) · [1623255609@qq.com](mailto:1623255609@qq.com) · QQ 群 **1132371819**
-
-自愿赞助入口在「设置 → 赞助与关于」。
 
 ## 开源许可
 
