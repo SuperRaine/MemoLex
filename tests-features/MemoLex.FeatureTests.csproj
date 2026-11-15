@@ -4,7 +4,7 @@
     <Compile Include="../src/Services/TranslationClient.cs" Link="TranslationClient.cs"/>
     <Compile Include="../src/Services/BundledTranslationKey.cs" Link="BundledTranslationKey.cs"/>
     <Compile Include="../src/Core/LocalDictionary.cs" Link="LocalDictionary.cs"/>
-    <Compile Include="../src/Core/EudicLocalDictionary.cs" Link="EudicLocalDictionary.cs"/>
+    <Compile Include="../src/Core/LocalBriefDictionary.cs" Link="LocalBriefDictionary.cs"/>
     <Compile Include="../src/Core/RelatedWords.cs" Link="RelatedWords.cs"/>
     <Compile Include="../src/Core/RelatedPhrases.cs" Link="RelatedPhrases.cs"/>
     <Compile Include="../src/Core/TextHighlights.cs" Link="TextHighlights.cs"/>

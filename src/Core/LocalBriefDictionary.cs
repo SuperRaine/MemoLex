@@ -6,12 +6,12 @@ using System.Text;
 namespace MemoLex.Core;
 
 /// <summary>
-/// Reads the plaintext brief-definition section of one verified local EuDic release.
+/// Reads the plaintext brief-definition section of one verified local file format.
 /// The source stays outside MemoLex; no dictionary data is exported or written.
 /// </summary>
-public sealed class EudicLocalDictionary
+public sealed class LocalBriefDictionary
 {
-    public const string SourceLabel = "欧路本地简明释义";
+    public const string SourceLabel = "本地简明释义";
 
     // This is a format profile, not a general-purpose combined.bin decoder. Unknown
     // releases must be inspected independently before adding another profile.
@@ -32,9 +32,9 @@ public sealed class EudicLocalDictionary
     private LoadedState? _state;
     private volatile string? _loadWarning;
 
-    public EudicLocalDictionary(string path) : this(path, SupportedProfile) { }
+    public LocalBriefDictionary(string path) : this(path, SupportedProfile) { }
 
-    internal EudicLocalDictionary(string path, FormatProfile profile)
+    internal LocalBriefDictionary(string path, FormatProfile profile)
     {
         _path = path;
         _profile = profile;
@@ -97,16 +97,16 @@ public sealed class EudicLocalDictionary
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
-            _loadWarning = "未找到欧路本地词库。";
+            _loadWarning = "未找到本地词库。";
         }
         catch (Exception ex) when (ex is InvalidDataException or DecoderFallbackException or FormatException)
         {
-            _loadWarning = "欧路本地词库版本不受支持，或文件不完整。";
+            _loadWarning = "本地词库版本不受支持，或文件不完整。";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
             or ArgumentException or NotSupportedException or System.Security.SecurityException)
         {
-            _loadWarning = "暂时无法读取欧路本地词库。";
+            _loadWarning = "暂时无法读取本地词库。";
         }
     }
 

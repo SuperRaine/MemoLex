@@ -162,8 +162,8 @@ public partial class MainWindow : Window
             await _related.LoadAsync();
             await _chinese.LoadAsync();
             _ready = true;
-            DictionaryCountText.Text = _dictionary.EudicAvailable?$"欧路优先 · {_dictionary.EudicCount:N0} 词目":$"ECDICT · {_dictionary.Count:N0} 词目";
-            DictionaryCountText.ToolTip=_dictionary.EudicAvailable?$"本机欧路简明释义优先，未收录时回退 ECDICT（{_dictionary.Count:N0} 词目）。":_dictionary.EudicWarning??"内置离线词典";
+            DictionaryCountText.Text = _dictionary.PreferredAvailable?$"本地词库 · {_dictionary.PreferredCount:N0} 词目":$"ECDICT · {_dictionary.Count:N0} 词目";
+            DictionaryCountText.ToolTip=_dictionary.PreferredAvailable?$"优先使用本地简明释义，未收录时回退 ECDICT（{_dictionary.Count:N0} 词目）。":_dictionary.PreferredWarning??"内置离线词典";
             UpdateHistory();
             SearchBox.Text = _preferences.History.FirstOrDefault() ?? "serendipity";
             SearchBox.Focus();
@@ -224,7 +224,7 @@ public partial class MainWindow : Window
         var exchange = FormatExchange(entry?.exchange);
         FillWordLinks(ExchangeText, exchange, EmptyMatches, word);
         ExchangeCard.Visibility = exchange.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        WordMetaText.Text = entry == null ? "本地未收录 · 正在查询墨墨词库" : entry.source=="eudic-local-brief"?EudicLocalDictionary.SourceLabel+" · 离线可用":"ECDICT 英汉双解 · 离线可用";
+        WordMetaText.Text = entry == null ? "本地未收录 · 正在查询墨墨词库" : entry.source=="local-brief"?LocalBriefDictionary.SourceLabel+" · 离线可用":"ECDICT 英汉双解 · 离线可用";
         if (int.TryParse(entry?.bnc, out var frequency) && frequency > 0) WordMetaText.Text += $"  /  BNC 词频 #{frequency:N0}";
         RenderTags(entry);
         ResultScroll.ScrollToTop();

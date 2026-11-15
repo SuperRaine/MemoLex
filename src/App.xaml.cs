@@ -23,8 +23,8 @@ public partial class App : Application
                 using var dictionary = new LocalDictionary();
                 await dictionary.LoadAsync();
                 result["wordCount"] = dictionary.Count;
-                result["eudicAvailable"]=dictionary.EudicAvailable;
-                result["eudicBriefCount"]=dictionary.EudicCount;
+                result["preferredDictionaryAvailable"]=dictionary.PreferredAvailable;
+                result["preferredDictionaryCount"]=dictionary.PreferredCount;
                 result["preferredDefinitionSource"]=dictionary.Lookup("apple")?.source;
                 result["apple"] = dictionary.Lookup("APPLE")?.translation;
                 result["serendipity"] = dictionary.Lookup("serendipity")?.translation;

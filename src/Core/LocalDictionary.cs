@@ -37,19 +37,33 @@ public sealed class LocalDictionary : IDisposable
     private FileStream? _data;
     private readonly object _gate = new();
     private readonly string _directory;
-    public const string DefaultEudicPath=@"D:\oulu\eudic\dic\combined.bin";
-    private readonly EudicLocalDictionary? _eudic;
-    public LocalDictionary(string? directory = null,string? eudicPath=null)
+    internal static string? ReadConfiguredBriefPath(string? settingsPath=null)
+    {
+        if(settingsPath==null)
+        {
+            var environmentPath=Environment.GetEnvironmentVariable("MEMOLEX_LOCAL_DICTIONARY");
+            if(!string.IsNullOrWhiteSpace(environmentPath))return environmentPath.Trim();
+            settingsPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MemoLex","dictionary.path");
+        }
+        try
+        {
+            var path=File.Exists(settingsPath)?File.ReadAllText(settingsPath).Trim():null;
+            return string.IsNullOrWhiteSpace(path)?null:path;
+        }
+        catch(Exception error)when(error is IOException or UnauthorizedAccessException){return null;}
+    }
+    private readonly LocalBriefDictionary? _preferred;
+    public LocalDictionary(string? directory = null,string? preferredPath=null)
     {
         _directory = directory ?? Path.Combine(AppContext.BaseDirectory, "data");
-        eudicPath??=directory==null?DefaultEudicPath:null;
-        if(!string.IsNullOrWhiteSpace(eudicPath))_eudic=new(eudicPath);
+        preferredPath??=directory==null?ReadConfiguredBriefPath():null;
+        if(!string.IsNullOrWhiteSpace(preferredPath))_preferred=new(preferredPath);
     }
     public int Count => _entries.Count;
-    public int EudicCount=>_eudic?.Count??0;
-    public bool EudicAvailable=>_eudic?.Available==true;
-    public string? EudicWarning=>_eudic?.LoadWarning;
-    public Task LoadAsync()=>Task.WhenAll(LoadBaseAsync(),_eudic?.LoadAsync()??Task.CompletedTask);
+    public int PreferredCount=>_preferred?.Count??0;
+    public bool PreferredAvailable=>_preferred?.Available==true;
+    public string? PreferredWarning=>_preferred?.LoadWarning;
+    public Task LoadAsync()=>Task.WhenAll(LoadBaseAsync(),_preferred?.LoadAsync()??Task.CompletedTask);
     private Task LoadBaseAsync() => Task.Run(() =>
     {
         if(_data!=null)return;
@@ -70,10 +84,10 @@ public sealed class LocalDictionary : IDisposable
 
     public DictionaryEntry? Lookup(string word)
     {
-        var entry=LookupBase(word);var local=_eudic?.Lookup(word);
+        var entry=LookupBase(word);var local=_preferred?.Lookup(word);
         if(!string.IsNullOrWhiteSpace(local?.translation))
         {
-            entry??=local;entry.translation=local.translation;entry.source="eudic-local-brief";
+            entry??=local;entry.translation=local.translation;entry.source="local-brief";
         }
         return entry;
     }

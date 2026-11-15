@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using MemoLex.Core;
 
-var root = Path.Combine(Path.GetTempPath(), "MemoLex.EudicTests." + Guid.NewGuid().ToString("N"));
+var root = Path.Combine(Path.GetTempPath(), "MemoLex.LocalDictionaryTests." + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 var passed = 0;
 try
@@ -36,7 +36,7 @@ try
         return bytes.ToArray();
     }
 
-    (string Path, EudicLocalDictionary.FormatProfile Profile) Fixture(byte[] section, int count)
+    (string Path, LocalBriefDictionary.FormatProfile Profile) Fixture(byte[] section, int count)
     {
         var path = Path.Combine(root, Guid.NewGuid().ToString("N") + ".bin");
         byte[] header = [0x4d, 0x4c, 0x58, 0x01];
@@ -50,7 +50,7 @@ try
     async Task RejectedSection(byte[] section, int count)
     {
         var fixture = Fixture(section, count);
-        var reader = new EudicLocalDictionary(fixture.Path, fixture.Profile);
+        var reader = new LocalBriefDictionary(fixture.Path, fixture.Profile);
         await reader.LoadAsync();
         Check(!reader.Available && reader.Count == 0 && reader.Lookup("synthetic") is null,
             "Malformed data was published");
@@ -76,7 +76,7 @@ try
         var fixture = Fixture(Section(("Synthetic", "合成示例\r\n第二行", true),
             ("synthetic phrase", "示例短语", false), ("vacant", "", false)), 3);
         var before = File.ReadAllBytes(fixture.Path);
-        var reader = new EudicLocalDictionary(fixture.Path, fixture.Profile);
+        var reader = new LocalBriefDictionary(fixture.Path, fixture.Profile);
         Check(!reader.Available && reader.Count == 0 && reader.Lookup("Synthetic") is null,
             "Lookup available before load");
         await Task.WhenAll(reader.LoadAsync(), reader.LoadAsync());
@@ -93,9 +93,9 @@ try
     await Test("Wrong release and missing file fail safely", async () =>
     {
         var fixture = Fixture(Section(("synthetic", "示例", false)), 1);
-        var wrongRelease = new EudicLocalDictionary(fixture.Path);
+        var wrongRelease = new LocalBriefDictionary(fixture.Path);
         await wrongRelease.LoadAsync();
-        var missing = new EudicLocalDictionary(Path.Combine(root, "missing.bin"));
+        var missing = new LocalBriefDictionary(Path.Combine(root, "missing.bin"));
         await missing.LoadAsync();
         Check(!wrongRelease.Available && wrongRelease.Count == 0 && wrongRelease.LoadWarning is not null,
             "Unknown release was accepted");
@@ -111,7 +111,7 @@ try
             if (kind == "truncate") bytes = bytes[..^1];
             else bytes[kind == "header" ? 0 : bytes.Length - 1] ^= 0x10;
             File.WriteAllBytes(fixture.Path, bytes);
-            var reader = new EudicLocalDictionary(fixture.Path, fixture.Profile);
+            var reader = new LocalBriefDictionary(fixture.Path, fixture.Profile);
             await reader.LoadAsync();
             Check(!reader.Available && reader.Count == 0 && reader.LoadWarning is not null,
                 "Damaged file was accepted: " + kind);
@@ -150,7 +150,7 @@ try
             fixture.Profile with { TextOffset = -1 }
         })
         {
-            var reader = new EudicLocalDictionary(fixture.Path, profile);
+            var reader = new LocalBriefDictionary(fixture.Path, profile);
             await reader.LoadAsync();
             Check(!reader.Available && reader.LoadWarning is not null, "Invalid bounds were accepted");
         }
@@ -159,7 +159,7 @@ try
     {
         using var dictionary=new LocalDictionary(BaseFixture(),Path.Combine(root,"absent.bin"));await dictionary.LoadAsync();
         var entry=dictionary.Lookup("APPLE");
-        Check(!dictionary.EudicAvailable&&dictionary.Count==2&&entry?.translation=="合成回退释义"&&entry.phonetic=="fixture-phonetic","Missing external source broke the normal dictionary");
+        Check(!dictionary.PreferredAvailable&&dictionary.Count==2&&entry?.translation=="合成回退释义"&&entry.phonetic=="fixture-phonetic","Missing external source broke the normal dictionary");
         Check(dictionary.LookupBySourceId(0)?.translation==entry!.translation,"Original source-index lookup changed");
     });
 
@@ -175,7 +175,7 @@ try
             }
             var before = Digest(path);
             var modified = File.GetLastWriteTimeUtc(path);
-            var reader = new EudicLocalDictionary(path);
+            var reader = new LocalBriefDictionary(path);
             await reader.LoadAsync();
             Check(reader.Available && reader.Count == 268_787 && reader.LoadWarning is null,
                 "Verified snapshot did not load: " + reader.LoadWarning);
@@ -192,10 +192,10 @@ try
         });
         await Test("The live external brief has priority while forms, phonetics and reverse-index meanings remain intact",async()=>
         {
-            var local=new EudicLocalDictionary(args[1]);await local.LoadAsync();
+            var local=new LocalBriefDictionary(args[1]);await local.LoadAsync();
             using var dictionary=new LocalDictionary(BaseFixture(),args[1]);await dictionary.LoadAsync();
             var entry=dictionary.Lookup("APPLE");
-            Check(dictionary.EudicAvailable&&dictionary.EudicCount==268787&&entry?.source=="eudic-local-brief"&&entry.translation==local.Lookup("apple")?.translation,"External definition did not have priority");
+            Check(dictionary.PreferredAvailable&&dictionary.PreferredCount==268787&&entry?.source=="local-brief"&&entry.translation==local.Lookup("apple")?.translation,"External definition did not have priority");
             Check(entry!.phonetic=="fixture-phonetic"&&entry.exchange=="s:apples"&&entry.bnc=="42","Priority replacement erased ECDICT metadata");
             Check(dictionary.LookupBySourceId(0)?.translation=="合成回退释义","External priority changed the Chinese postings source meaning");
             Check(dictionary.Lookup("__memolex_generated_only__")?.translation=="合成回退释义","A missing external word did not fall back");
@@ -203,7 +203,7 @@ try
     }
     else if (args.Length != 0) throw new ArgumentException("Usage: [--live <combined.bin path>]");
 
-    Console.WriteLine($"Passed {passed} EuDic reader checks.");
+    Console.WriteLine($"Passed {passed} local dictionary reader checks.");
 }
 finally
 {
