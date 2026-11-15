@@ -118,7 +118,7 @@ internal static class SettingsDialog
         FeedbackCard("GitHub Issues","反馈问题、提出建议，查看处理进度。",RepositoryUrl+"/issues","反馈问题","FeedbackIssueButton",()=>OpenLink(IssueUrl,"无法打开浏览器，可复制上方地址访问 Issues。"));
         var copyEmail=new Button {Content="复制邮箱",HorizontalAlignment=HorizontalAlignment.Left};copyEmail.Click+=(_,_)=>CopyContact(FeedbackEmail,"反馈邮箱已复制。");feedback.Children.Add(copyEmail);dialog.RegisterName("CopyFeedbackEmail",copyEmail);
 
-        var support=Page("关于与发电","墨墨搜词 MemoLex · "+Version);
+        var support=Page("关于与赞助","墨墨搜词 MemoLex · "+Version);
         var projectNotice=InputDialog.Text(IndependenceNotice);
         support.Children.Add(new Border {Child=projectNotice,Padding=new Thickness(12),Margin=new Thickness(0,0,0,16),
             Background=new SolidColorBrush(Color.FromRgb(239,248,255)),CornerRadius=new CornerRadius(8)});
@@ -141,7 +141,7 @@ internal static class SettingsDialog
         dialog.RegisterName("SettingsUpdatePage",PageView("软件更新"));
         var hoverPage=Page("鼠标取词","鼠标停在英文单词上时显示释义，移开后自动收起。");hoverPage.Children.Add(HoverSettingsPanel.Build(dialog,preferences,out var applyHover));
         dialog.RegisterName("SettingsHoverPage",PageView("鼠标取词"));
-        var pageOrder=new[]{"常规","墨墨账号","鼠标取词","快捷键","软件更新","反馈","关于与发电"};
+        var pageOrder=new[]{"常规","墨墨账号","鼠标取词","快捷键","软件更新","反馈","关于与赞助"};
         pages=pageOrder.Select(title=>pages.Single(page=>page.Title==title)).ToList();
         foreach(var page in pages)navigation.Items.Add(page.Title);
         navigation.SelectionChanged+=(_,_)=>{if(navigation.SelectedIndex>=0)host.Content=pages[navigation.SelectedIndex].View;};
@@ -168,7 +168,7 @@ internal static class SettingsDialog
             }
             catch{status.Text="未能保存设置，请检查填写内容后重试。";}
         };
-        foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SaveSettings",save),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",PageView("常规")),("SettingsShortcutsPage",PageView("快捷键")),("SettingsAccountPage",PageView("墨墨账号")),("SettingsFeedbackPage",PageView("反馈")),("SettingsSupportPage",PageView("关于与发电")),("SponsorPaymentTabs",payments)})dialog.RegisterName(name,control);
+        foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SaveSettings",save),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",PageView("常规")),("SettingsShortcutsPage",PageView("快捷键")),("SettingsAccountPage",PageView("墨墨账号")),("SettingsFeedbackPage",PageView("反馈")),("SettingsSupportPage",PageView("关于与赞助")),("SponsorPaymentTabs",payments)})dialog.RegisterName(name,control);
         changed=()=>tokenChanged;return dialog;
     }
 
