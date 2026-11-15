@@ -12,8 +12,8 @@
 
 | 版本 | 使用方法 |
 | --- | --- |
-| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.4.0/MemoLex-1.4.0-Windows-x64-Setup.msi) | 双击安装，按向导操作即可。 |
-| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.4.0/MemoLex-1.4.0-Windows-x64.zip) | 完整解压后，运行 `MemoLex/MemoLex.exe`。 |
+| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.5.0/MemoLex-1.5.0-Windows-x64-Setup.msi) | 双击安装，按向导操作即可。 |
+| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.5.0/MemoLex-1.5.0-Windows-x64.zip) | 完整解压后，运行 `MemoLex/MemoLex.exe`。 |
 
 登录和海词词典需要网页组件，缺少时按提示联网安装即可。
 

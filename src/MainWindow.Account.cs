@@ -73,7 +73,7 @@ public partial class MainWindow
         if(_accountAuthenticated)
         {
             SetAccountStatus("已连接");
-            SettingsButton.ToolTip=$"墨墨账号：已连接\n部分服务暂不可用：{UserError(error)}\n点击打开账号连接与应用设置";
+            AccountButton.ToolTip=$"墨墨账号：{_tokens.ActiveAccount?.Name??"未选择账号"} · 已连接\n部分服务暂不可用：{UserError(error)}\n点击登录或切换账号";
             return;
         }
         SetAccountStatus(error is MaiMemoException {StatusCode:HttpStatusCode.TooManyRequests}?"连接受限":error is MaiMemoException {StatusCode:HttpStatusCode.Forbidden}?"权限待确认":"暂时离线");

@@ -18,6 +18,9 @@ internal sealed class UpdateManager:IDisposable
     private readonly DispatcherTimer _timer=new(){Interval=TimeSpan.FromMinutes(1)};
     private readonly Action _exit;
     private readonly Version _current;
+    private readonly string _updateRoot;
+    private readonly HashSet<Version> _notifiedVersions=[];
+    private Task? _startupCheck;
     private CancellationTokenSource? _operation;
     private bool _busy,_automatic,_disposed;
     private UpdateRelease? _release;
@@ -26,17 +29,25 @@ internal sealed class UpdateManager:IDisposable
     internal string Status {get;private set;}="点击「手动检查更新」获取最新版本。";
     internal int Progress {get;private set;}
     internal event Action? Changed;
+    internal event Action<UpdateRelease>? NewVersionAvailable;
+    internal Version CurrentVersion=>_current;
     internal bool Busy=>_busy;
     internal bool CanDownload=>!_busy&&_asset!=null&&_download==null;
     internal bool CanInstall=>!_busy&&_asset!=null&&_download!=null;
     internal UpdateRelease? Release=>_release;
-    internal UpdateManager(Preferences preferences,Action exit,GitHubUpdateClient? client=null,Version? current=null)
+    internal UpdateManager(Preferences preferences,Action exit,GitHubUpdateClient? client=null,Version? current=null,string? updateRoot=null)
     {
         _preferences=preferences;_exit=exit;_client=client??new();_current=current??Version.Parse(SettingsDialog.Version);
+        _updateRoot=updateRoot??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MemoLex","updates");
         if(GitHubUpdateClient.TryVersion(_preferences.LastPublicVersion,out var previous)&&_preferences.LastSuccessfulUpdateCheck!=null)Status=$"上次检查到的正式版为 {previous}。可手动检查是否有更新。";
         _timer.Tick+=async(_,_)=>await CheckScheduledAsync(false);
     }
-    internal void Start(){_timer.Start();_=CheckScheduledAsync(true);}
+    internal Task Start()
+    {
+        if(_disposed)return Task.CompletedTask;
+        if(_startupCheck!=null)return _startupCheck;
+        _timer.Start();return _startupCheck=CheckScheduledAsync(true);
+    }
     private async Task CheckScheduledAsync(bool startup)
     {
         if(!_busy&&GitHubUpdateClient.CheckDue(_preferences.AutomaticUpdates,_preferences.UpdateFrequency,_preferences.LastUpdateCheck,DateTimeOffset.UtcNow,startup))await CheckAsync(true);
@@ -59,6 +70,7 @@ internal sealed class UpdateManager:IDisposable
             if(release.Version<=_current){_release=null;_asset=null;_download=null;Notify(release.Version<_current?$"当前版本 {_current} 比已发布的正式版 {release.Version} 更新，无需升级。":$"当前版本 {_current} 已是最新正式版。");return;}
             if(_release?.Version!=release.Version)_download=null;
             _release=release;_asset=IsMsiInstallation()?release.Installer:release.Portable;
+            if(automatic&&_notifiedVersions.Add(release.Version))NewVersionAvailable?.Invoke(release);
             if(_asset==null){Notify($"发现新版 {release.Version}，暂不支持直接更新。请前往下载页面手动安装。");return;}
             Notify($"发现新版 {release.Version}。"+(automatic?"正在自动下载…":"可下载更新。"));
             if(automatic&&_preferences.AutomaticUpdates)await DownloadCoreAsync(token);
@@ -79,10 +91,9 @@ internal sealed class UpdateManager:IDisposable
     {
         if(_asset==null||_release==null)return;
         var progress=new Progress<DownloadProgress>(p=>{var percent=(int)(p.Received*100/Math.Max(1,p.Total));if(percent==Progress||_download!=null)return;Progress=percent;Notify($"正在下载 {_release.Version} · {Progress}%（{p.Received/1048576d:F1} / {p.Total/1048576d:F1} MB）");});
-        _download=await _client.DownloadAsync(_asset,Path.Combine(UpdateRoot,_release.Version.ToString()),progress,token);
+        _download=await _client.DownloadAsync(_asset,Path.Combine(_updateRoot,_release.Version.ToString()),progress,token);
         Notify($"新版 {_release.Version} 已下载完成，点击「更新并重启」即可安装。");
     }
-    private static string UpdateRoot=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MemoLex","updates");
     internal static bool IsMsiInstallation()
     {
         try{using var key=Registry.CurrentUser.OpenSubKey(@"Software\SuperRaine\MemoLex\Installer");return key?.GetValue("InstallDirectory") is string path&&Path.GetFullPath(path).TrimEnd('\\').Equals(Path.GetFullPath(AppContext.BaseDirectory).TrimEnd('\\'),StringComparison.OrdinalIgnoreCase);}catch{return false;}
@@ -95,7 +106,7 @@ internal sealed class UpdateManager:IDisposable
         try
         {
             if(!await GitHubUpdateClient.ValidFileAsync(_download,_asset)){_download=null;throw new UpdateException("已下载文件发生变化，请重新下载。");}
-            var job=Path.Combine(UpdateRoot,"apply-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(job);
+            var job=Path.Combine(_updateRoot,"apply-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(job);
             var portable=_asset.Name.EndsWith(".zip",StringComparison.OrdinalIgnoreCase);string[] files=[];
             if(portable)files=(await Task.Run(()=>GitHubUpdateClient.ExtractPortable(_download,Path.Combine(job,"stage")))).ToArray();
             var appDir=Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar);
@@ -123,22 +134,25 @@ internal sealed class UpdateManager:IDisposable
     {
         var panel=new StackPanel();
         panel.Children.Add(InputDialog.Text("当前版本 "+_current+" · Windows x64"));
-        var enabled=new CheckBox{Content="自动检查并下载更新",IsChecked=_preferences.AutomaticUpdates,Margin=new Thickness(0,20,0,12)};panel.Children.Add(enabled);
+        var policyRow=new WrapPanel{Margin=new Thickness(0,12,0,10),VerticalAlignment=VerticalAlignment.Center};panel.Children.Add(policyRow);
+        var enabled=new CheckBox{Content="自动检查并下载更新",IsChecked=_preferences.AutomaticUpdates,Margin=new Thickness(0,8,16,8),VerticalAlignment=VerticalAlignment.Center};policyRow.Children.Add(enabled);
         var choices=new[]{new Frequency("每次启动","startup"),new Frequency("每 6 小时","6h"),new Frequency("每天","daily"),new Frequency("每周","weekly")};
-        panel.Children.Add(InputDialog.Text("检查更新间隔"));var frequency=new ComboBox{ItemsSource=choices,SelectedItem=choices.FirstOrDefault(c=>c.Value==_preferences.UpdateFrequency)??choices[2],Margin=new Thickness(0,8,0,12),MinWidth=180,MinHeight=37,HorizontalAlignment=HorizontalAlignment.Left};panel.Children.Add(frequency);
-        panel.Children.Add(InputDialog.Text("这些选项立即生效。下载完成后由你选择重启安装。关闭自动更新仍可手动检查。"));
-        var state=InputDialog.Text(Status);state.Margin=new Thickness(0,24,0,12);panel.Children.Add(state);
+        var frequencyLabel=InputDialog.Text("检查更新间隔");frequencyLabel.VerticalAlignment=VerticalAlignment.Center;frequencyLabel.Margin=new Thickness(0,0,8,0);policyRow.Children.Add(frequencyLabel);
+        var frequency=new ComboBox{ItemsSource=choices,SelectedItem=choices.FirstOrDefault(c=>c.Value==_preferences.UpdateFrequency)??choices[2],MinWidth=150,MinHeight=34,VerticalAlignment=VerticalAlignment.Center};policyRow.Children.Add(frequency);
+        panel.Children.Add(InputDialog.Text("发现新版会弹窗提醒，下载完成后可选择重启安装。"));
+        var state=InputDialog.Text(Status);state.Margin=new Thickness(0,14,0,8);panel.Children.Add(state);
         var bar=new ProgressBar{Minimum=0,Maximum=100,Height=5,Margin=new Thickness(0,0,0,16)};panel.Children.Add(bar);
         var last=InputDialog.Text("");panel.Children.Add(last);
-        var buttons=new WrapPanel{Margin=new Thickness(0,14,0,16)};panel.Children.Add(buttons);
+        var buttons=new WrapPanel{Margin=new Thickness(0,10,0,6)};panel.Children.Add(buttons);
         Button Button(string title,string name,Action action){var button=new Button{Content=title,Margin=new Thickness(0,0,8,10)};button.Click+=(_,_)=>action();buttons.Children.Add(button);owner.RegisterName(name,button);return button;}
         var check=Button("手动检查更新","CheckUpdatesButton",async()=>await CheckAsync());
         var download=Button("下载更新","DownloadUpdateButton",async()=>await DownloadAsync());
         var install=Button("更新并重启","InstallUpdateButton",async()=>await InstallAsync(owner));
         var cancel=Button("取消当前操作","CancelUpdateButton",Cancel);
         Button("前往下载页面","UpdateReleasePage",()=>{try{Process.Start(new ProcessStartInfo(_release?.Page.AbsoluteUri??GitHubUpdateClient.Repository+"/releases/latest"){UseShellExecute=true});}catch{state.Text="无法打开浏览器。";}});
-        var notes=new TextBox{IsReadOnly=true,TextWrapping=TextWrapping.Wrap,MaxHeight=210,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Visibility=Visibility.Collapsed};panel.Children.Add(notes);
-        void Render(){state.Text=Status;bar.Value=Progress;bar.Visibility=_busy?Visibility.Visible:Visibility.Collapsed;check.IsEnabled=!Busy;download.IsEnabled=CanDownload;install.IsEnabled=CanInstall;cancel.Visibility=Busy?Visibility.Visible:Visibility.Collapsed;frequency.IsEnabled=enabled.IsChecked==true;last.Text=_preferences.LastUpdateCheck is {} at?"上次检查："+at.ToLocalTime().ToString("yyyy-MM-dd HH:mm"):"还未检查";notes.Text=_release?.Notes??"";notes.Visibility=notes.Text.Length>0?Visibility.Visible:Visibility.Collapsed;}
+        var notes=new TextBox{IsReadOnly=true,TextWrapping=TextWrapping.Wrap,MaxHeight=130,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
+        var notesSection=new Expander{Header="更新说明",Content=notes,Visibility=Visibility.Collapsed};panel.Children.Add(notesSection);
+        void Render(){state.Text=Status;bar.Value=Progress;bar.Visibility=_busy?Visibility.Visible:Visibility.Collapsed;check.IsEnabled=!Busy;download.IsEnabled=CanDownload;install.IsEnabled=CanInstall;cancel.Visibility=Busy?Visibility.Visible:Visibility.Collapsed;frequency.IsEnabled=enabled.IsChecked==true;last.Text=_preferences.LastUpdateCheck is {} at?"上次检查："+at.ToLocalTime().ToString("yyyy-MM-dd HH:mm"):"还未检查";notes.Text=_release?.Notes??"";notesSection.Visibility=notes.Text.Length>0?Visibility.Visible:Visibility.Collapsed;}
         enabled.Checked+=(_,_)=>{_preferences.AutomaticUpdates=true;PolicyChanged();};enabled.Unchecked+=(_,_)=>{_preferences.AutomaticUpdates=false;PolicyChanged();};
         frequency.SelectionChanged+=(_,_)=>{_preferences.UpdateFrequency=((Frequency)frequency.SelectedItem).Value;PolicyChanged();};
         panel.Loaded+=(_,_)=>{Changed+=Render;Render();};panel.Unloaded+=(_,_)=>Changed-=Render;

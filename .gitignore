@@ -3,6 +3,7 @@ obj/
 .vs/
 .vscode/
 dist/
+.tools/
 work/
 data/
 *.user
@@ -23,3 +24,7 @@ payload-policy-check-*.json
 /tests*/
 /验证结果.json
 /tools/verify_*.py
+/mnemonics/mnemonic-authoring/**/review-ledger.jsonl
+/mnemonics/mnemonic-authoring/**/review-report.json
+/mnemonics/mnemonic-authoring/**/rewrite-ledger.jsonl
+/mnemonics/mnemonic-authoring/**/spelling-operation-audit.json

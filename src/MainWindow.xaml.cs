@@ -42,7 +42,7 @@ public partial class MainWindow : Window
     private WindowState _restoreState = WindowState.Normal;
 
     public MainWindow(bool allowCloud = true) : this(Preferences.Load(), new TokenStore(), new LocalDictionary(), new ExampleSentenceClient(), allowCloud, true) { }
-    internal MainWindow(Preferences preferences, TokenStore tokens, LocalDictionary dictionary, ExampleSentenceClient examples, bool allowCloud = true, bool desktopIntegration = false, MaiMemoClient? api = null, RelatedWords? related = null, TranslationClient? translation = null, ChineseReverseSearch? chinese = null,MnemonicStore? mnemonics=null)
+    internal MainWindow(Preferences preferences, TokenStore tokens, LocalDictionary dictionary, ExampleSentenceClient examples, bool allowCloud = true, bool desktopIntegration = false, MaiMemoClient? api = null, RelatedWords? related = null, TranslationClient? translation = null, ChineseReverseSearch? chinese = null,MnemonicStore? mnemonics=null,MemoLex.Desktop.UpdateManager? updates=null)
     {
         _preferences = preferences;
         _tokens = tokens;
@@ -50,6 +50,7 @@ public partial class MainWindow : Window
         _examples = examples;
         _allowCloud = allowCloud;
         _desktopIntegration=desktopIntegration;
+        _updates=updates;
         _api = api ?? new MaiMemoClient(_tokens);
         _accountCredentialKey=_tokens.CredentialKey;_api.ExpectedCredentialKey=_accountCredentialKey;_api.AuthenticationResult+=OnApiAuthenticationResult;
         _related=related??new RelatedWords(_dictionary);
@@ -70,7 +71,13 @@ public partial class MainWindow : Window
         SpeakButton.IsEnabled = false;
         HaiciButton.IsEnabled=false;
         UpdateExamCountdown();
-        Loaded += async (_, _) => {StartExamCountdownClock();StartTodayStudyClock();StartAccountClock();await InitializeAsync();RefreshHoverLookup();if(_desktopIntegration){_updates=new(_preferences,ExitApplication);_updates.Changed+=()=>{if(_updates.CanInstall)StatusText.Text=_updates.Status+" 设置 → 软件更新";};_updates.Start();if(!_preferences.OnboardingCompleted)StartOnboarding();}};
+        Loaded += async (_, _) =>
+        {
+            StartUpdateChecks();
+            StartExamCountdownClock();StartTodayStudyClock();StartAccountClock();
+            await InitializeAsync();RefreshHoverLookup();
+            if(_desktopIntegration&&_updateNotice==null&&!_preferences.OnboardingCompleted)StartOnboarding();
+        };
         SourceInitialized += (_, _) =>
         {
             InstallHotkey();
@@ -79,7 +86,7 @@ public partial class MainWindow : Window
             try { _tray = new TrayIcon(RestoreWindow, () => { RestoreWindow(); SettingsButton_Click(this, new RoutedEventArgs()); }, ExitApplication); }
             catch { StatusText.Text = "托盘暂不可用，关闭窗口时将直接退出。"; }
         };
-        StateChanged += (_, _) => { if (WindowState != WindowState.Minimized) _restoreState = WindowState; UpdateWindowChrome(); };
+        StateChanged += (_, _) => { if (WindowState != WindowState.Minimized) {_restoreState = WindowState;QueuePendingUpdateNotice();} UpdateWindowChrome(); };
         PreviewKeyDown += Window_PreviewKeyDown;
         PreviewMouseDown += Window_PreviewMouseDown;
         Closed += (_, _) =>
@@ -144,6 +151,7 @@ public partial class MainWindow : Window
             SearchBox.Focus();
         }
         SearchBox.SelectAll();
+        QueuePendingUpdateNotice();
     }
     internal void ExitApplication()
     {
@@ -557,7 +565,7 @@ public partial class MainWindow : Window
         if (!_allowCloud) return;
         if (_adding || !ValidWord(_word)) return;
         if (_refreshing) { StatusText.Text = "正在刷新云词本，请稍候。"; return; }
-        if (!_tokens.HasToken) { SettingsButton_Click(this, new RoutedEventArgs()); return; }
+        if (!_tokens.HasToken) { AccountButton_Click(this, new RoutedEventArgs()); return; }
         if (NotepadCombo.SelectedItem is not CloudNotepad pad) { await CreateNotepadForCurrentWordAsync(); return; }
         var word = _word;
         if(_membershipWord!=word||_membershipPad!=pad.Id)
@@ -603,7 +611,7 @@ public partial class MainWindow : Window
         if (!_allowCloud) return;
         if (_adding) return;
         if (_refreshing) { StatusText.Text = "正在刷新云词本，请稍候。"; return; }
-        if (!_tokens.HasToken) { SettingsButton_Click(this, new RoutedEventArgs()); return; }
+        if (!_tokens.HasToken) { AccountButton_Click(this, new RoutedEventArgs()); return; }
         var word = _word;
         if (!ValidWord(word)) { StatusText.Text = "请先查询一个英文单词，再新建云词本。"; return; }
         var title = InputDialog.Ask(this, "新建墨墨云词本", $"新词本将包含当前单词「{word}」。", "桌面生词本", "新建并加入");
@@ -627,14 +635,15 @@ public partial class MainWindow : Window
         catch (Exception ex) { ShowError(ex); }
         finally { _adding = false; SetCloudWriteBusy(false); await UpdateMembershipAsync(); }
     }
-    private void SettingsButton_Click(object sender, RoutedEventArgs e)=>EditSettings();
+    private void AccountButton_Click(object sender, RoutedEventArgs e)=>EditSettings("墨墨账号");
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)=>EditSettings("常规");
     private void EditSettings(string? initialPage=null)
     {
         if (_adding || _refreshing) return;
         SettingsResult result;
         _editingSettings=true;ReleaseGlobalShortcut();
         try{result=SettingsDialog.Edit(this,_tokens,_preferences,ValidateGlobalShortcut,ReloadAccountAsync,initialPage??(_updates?.CanInstall==true?"软件更新":!_tokens.HasToken?"墨墨账号":null),_updates,startOnboarding:StartOnboarding);}
-        finally{_editingSettings=false;RefreshGlobalShortcut();RefreshDoubleCopy();RefreshHoverLookup();}
+        finally{_editingSettings=false;RefreshGlobalShortcut();RefreshDoubleCopy();RefreshHoverLookup();QueuePendingUpdateNotice();}
         if (!result.Saved) return;
         UpdateShortcutHints();
         UpdateExamCountdown();
@@ -643,6 +652,7 @@ public partial class MainWindow : Window
     private void SetCloudWriteBusy(bool busy)
     {
         SettingsButton.IsEnabled = !busy;
+        AccountButton.IsEnabled = !busy;
         NotepadCombo.IsEnabled = !busy;
         CreateNotepadButton.IsEnabled = !busy;
         RefreshNotepadsButton.IsEnabled = !busy;

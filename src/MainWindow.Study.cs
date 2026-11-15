@@ -17,6 +17,14 @@ public partial class MainWindow
     internal Func<Window,string,bool> ConfirmTodayStudy {get;set;}=TodayStudyConfirmationDialog.Confirm;
     private bool LocallyConfirmedLearned(string word)=>_accountCredentialKey!=null&&_accountCredentialKey==_tokens.CredentialKey&&_preferences.IsConfirmedLearned(_tokens.ActiveAccount?.Id,word);
 
+    private void RememberLearnedWord(string word)
+    {
+        if(_accountCredentialKey==null||_accountCredentialKey!=_tokens.CredentialKey||_tokens.ActiveAccount is not {} account
+            ||_preferences.IsConfirmedLearned(account.Id,word))return;
+        _preferences.ConfirmLearned(account.Id,word);
+        _preferences.Save();
+    }
+
     private void StartTodayStudyClock()
     {
         _studyDayTimer=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromSeconds(30)};
@@ -44,7 +52,7 @@ public partial class MainWindow
         var loading=!local&&_studyLoadingWord==_word;var failed=!local&&snapshot?.Error!=null;var missing=!local&&snapshot?.Missing==true;
         AddTodayButton.Content=_studyWordInFlight==_word?"正在处理…":loading?"正在获取学习状态…":confirmed?"已计划新学":learned?"已学过":missing?"墨墨未收录":failed?"重新获取学习状态":syncRequired?"核对学习记录":pending?"核对今日新学":"＋ 今日新学";
         AddTodayButton.IsEnabled=_ready&&_allowCloud&&!_adding&&!_refreshing&&!loading&&ValidWord(_word)&&!confirmed&&!learned&&!missing;
-        AddTodayButton.ToolTip=local?"你已确认此账号学过该词，不会再次加入今日新学。":failed?snapshot!.Error+"\n点击可刷新学习状态，不会重复添加。":missing?"墨墨词库未收录此拼写。":learned?"该词已有实际学习记录，不能重新作为新学单词添加。":confirmed?"已加入新学计划，尚未学习；手机端完成自动同步后状态会刷新。":syncRequired?"暂时无法确认这个单词的学习记录。请先在墨墨 App 同步学习数据，再点击核对；核对不会重复添加单词。":pending?"学习状态还未同步，点击可刷新，不会重复添加。":"将单词加入墨墨今日新学。添加前，请先在墨墨 App 开启学习数据自动同步。";
+        AddTodayButton.ToolTip=local?"已在当前账号确认学过，不会再次加入今日新学。":failed?snapshot!.Error+"\n点击可刷新学习状态，不会重复添加。":missing?"墨墨词库未收录此拼写。":learned?"该词已有实际学习记录，不能重新作为新学单词添加。":confirmed?"已加入新学计划，尚未学习；手机端完成自动同步后状态会刷新。":syncRequired?"暂时无法确认学习记录，点击可重新核对，不会重复添加。":pending?"学习状态还未同步，点击可刷新，不会重复添加。":"将单词加入墨墨今日新学。";
     }
 
     private bool FreshStudySnapshot(string word)=>LocallyConfirmedLearned(word)||_todayStudyStates.TryGetValue(word,out var cached)&&cached.Error==null&&DateTime.UtcNow-cached.CheckedAt<TimeSpan.FromSeconds(15);
@@ -78,6 +86,7 @@ public partial class MainWindow
                 if(old.Status==TodayStudyStatus.AlreadyLearned)status=TodayStudyStatus.AlreadyLearned;
                 else if(status==TodayStudyStatus.NotAdded&&old.Status==TodayStudyStatus.PendingVerification)status=TodayStudyStatus.PendingVerification;
             }
+            if(status==TodayStudyStatus.AlreadyLearned)RememberLearnedWord(word);
             _todayStudyStates[word]=new(DateTime.UtcNow,status);
         }
         catch(OperationCanceledException){}
@@ -104,7 +113,7 @@ public partial class MainWindow
         UpdateTodayStudyButton();
         _todayStudyStates.TryGetValue(_word,out var snapshot);var saved=snapshot?.Status;
         if(saved is TodayStudyStatus.Added or TodayStudyStatus.AlreadyToday or TodayStudyStatus.Planned or TodayStudyStatus.AlreadyLearned||snapshot?.Missing==true)return;
-        if(!_tokens.HasToken){SettingsButton_Click(this,new RoutedEventArgs());return;}
+        if(!_tokens.HasToken){AccountButton_Click(this,new RoutedEventArgs());return;}
         if(snapshot?.Error!=null){_todayStudyStates.Remove(_word);PrepareTodayStudyLookup(_word,_lookupCts?.Token??CancellationToken.None);await RetryTodayStudyStatusAsync(_word);return;}
         var word=_word;var date=_studyDate;var account=_accountVersion;var verifyOnly=saved is TodayStudyStatus.PendingVerification or TodayStudyStatus.SyncRequired;
         _adding=true;
@@ -124,7 +133,11 @@ public partial class MainWindow
             var vocabulary=_vocabulary?.Spelling.Equals(word,StringComparison.OrdinalIgnoreCase)==true?_vocabulary:await _api.ResolveWordAsync(word,token);
             if(vocabulary==null)throw new MaiMemoException("墨墨未收录这个单词，请检查拼写。");
             var result=await _api.AddToTodayAsync(vocabulary,verifyOnly,token);
-            if(date==_studyDate&&account==_accountVersion)_todayStudyStates[word]=new(DateTime.UtcNow,result.Status);
+            if(date==_studyDate&&account==_accountVersion)
+            {
+                if(result.Status==TodayStudyStatus.AlreadyLearned)RememberLearnedWord(word);
+                _todayStudyStates[word]=new(DateTime.UtcNow,result.Status);
+            }
             message=result.Status switch
             {
                 TodayStudyStatus.Added=>$"「{word}」已加入今日新学。",

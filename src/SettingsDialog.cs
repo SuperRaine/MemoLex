@@ -28,113 +28,154 @@ internal static class SettingsDialog
     internal static Window Build(Window owner,TokenStore store,Preferences preferences,out Func<bool> changed,Func<Dictionary<string,string>,string?>? validateShortcuts=null,IStartupRegistration? startupRegistration=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null)
     {
         var dialog=InputDialog.Shell(owner,"设置",out _);
-        dialog.Width=Math.Min(840,SystemParameters.WorkArea.Width-60);dialog.Height=Math.Min(740,SystemParameters.WorkArea.Height-50);
+        dialog.Width=Math.Min(980,SystemParameters.WorkArea.Width-60);dialog.Height=Math.Min(740,SystemParameters.WorkArea.Height-50);
         dialog.MinWidth=680;dialog.MinHeight=520;dialog.SizeToContent=SizeToContent.Manual;dialog.ResizeMode=ResizeMode.CanResize;
         WindowChrome.GetWindowChrome(dialog).ResizeBorderThickness=new Thickness(6);
-        var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(158)});body.ColumnDefinitions.Add(new ColumnDefinition());
+        var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(146)});body.ColumnDefinitions.Add(new ColumnDefinition());
         InputDialog.SetBody(dialog,body);
         var navigation=new ListBox {Margin=new Thickness(10,18,10,14),BorderThickness=new Thickness(0),Background=Brushes.Transparent,FontSize=13,HorizontalContentAlignment=HorizontalAlignment.Stretch};
         var side=new Border {Background=new SolidColorBrush(Color.FromRgb(246,250,254)),BorderBrush=new SolidColorBrush(Color.FromRgb(229,237,245)),BorderThickness=new Thickness(0,0,1,0),Child=navigation};body.Children.Add(side);
         var right=new Grid();right.RowDefinitions.Add(new RowDefinition());right.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});Grid.SetColumn(right,1);body.Children.Add(right);
         var host=new ContentControl {HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Stretch};right.Children.Add(host);
-        var footer=new Grid {Margin=new Thickness(24,10,24,18)};footer.ColumnDefinitions.Add(new ColumnDefinition());footer.ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});Grid.SetRow(footer,1);right.Children.Add(footer);
+        var footer=new Grid {Margin=new Thickness(20,8,20,12)};footer.ColumnDefinitions.Add(new ColumnDefinition());footer.ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});Grid.SetRow(footer,1);right.Children.Add(footer);
         var status=InputDialog.Text("");status.VerticalAlignment=VerticalAlignment.Center;status.Margin=new Thickness(0,0,12,0);footer.Children.Add(status);
         var save=new Button {Content="保存设置",Style=(Style)Application.Current.FindResource("AccentButton"),Padding=new Thickness(18,9,18,9),IsDefault=true};Grid.SetColumn(save,1);footer.Children.Add(save);
 
         var pages=new List<(string Title,ScrollViewer View)>();
         StackPanel Page(string title,string description)
         {
-            var panel=new StackPanel {Margin=new Thickness(26,22,26,16)};
-            panel.Children.Add(new TextBlock {Text=title,FontSize=23,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(38,63,83))});
-            var subtitle=InputDialog.Text(description);subtitle.Margin=new Thickness(0,8,0,22);panel.Children.Add(subtitle);
+            var panel=new StackPanel {Margin=new Thickness(20,14,20,12)};
+            panel.Children.Add(new TextBlock {Text=title,FontSize=20,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(38,63,83))});
+            var subtitle=InputDialog.Text(description);subtitle.FontSize=12;subtitle.Margin=new Thickness(0,4,0,14);panel.Children.Add(subtitle);
             var view=new ScrollViewer {Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
             pages.Add((title,view));return panel;
         }
         ScrollViewer PageView(string title)=>pages.Single(page=>page.Title==title).View;
-        void Heading(Panel page,string text)=>page.Children.Add(new TextBlock {Text=text,FontSize=14,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,12,0,12)});
-        void Divider(Panel page)=>page.Children.Add(new Separator {Margin=new Thickness(0,16,0,8)});
-
-        var general=Page("常规","让墨墨搜词按你的习惯工作。");
-        Heading(general,"考试倒计时");
-        var showCountdown=new CheckBox {Content="在标题栏显示考试倒计时",IsChecked=preferences.ShowExamCountdown,Margin=new Thickness(0,0,0,12)};
-        general.Children.Add(showCountdown);
-        general.Children.Add(InputDialog.Text("考试名称"));
-        var examName=new TextBox {Text=preferences.ExamName,MaxLength=40,Margin=new Thickness(0,6,0,12),Padding=new Thickness(9),MinHeight=35};
-        general.Children.Add(examName);general.Children.Add(InputDialog.Text("考试日期"));
+        var general=Page("常规","设置关闭方式、启动选项和考试倒计时。");
+        var generalGrid=new Grid();generalGrid.ColumnDefinitions.Add(new());generalGrid.ColumnDefinitions.Add(new());general.Children.Add(generalGrid);
+        for(var row=0;row<3;row++)generalGrid.RowDefinitions.Add(new(){Height=GridLength.Auto});
+        StackPanel Card(string title,int row,int column,int span,out Border border)
+        {
+            var content=new StackPanel();content.Children.Add(new TextBlock{Text=title,FontSize=14,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,10)});
+            border=new Border{Child=content,Padding=new Thickness(12),Margin=new Thickness(0,0,0,12),CornerRadius=new CornerRadius(10),
+                Background=new SolidColorBrush(Color.FromRgb(248,252,255)),BorderBrush=new SolidColorBrush(Color.FromRgb(225,237,247)),BorderThickness=new Thickness(1)};
+            Grid.SetRow(border,row);Grid.SetColumn(border,column);Grid.SetColumnSpan(border,span);generalGrid.Children.Add(border);return content;
+        }
+        var countdownCard=Card("考试倒计时",0,0,2,out _);
+        var showCountdown=new CheckBox {Content="在标题栏显示考试倒计时",IsChecked=preferences.ShowExamCountdown,Margin=new Thickness(0,0,0,8)};
+        countdownCard.Children.Add(showCountdown);
+        var examFields=new WrapPanel();countdownCard.Children.Add(examFields);
+        var nameField=new StackPanel{Width=180,Margin=new Thickness(0,0,12,0)};examFields.Children.Add(nameField);nameField.Children.Add(InputDialog.Text("考试名称"));
+        var examName=new TextBox {Text=preferences.ExamName,MaxLength=40,Margin=new Thickness(0,4,0,4),Padding=new Thickness(9),MinHeight=34};nameField.Children.Add(examName);
+        var dateField=new StackPanel{Width=340};examFields.Children.Add(dateField);dateField.Children.Add(InputDialog.Text("考试日期 · 可选择或输入"));
         var examDate=new DatePartsInput(preferences.ExamDate);
         void EnableCountdownFields(){examName.IsEnabled=examDate.IsEnabled=showCountdown.IsChecked==true;}
         showCountdown.Checked+=(_,_)=>EnableCountdownFields();showCountdown.Unchecked+=(_,_)=>EnableCountdownFields();EnableCountdownFields();
-        general.Children.Add(examDate);general.Children.Add(InputDialog.Text("可下拉选择，也可直接输入年月日。"));Divider(general);
+        dateField.Children.Add(examDate);
         dialog.RegisterName("ShowExamCountdown",showCountdown);dialog.RegisterName("ExamName",examName);dialog.RegisterName("ExamDate",examDate);
         dialog.RegisterName("ExamDateYear",examDate.Year);dialog.RegisterName("ExamDateMonth",examDate.Month);dialog.RegisterName("ExamDateDay",examDate.Day);
-        Heading(general,"关闭窗口");
-        var tray=new RadioButton {Content="最小化到托盘",GroupName="CloseAction",IsChecked=preferences.CloseToTray,Margin=new Thickness(0,0,0,12)};
-        var exit=new RadioButton {Content="退出软件",GroupName="CloseAction",IsChecked=!preferences.CloseToTray,Margin=new Thickness(0,0,0,12)};
-        var rememberClose=new CheckBox {Content="记住关闭方式，下次不再询问",IsChecked=preferences.RememberCloseAction,Margin=new Thickness(0,2,0,8)};
-        general.Children.Add(tray);general.Children.Add(exit);general.Children.Add(rememberClose);
-        general.Children.Add(InputDialog.Text("收进托盘后，点击托盘图标或使用全局快捷键恢复窗口。"));Divider(general);
-        Heading(general,"启动与快捷查词");
+        var closeCard=Card("关闭窗口",1,0,1,out var closeBorder);
+        var tray=new RadioButton {Content="最小化到托盘",GroupName="CloseAction",IsChecked=preferences.CloseToTray,Margin=new Thickness(0,0,0,8)};
+        var exit=new RadioButton {Content="退出软件",GroupName="CloseAction",IsChecked=!preferences.CloseToTray,Margin=new Thickness(0,0,0,8)};
+        var rememberClose=new CheckBox {Content=new TextBlock{Text="记住关闭方式，下次不再询问",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.RememberCloseAction,Margin=new Thickness(0,2,0,0)};
+        closeCard.Children.Add(tray);closeCard.Children.Add(exit);closeCard.Children.Add(rememberClose);
+        var launchCard=Card("启动与快捷查词",1,1,1,out var launchBorder);
+        void ArrangeGeneralCards()
+        {
+            var compact=generalGrid.ActualWidth<520;
+            Grid.SetColumnSpan(closeBorder,compact?2:1);Grid.SetColumn(launchBorder,compact?0:1);Grid.SetColumnSpan(launchBorder,compact?2:1);Grid.SetRow(launchBorder,compact?2:1);
+            closeBorder.Margin=new Thickness(0,0,compact?0:6,12);launchBorder.Margin=new Thickness(compact?0:6,0,0,12);
+        }
+        generalGrid.SizeChanged+=(_,_)=>ArrangeGeneralCards();ArrangeGeneralCards();
         startupRegistration??=new StartupRegistration();bool? startupEnabled=null;string? startupReadError=null;
         try{startupEnabled=startupRegistration.Enabled;}catch{startupReadError="无法读取开机自启动状态，请检查当前用户权限。";}
         var autoStart=new CheckBox {Content="开机自启动",IsChecked=startupEnabled==true,IsEnabled=startupEnabled.HasValue,Margin=new Thickness(0,0,0,8)};
-        general.Children.Add(autoStart);general.Children.Add(InputDialog.Text(startupReadError??"登录 Windows 时自动启动；取消勾选可关闭。"));
-        var doubleCopy=new CheckBox {Content="连续按两次 Ctrl+C 自动查词 / 翻译",IsChecked=preferences.DoubleCopyEnabled,Margin=new Thickness(0,20,0,8)};
-        dialog.RegisterName("DoubleCopyEnabled",doubleCopy);general.Children.Add(doubleCopy);general.Children.Add(InputDialog.Text("在其他应用选中文本后，750 毫秒内复制两次，唤起窗口查询。单词离线查询；段落自动判断语言，优先使用 DeepL，连接失败自动改用 MyMemory。"));
-        Divider(general);var guide=new Button{Content="查看新手引导",HorizontalAlignment=HorizontalAlignment.Left,IsEnabled=startOnboarding!=null};guide.Click+=(_,_)=>{dialog.Close();owner.Dispatcher.BeginInvoke(startOnboarding!);};general.Children.Add(guide);dialog.RegisterName("OpenOnboarding",guide);
+        launchCard.Children.Add(autoStart);if(startupReadError!=null)launchCard.Children.Add(InputDialog.Text(startupReadError));
+        var doubleCopy=new CheckBox {Content=new TextBlock{Text="连按两次 Ctrl+C 查词或翻译",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.DoubleCopyEnabled,Margin=new Thickness(0,4,0,8)};
+        dialog.RegisterName("DoubleCopyEnabled",doubleCopy);launchCard.Children.Add(doubleCopy);launchCard.Children.Add(InputDialog.Text("选中文字后，在 750 毫秒内连按两次 Ctrl+C。"));
+        var guide=new Button{Content="查看新手引导",HorizontalAlignment=HorizontalAlignment.Left,IsEnabled=startOnboarding!=null};guide.Click+=(_,_)=>{dialog.Close();owner.Dispatcher.BeginInvoke(startOnboarding!);};general.Children.Add(guide);dialog.RegisterName("OpenOnboarding",guide);
 
         var shortcutsPage=Page("快捷键","点击输入框，按下想用的组合键；按 Delete 可清除。保存后生效。");
-        var shortcutInputs=new Dictionary<string,TextBox>();
+        var shortcutInputs=new Dictionary<string,TextBox>();var shortcutRows=new System.Windows.Controls.Primitives.UniformGrid{Columns=2};shortcutsPage.Children.Add(shortcutRows);
+        shortcutRows.SizeChanged+=(_,_)=>shortcutRows.Columns=shortcutRows.ActualWidth>=560?2:1;
         foreach(var definition in ShortcutDefinitions.All)
         {
-            var row=new Grid {Margin=new Thickness(0,0,0,14)};row.ColumnDefinitions.Add(new ColumnDefinition());row.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(160)});
+            var row=new Grid {Margin=new Thickness(0,0,12,8)};row.ColumnDefinitions.Add(new ColumnDefinition());row.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(142)});
             row.Children.Add(new TextBlock {Text=definition.Label,FontSize=12,TextWrapping=TextWrapping.Wrap,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0)});
             var input=new TextBox {Text=preferences.Shortcuts.GetValueOrDefault(definition.Id,definition.Default),IsReadOnly=true,Padding=new Thickness(9,8,9,8),FontSize=12,ToolTip="按组合键，Delete 清除"};
-            input.PreviewKeyDown+=ShortcutGestures.Capture;Grid.SetColumn(input,1);row.Children.Add(input);shortcutsPage.Children.Add(row);shortcutInputs[definition.Id]=input;
+            input.PreviewKeyDown+=ShortcutGestures.Capture;Grid.SetColumn(input,1);row.Children.Add(input);shortcutRows.Children.Add(row);shortcutInputs[definition.Id]=input;
             dialog.RegisterName("ShortcutInput_"+definition.Id,input);
         }
         shortcutsPage.Children.Add(InputDialog.Text("全局快捷键可在其他软件中使用。鼠标侧键可后退或前进。"));
 
         var tokenChanged=false;
-        var account=Page("墨墨账号","官方登录、记住账号，并在多个账号间自由切换。离线查词无需登录。");
-        var accountNotice=InputDialog.Text(IndependenceNotice);accountNotice.Margin=new Thickness(0,0,0,16);
+        var account=Page("墨墨账号","使用手机号或邮箱登录，也可切换已保存的账号。");
+        var accountNotice=InputDialog.Text(IndependenceNotice);accountNotice.FontSize=12;accountNotice.Margin=new Thickness(0,0,0,10);
         account.Children.Add(accountNotice);dialog.RegisterName("AccountDisclaimer",accountNotice);
         account.Children.Add(AccountSettingsPanel.Build(dialog,store,async()=>{tokenChanged=true;if(accountChanged!=null)await accountChanged();}));
         void OpenLink(string url,string error){try{Process.Start(new ProcessStartInfo(url){UseShellExecute=true});}catch{status.Text=error;}}
 
         var feedback=Page("反馈","遇到问题或有改进建议，欢迎联系我们。");
-        void FeedbackCard(string title,string description,string value,string buttonLabel,string name,Action action)
+        WrapPanel FeedbackCard(string title,string description,string value,string buttonLabel,string name,Action action)
         {
-            var card=new StackPanel {Margin=new Thickness(16)};
-            card.Children.Add(new TextBlock {Text=title,FontSize=15,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,6)});
-            card.Children.Add(InputDialog.Text(description));
-            var address=new TextBox {Text=value,IsReadOnly=true,BorderThickness=new Thickness(0),Background=Brushes.Transparent,Padding=new Thickness(0,6,0,6),FontSize=15,Foreground=new SolidColorBrush(Color.FromRgb(8,151,203))};card.Children.Add(address);
-            var button=new Button {Content=buttonLabel,Tag=value,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,8,0,0)};
-            button.Click+=(_,_)=>action();card.Children.Add(button);dialog.RegisterName(name,button);
-            feedback.Children.Add(new Border {Child=card,Background=new SolidColorBrush(Color.FromRgb(248,252,255)),BorderBrush=new SolidColorBrush(Color.FromRgb(225,237,247)),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(12),Margin=new Thickness(0,0,0,14)});
+            var card=new Grid {Margin=new Thickness(12),ToolTip=description};card.ColumnDefinitions.Add(new());card.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+            var details=new StackPanel{VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0)};
+            details.Children.Add(new TextBlock {Text=title,FontSize=14,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,3)});
+            details.Children.Add(new TextBox {Text=value,IsReadOnly=true,TextWrapping=TextWrapping.Wrap,BorderThickness=new Thickness(0),Background=Brushes.Transparent,Padding=new Thickness(0),FontSize=13,Foreground=new SolidColorBrush(Color.FromRgb(8,151,203))});card.Children.Add(details);
+            var actions=new WrapPanel{VerticalAlignment=VerticalAlignment.Center};Grid.SetColumn(actions,1);card.Children.Add(actions);
+            var button=new Button {Content=buttonLabel,Tag=value};button.Click+=(_,_)=>action();actions.Children.Add(button);dialog.RegisterName(name,button);
+            feedback.Children.Add(new Border {Child=card,Background=new SolidColorBrush(Color.FromRgb(248,252,255)),BorderBrush=new SolidColorBrush(Color.FromRgb(225,237,247)),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(10),Margin=new Thickness(0,0,0,10)});
+            return actions;
         }
         void CopyContact(string value,string message){try{Clipboard.SetText(value);status.Text=message;}catch{status.Text="复制失败，请选中上方文字手动复制。";}}
-        FeedbackCard("反馈邮箱","通过邮件反馈问题与建议。",FeedbackEmail,"写邮件","FeedbackEmailButton",()=>OpenLink("mailto:"+FeedbackEmail+"?subject="+Uri.EscapeDataString("墨墨搜词 "+Version+" 反馈"),"无法打开邮件应用，可复制邮箱后手动发送。"));
+        var emailActions=FeedbackCard("反馈邮箱","通过邮件反馈问题与建议。",FeedbackEmail,"写邮件","FeedbackEmailButton",()=>OpenLink("mailto:"+FeedbackEmail+"?subject="+Uri.EscapeDataString("墨墨搜词 "+Version+" 反馈"),"无法打开邮件应用，可复制邮箱后手动发送。"));
+        var copyEmail=new Button {Content="复制邮箱",Tag=FeedbackEmail,Margin=new Thickness(8,0,0,0)};copyEmail.Click+=(_,_)=>CopyContact(FeedbackEmail,"反馈邮箱已复制。");emailActions.Children.Add(copyEmail);dialog.RegisterName("CopyFeedbackEmail",copyEmail);
         FeedbackCard("QQ 交流群","复制群号，在 QQ 中搜索加入。",FeedbackQqGroup,"复制群号","CopyFeedbackQq",()=>CopyContact(FeedbackQqGroup,"QQ群号已复制。"));
         FeedbackCard("GitHub Issues","反馈问题、提出建议，查看处理进度。",RepositoryUrl+"/issues","反馈问题","FeedbackIssueButton",()=>OpenLink(IssueUrl,"无法打开浏览器，可复制上方地址访问 Issues。"));
-        var copyEmail=new Button {Content="复制邮箱",HorizontalAlignment=HorizontalAlignment.Left};copyEmail.Click+=(_,_)=>CopyContact(FeedbackEmail,"反馈邮箱已复制。");feedback.Children.Add(copyEmail);dialog.RegisterName("CopyFeedbackEmail",copyEmail);
 
         var support=Page("关于与赞助","墨墨搜词 MemoLex · "+Version);
+        var supportView=PageView("关于与赞助");
+        var supportLayout=new Grid {Margin=support.Margin};
+        supportLayout.RowDefinitions.Add(new(){Height=GridLength.Auto});
+        supportLayout.RowDefinitions.Add(new(){Height=GridLength.Auto});
+        supportLayout.RowDefinitions.Add(new());
+        var supportHeading=new StackPanel();
+        foreach(var child in support.Children.Cast<UIElement>().ToArray()){support.Children.Remove(child);supportHeading.Children.Add(child);}
+        ((FrameworkElement)supportHeading.Children[1]).Margin=new Thickness(0,4,0,10);
+        var sourceLink=new Button {Content="GitHub",HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top};
+        sourceLink.Click+=(_,_)=>OpenLink(RepositoryUrl,"无法打开浏览器，请稍后重试。");
+        var supportHeader=new DockPanel();DockPanel.SetDock(sourceLink,Dock.Right);supportHeader.Children.Add(sourceLink);supportHeader.Children.Add(supportHeading);
+        supportLayout.Children.Add(supportHeader);dialog.RegisterName("SupportRepositoryButton",sourceLink);
+        var supportIntro=new StackPanel();Grid.SetRow(supportIntro,1);supportLayout.Children.Add(supportIntro);
         var projectNotice=InputDialog.Text(IndependenceNotice);
-        support.Children.Add(new Border {Child=projectNotice,Padding=new Thickness(12),Margin=new Thickness(0,0,0,16),
+        supportIntro.Children.Add(new Border {Child=projectNotice,Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
             Background=new SolidColorBrush(Color.FromRgb(239,248,255)),CornerRadius=new CornerRadius(8)});
         dialog.RegisterName("ProjectDisclaimer",projectNotice);
-        support.Children.Add(InputDialog.Text("如果墨墨搜词对你有帮助，欢迎如果觉得好用，欢迎为开发者发电，支持后续维护。感谢你的支持！"));
-        var payments=new TabControl {Margin=new Thickness(0,16,0,12),BorderThickness=new Thickness(0),Background=Brushes.Transparent};
+        supportIntro.Children.Add(InputDialog.Text("如果觉得好用，欢迎为开发者发电，支持后续维护。"));
+        var payments=new Grid {Margin=new Thickness(0,12,0,0)};
+        payments.ColumnDefinitions.Add(new());payments.ColumnDefinitions.Add(new());
+        Grid.SetRow(payments,2);supportLayout.Children.Add(payments);
+        var paymentColumn=0;
         foreach(var (label,asset,name) in new[]{("微信支付","sponsor-wechat.jpg","Wechat"),("支付宝","sponsor-alipay.jpg","Alipay")})
         {
-            var picture=new Image {Source=new BitmapImage(new Uri("pack://application:,,,/MemoLex;component/Assets/"+asset)),MaxHeight=390,Stretch=Stretch.Uniform};RenderOptions.SetBitmapScalingMode(picture,BitmapScalingMode.HighQuality);
-            var enlarge=new Button {Content=picture,Background=Brushes.Transparent,BorderThickness=new Thickness(0),Padding=new Thickness(6),HorizontalAlignment=HorizontalAlignment.Center,Cursor=Cursors.Hand,ToolTip="点击放大收款码"};
+            var cardBody=new Grid();cardBody.RowDefinitions.Add(new(){Height=GridLength.Auto});cardBody.RowDefinitions.Add(new());
+            cardBody.Children.Add(new TextBlock {Text=label,FontSize=14,FontWeight=FontWeights.SemiBold,HorizontalAlignment=HorizontalAlignment.Center,Margin=new Thickness(0,0,0,8)});
+            var code=PaymentCodeImages.Load(asset);
+            var picture=new Image {Source=code,Width=code.PixelWidth,Height=code.PixelHeight,Stretch=Stretch.Uniform,SnapsToDevicePixels=true};
+            RenderOptions.SetBitmapScalingMode(picture,BitmapScalingMode.NearestNeighbor);
+            var scale=new Viewbox {Child=picture,Stretch=Stretch.Uniform};
+            var enlarge=new Button {Content=scale,Background=Brushes.Transparent,BorderThickness=new Thickness(0),Padding=new Thickness(0),Cursor=Cursors.Hand,ToolTip="点击放大收款码"};
+            Grid.SetRow(enlarge,1);cardBody.Children.Add(enlarge);
             enlarge.Click+=(_,_)=>BuildPaymentDialog(dialog,label,asset).ShowDialog();
-            payments.Items.Add(new TabItem {Header=label,Content=enlarge});dialog.RegisterName(name+"PaymentImage",picture);dialog.RegisterName("Open"+name+"Code",enlarge);
+            System.Windows.Automation.AutomationProperties.SetName(enlarge,label+"收款码");
+            var card=new Border {Child=cardBody,Padding=new Thickness(12),CornerRadius=new CornerRadius(12),Background=Brushes.White,
+                BorderBrush=new SolidColorBrush(Color.FromRgb(222,236,246)),BorderThickness=new Thickness(1),Margin=new Thickness(paymentColumn==0?0:7,0,paymentColumn==0?7:0,0)};
+            Grid.SetColumn(card,paymentColumn++);payments.Children.Add(card);
+            dialog.RegisterName(name+"PaymentImage",picture);dialog.RegisterName("Open"+name+"Code",enlarge);dialog.RegisterName(name+"PaymentCard",card);
         }
-        support.Children.Add(payments);support.Children.Add(InputDialog.Text("点击收款码可查看大图。"));Divider(support);
-        var sourceLink=new Button {Content="GitHub",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,10,0,0)};
-        sourceLink.Click+=(_,_)=>OpenLink(RepositoryUrl,"无法打开浏览器，请稍后重试。");support.Children.Add(sourceLink);
+        supportView.Content=supportLayout;
+        supportView.VerticalScrollBarVisibility=ScrollBarVisibility.Disabled;
+        supportView.HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled;
         var updatePage=Page("软件更新","检查新版本，设置自动更新。");
         var ownedUpdates=updates==null;updates??=new UpdateManager(preferences,()=>{});updatePage.Children.Add(updates.BuildPanel(dialog));
         if(ownedUpdates)dialog.Closed+=(_,_)=>updates.Dispose();
@@ -168,7 +209,7 @@ internal static class SettingsDialog
             }
             catch{status.Text="未能保存设置，请检查填写内容后重试。";}
         };
-        foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SaveSettings",save),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",PageView("常规")),("SettingsShortcutsPage",PageView("快捷键")),("SettingsAccountPage",PageView("墨墨账号")),("SettingsFeedbackPage",PageView("反馈")),("SettingsSupportPage",PageView("关于与赞助")),("SponsorPaymentTabs",payments)})dialog.RegisterName(name,control);
+        foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SaveSettings",save),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",PageView("常规")),("SettingsShortcutsPage",PageView("快捷键")),("SettingsAccountPage",PageView("墨墨账号")),("SettingsFeedbackPage",PageView("反馈")),("SettingsSupportPage",PageView("关于与赞助")),("SponsorPaymentCards",payments)})dialog.RegisterName(name,control);
         changed=()=>tokenChanged;return dialog;
     }
 
@@ -176,7 +217,7 @@ internal static class SettingsDialog
     {
         var dialog=InputDialog.Shell(owner,label+" · 为开发者发电",out _);
         dialog.Width=Math.Min(640,SystemParameters.WorkArea.Width-60);dialog.Height=Math.Min(880,SystemParameters.WorkArea.Height-50);dialog.SizeToContent=SizeToContent.Manual;
-        var picture=new Image {Source=new BitmapImage(new Uri("pack://application:,,,/MemoLex;component/Assets/"+asset)),Stretch=Stretch.Uniform,Margin=new Thickness(12)};RenderOptions.SetBitmapScalingMode(picture,BitmapScalingMode.HighQuality);
+        var picture=new Image {Source=PaymentCodeImages.Load(asset),Stretch=Stretch.Uniform,Margin=new Thickness(12)};RenderOptions.SetBitmapScalingMode(picture,BitmapScalingMode.NearestNeighbor);
         InputDialog.SetBody(dialog,picture);return dialog;
     }
 }

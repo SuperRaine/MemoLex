@@ -16,8 +16,11 @@ public partial class MainWindow
         {
             _compactLayout=compact;
             SidebarColumn.Width=new GridLength(compact?220:264);
-            BrandColumn.Width=new GridLength(compact?180:238);
-            ExamCountdownText.MaxWidth=compact?160:260;
+            BrandColumn.Width=new GridLength(compact?146:238);
+            CloudStatusText.MaxWidth=compact?72:100;
+            AccountButton.MaxWidth=compact?115:145;
+            AccountButton.Padding=compact?new Thickness(8,7,8,7):new Thickness(11,7,11,7);
+            ExamCountdownText.MaxWidth=compact?120:210;
             MainContentGrid.Margin=compact?new Thickness(15,15,15,13):new Thickness(27,21,27,17);
             WordCard.Padding=compact?new Thickness(18):new Thickness(27,23,27,24);
             WordText.FontSize=compact?32:42;
@@ -48,12 +51,14 @@ public partial class MainWindow
     }
     private void SetAccountStatus(string status)
     {
-        if(!_tokens.HasToken&&_tokens.HasExpiredSession)status="登录已过期";
+        var hasToken=_tokens.HasToken;
+        if(!hasToken&&_tokens.HasExpiredSession)status="登录已过期";
         if(status=="已连接")status=_accountRejected?"登录失效":_accountAuthenticated?"已连接":"连接中";
-        CloudStatusText.Text = status;
-        CloudStatusText.Foreground = Brush(status == "已连接" ? "#087FAF" : status is "登录失效" or "连接受限" ? "#B58236" : "#8399AA");
         var accountName=_tokens.ActiveAccount?.Name;
-        SettingsButton.ToolTip = $"墨墨账号：{accountName??"未选择账号"} · {status}\n点击打开账号连接与应用设置";
+        CloudStatusText.Text = hasToken&&!string.IsNullOrWhiteSpace(accountName)?accountName:status=="未连接"?"未登录":status;
+        CloudStatusText.Foreground = Brush(status == "已连接" ? "#087FAF" : status is "登录失效" or "连接受限" ? "#B58236" : "#8399AA");
+        AccountButton.ToolTip = $"墨墨账号：{accountName??"未选择账号"} · {status}\n点击登录或切换账号";
+        System.Windows.Automation.AutomationProperties.SetName(AccountButton,$"墨墨账号：{accountName??"未登录"}，{status}");
     }
 
     // Native pixel bounds keep a maximized custom window inside the current

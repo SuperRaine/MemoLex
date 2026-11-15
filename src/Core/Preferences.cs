@@ -8,16 +8,16 @@ public sealed class Preferences
     public const int HistoryLimit = 500;
     public string? NotepadId { get; set; }
     public bool AlwaysOnTop { get; set; }
-    public bool CloseToTray { get; set; } = true;
+    public bool CloseToTray { get; set; }
     public bool RememberCloseAction { get; set; }
-    public bool DoubleCopyEnabled { get; set; } = true;
+    public bool DoubleCopyEnabled { get; set; }
     public bool OnboardingCompleted {get;set;}
     public bool ShowExamCountdown {get;set;}
     public string ExamName {get;set;}="考试";
     public DateTime? ExamDate {get;set;}
     public Dictionary<string,List<string>> ConfirmedLearnedWords {get;set;}=[];
-    public bool HoverLookupEnabled {get;set;}=true;
-    public int HoverDelayMs {get;set;}=500;
+    public bool HoverLookupEnabled {get;set;}
+    public int HoverDelayMs {get;set;}=750;
     public int HoverModifiers {get;set;}
     public bool HoverNearest {get;set;}
     public bool HoverTranslucent {get;set;}

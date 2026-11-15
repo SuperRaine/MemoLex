@@ -9,22 +9,21 @@ internal static class AccountSettingsPanel
     internal static FrameworkElement Build(Window owner,TokenStore store,Func<Task> changed)
     {
         var panel=new StackPanel();
-        var headline=new TextBlock {FontSize=16,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,14)};panel.Children.Add(headline);
-        panel.Children.Add(InputDialog.Text("使用墨墨官方手机号或邮箱登录，支持密码与验证码。成功后自动保存登录状态。"));
-        var login=new Button {Content="登录或添加账号",Style=(Style)Application.Current.FindResource("AccentButton"),HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,18,0,22)};
+        var headline=new TextBlock {FontSize=15,FontWeight=FontWeights.SemiBold,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,0,0,8)};panel.Children.Add(headline);
+        var login=new Button {Content="登录或添加账号",Style=(Style)Application.Current.FindResource("AccentButton"),HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,4,0,12)};
         panel.Children.Add(login);
-        panel.Children.Add(new TextBlock {Text="选择账号即可切换",FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,9)});
-        var accounts=new ComboBox {MinHeight=37,Margin=new Thickness(0,0,0,12)};panel.Children.Add(accounts);
+        panel.Children.Add(new TextBlock {Text="选择账号即可切换",FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,6)});
+        var accounts=new ComboBox {MinHeight=34,Margin=new Thickness(0,0,0,8)};panel.Children.Add(accounts);
         var actions=new WrapPanel();panel.Children.Add(actions);
         Button Add(string text){var b=new Button {Content=text,Margin=new Thickness(0,0,8,10)};actions.Children.Add(b);return b;}
-        var use=Add("切换到此账号");var relogin=Add("重新登录");var logout=Add("退出当前登录");var remove=Add("移除保存账号");
-        var nameRow=new DockPanel {Margin=new Thickness(0,6,0,12)};var rename=new Button {Content="保存账号名称",Margin=new Thickness(10,0,0,0)};DockPanel.SetDock(rename,Dock.Right);nameRow.Children.Add(rename);
+        var use=Add("切换账号");var relogin=Add("重新登录");var logout=Add("退出登录");var remove=Add("移除账号");
+        var nameRow=new DockPanel {Margin=new Thickness(0,2,0,6)};var rename=new Button {Content="保存账号名称",Margin=new Thickness(10,0,0,0)};DockPanel.SetDock(rename,Dock.Right);nameRow.Children.Add(rename);
         var name=new TextBox {MaxLength=80,Padding=new Thickness(9),ToolTip="给账号起一个方便区分的名称"};nameRow.Children.Add(name);panel.Children.Add(nameRow);
-        var status=InputDialog.Text("");status.Margin=new Thickness(0,8,0,14);panel.Children.Add(status);
-        panel.Children.Add(InputDialog.Text("登录信息使用 Windows 加密保存在本机。过期后自动退出，并提示重新登录；其他已保存账号仍可切换使用。"));
+        var status=InputDialog.Text("");status.Margin=new Thickness(0,4,0,4);panel.Children.Add(status);
+        panel.Children.Add(InputDialog.Text("登录信息加密保存在本机，过期后请重新登录。"));
         var importPanel=new StackPanel();var secret=new PasswordBox {MaxLength=512,Padding=new Thickness(9),Margin=new Thickness(0,10,0,10)};importPanel.Children.Add(secret);
         var import=new Button {Content="验证并导入 Token",HorizontalAlignment=HorizontalAlignment.Left};importPanel.Children.Add(import);
-        panel.Children.Add(new Expander {Header="手动导入 Token（高级）",Content=importPanel,Margin=new Thickness(0,22,0,0)});
+        panel.Children.Add(new Expander {Header="手动导入 Token（高级）",Content=importPanel,Margin=new Thickness(0,10,0,0)});
         var busy=false;var refreshing=false;string state="";
         SavedAccount? Selected()=>accounts.SelectedItem as SavedAccount;
         void Enable()

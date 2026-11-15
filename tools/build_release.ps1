@@ -1,4 +1,4 @@
-param([string]$DataDirectory,[string]$WebViewDirectory,[string]$DotnetCommand='dotnet',[switch]$IncludeBrowserRuntime)
+param([string]$DataDirectory,[string]$WebViewDirectory,[string]$DotnetCommand='dotnet',[switch]$IncludeBrowserRuntime,[string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 if(-not $DataDirectory){$DataDirectory=Join-Path $repo 'data'}
@@ -6,7 +6,7 @@ $data=(Resolve-Path -LiteralPath $DataDirectory).Path
 foreach($name in @('dictionary.data','dictionary.index.tsv','related.data','chinese.postings')){
     if(-not(Test-Path -LiteralPath (Join-Path $data $name))){throw 'Copy the complete data folder from the portable release first.'}
 }
-$destination=Join-Path $repo 'dist/MemoLex'
+$destination=if($OutputDirectory){[IO.Path]::GetFullPath($OutputDirectory)}else{Join-Path $repo 'dist/MemoLex'}
 if(-not $IncludeBrowserRuntime -and (Test-Path -LiteralPath (Join-Path $destination 'webview2'))){throw 'The build folder contains an optional runtime from an earlier full build. Use a fresh build folder.'}
 & $DotnetCommand publish (Join-Path $repo 'src/MemoLex.csproj') -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=8.0.34 -p:DebugType=None -p:DebugSymbols=false -o $destination
 if($LASTEXITCODE -ne 0){throw 'Application build failed'}
@@ -18,7 +18,7 @@ if($IncludeBrowserRuntime -and (Test-Path -LiteralPath (Join-Path $WebViewDirect
     Copy-Item -Path (Join-Path $WebViewDirectory '*') -Destination $webviewTarget -Recurse -Force
 }elseif($IncludeBrowserRuntime){throw 'An optional browser runtime was requested but was not supplied.'}
 foreach($file in Get-ChildItem -LiteralPath (Join-Path $repo 'mnemonics') -File){
-    if($file.Name -in @('mnemonics.json','mnemonics.meta.json','mnemonics.revisions.json','Mnemonics-CC-BY-SA-3.0.txt','README-Mnemonics.txt')){Copy-Item -LiteralPath $file.FullName -Destination $targetData -Force}
+    if($file.Name -in @('mnemonics.json','mnemonics.meta.json','mnemonics.revisions.json','mnemonics.sources.json','Mnemonics-CC-BY-SA-3.0.txt','README-Mnemonics.txt')){Copy-Item -LiteralPath $file.FullName -Destination $targetData -Force}
 }
 Copy-Item -LiteralPath (Join-Path $repo '使用说明.md') -Destination $destination -Force
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $destination 'LICENSE.txt') -Force
