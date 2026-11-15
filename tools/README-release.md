@@ -13,6 +13,6 @@
 
 GitHub Releases 只上传安装包（`.msi`）和便携包（`-Windows-x64.zip`）。验证报告和校验清单保留在本地；源码通过仓库及 GitHub 自动生成的源码下载项提供。
 
-助记正文和升级匹配表在 `mnemonics`，随包复制到 `data`。未读取或打包个人配置。元数据分别记录覆盖、复核和改写数量。可运行 `python tools/verify_mnemonics.py --directory mnemonics` 校验完整数据和复核记录。
+助记正文和升级匹配表在 `mnemonics`，随包复制到 `data`。
 
 本仓库不包含服务私钥。自行构建时，如未在本机 `src/Private/DeepL.key` 提供自己的授权，在线翻译使用 MyMemory；发行二进制包使用维护者配置的服务。该目录受版本控制忽略。

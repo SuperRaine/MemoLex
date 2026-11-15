@@ -20,3 +20,6 @@ smoke-test.json
 __pycache__/
 *.py[cod]
 payload-policy-check-*.json
+/tests*/
+/验证结果.json
+/tools/verify_*.py
