@@ -17,8 +17,8 @@ internal static class HoverSettingsPanel
         var enabled=Option("开启鼠标自动取词",preferences.HoverLookupEnabled,0,0,"HoverLookupEnabled");
         var translucent=Option("取词浮窗半透明",preferences.HoverTranslucent,0,1,"HoverTranslucent");
         var autoAdd=Option("找到单词后自动加入云词本",preferences.HoverAutoAdd,1,1,"HoverAutoAdd");
-        var nearest=Option("找不到解释时提示相近拼写",preferences.HoverNearest,1,0,"HoverNearest");
-        nearest.ToolTip="按拼写相似度提示候选，如 enviroment → environment；不表示同义词，也不会自动加入云词本。";
+        var nearest=Option("未找到释义时显示相近单词",preferences.HoverNearest,1,0,"HoverNearest");
+        nearest.ToolTip="推荐拼写相近的单词，例如 enviroment → environment。仅供参考，不会自动收藏。";
         var grid=new Grid{Margin=new Thickness(0,8,0,12)};grid.ColumnDefinitions.Add(new(){Width=new GridLength(105)});grid.ColumnDefinitions.Add(new());panel.Children.Add(grid);
         void Label(string label,int row){while(grid.RowDefinitions.Count<=row)grid.RowDefinitions.Add(new(){Height=GridLength.Auto});var text=InputDialog.Text(label);text.Margin=new Thickness(0,9,12,18);text.VerticalAlignment=VerticalAlignment.Center;Grid.SetRow(text,row);grid.Children.Add(text);}
         Label("取词方式",0);var mode=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,5,0,16)};mode.Children.Add(InputDialog.Text("鼠标悬停  ＋  "));

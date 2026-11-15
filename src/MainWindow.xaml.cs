@@ -163,7 +163,7 @@ public partial class MainWindow : Window
             await _chinese.LoadAsync();
             _ready = true;
             DictionaryCountText.Text = _dictionary.PreferredAvailable?$"本地词库 · {_dictionary.PreferredCount:N0} 词目":$"ECDICT · {_dictionary.Count:N0} 词目";
-            DictionaryCountText.ToolTip=_dictionary.PreferredAvailable?$"优先使用本地简明释义，未收录时回退 ECDICT（{_dictionary.Count:N0} 词目）。":_dictionary.PreferredWarning??"内置离线词典";
+            DictionaryCountText.ToolTip=_dictionary.PreferredAvailable?$"优先显示本地词库释义，未收录的单词由内置词库补充。":_dictionary.PreferredWarning??"内置离线词典";
             UpdateHistory();
             SearchBox.Text = _preferences.History.FirstOrDefault() ?? "serendipity";
             SearchBox.Focus();
@@ -224,7 +224,7 @@ public partial class MainWindow : Window
         var exchange = FormatExchange(entry?.exchange);
         FillWordLinks(ExchangeText, exchange, EmptyMatches, word);
         ExchangeCard.Visibility = exchange.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        WordMetaText.Text = entry == null ? "本地未收录 · 正在查询墨墨词库" : entry.source=="local-brief"?LocalBriefDictionary.SourceLabel+" · 离线可用":"ECDICT 英汉双解 · 离线可用";
+        WordMetaText.Text = entry == null ? "本地未收录，正在查询墨墨词库…" : entry.source=="local-brief"?LocalBriefDictionary.SourceLabel+" · 离线可用":"ECDICT 英汉双解 · 离线可用";
         if (int.TryParse(entry?.bnc, out var frequency) && frequency > 0) WordMetaText.Text += $"  /  BNC 词频 #{frequency:N0}";
         RenderTags(entry);
         ResultScroll.ScrollToTop();
@@ -309,7 +309,7 @@ public partial class MainWindow : Window
             _examplesHaveMore = page.HasMore;
             _examplesLoaded = true;
             _examplesError = false;
-            ExamplesHintText.Text = _shownExamples.Count == 0 ? "没有找到相关真题，可切换考试范围再试。" : $"已显示 {_shownExamples.Count} 条 · 共 {page.Total} 条相关结果";
+            ExamplesHintText.Text = _shownExamples.Count == 0 ? "暂未找到相关例句，可切换考试类型再试。" : $"已显示 {_shownExamples.Count} 条 · 共 {page.Total} 条相关结果";
             MoreExamplesButton.Visibility = _examplesHaveMore ? Visibility.Visible : Visibility.Collapsed;
         }
         catch (OperationCanceledException) { }
@@ -317,7 +317,7 @@ public partial class MainWindow : Window
         {
             if (!cancellation.IsCancellationRequested && version == _exampleVersion)
             {
-                ExamplesHintText.Text = ex is ExampleLookupException ? ex.Message : "例句查询未完成，请点击重试。";
+                ExamplesHintText.Text = ex is ExampleLookupException ? ex.Message : "未能加载例句，请点击「重试」。";
                 _examplesLoaded = _examplesError = true;
                 RetryExamplesButton.Visibility = Visibility.Visible;
             }
@@ -519,7 +519,7 @@ public partial class MainWindow : Window
     {
         if (!_allowCloud) { CloudDetailText.Text = "离线模式"; EditNotepadButton.IsEnabled=RefreshNotepadsButton.IsEnabled = CreateNotepadButton.IsEnabled = NotepadCombo.IsEnabled = false; return; }
         if (_refreshing) return;
-        if (!_tokens.HasToken) { SetAccountStatus("未连接"); CloudDetailText.Text = "点击标题栏连接墨墨账号"; return; }
+        if (!_tokens.HasToken) { SetAccountStatus("未连接"); CloudDetailText.Text = "点击标题栏的账号按钮登录墨墨"; return; }
         _refreshing = true;
         var account=_accountVersion;var accountToken=_accountCts.Token;
         UpdateTodayStudyButton();
@@ -536,7 +536,7 @@ public partial class MainWindow : Window
             _changingLists = false;
             _preferences.NotepadId = (NotepadCombo.SelectedItem as CloudNotepad)?.Id;
             _preferences.Save();
-            CloudDetailText.Text = pads.Length == 0 ? "还没有云词本，点击新建" : $"{pads.Length} 个云词本 · 自动保存选择";
+            CloudDetailText.Text = pads.Length == 0 ? "还没有云词本，点击新建" : $"{pads.Length} 个云词本";
             SetAccountStatus("已连接");
         }
         catch (OperationCanceledException)when(account!=_accountVersion||accountToken.IsCancellationRequested){}
@@ -670,7 +670,7 @@ public partial class MainWindow : Window
                 else throw new InvalidOperationException();
             }
             _speaker.Speak(_word, 3);
-            StatusText.Text = "正在使用 Windows 英语语音朗读。";
+            StatusText.Text = "正在播放单词发音。";
         }
         catch { StatusText.Text = "未找到可用的 Windows 英语语音，可在系统语言设置中安装英语语音包。"; }
     }

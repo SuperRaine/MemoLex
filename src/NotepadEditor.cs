@@ -32,7 +32,7 @@ internal static class NotepadEditor
         var tagsInfo=InputDialog.Text("标签："+(original.Tags.Count==0?"无":string.Join("、",original.Tags)));fields.Children.Add(tagsInfo);
         string StatusLabel(string value)=>value switch {"UNPUBLISHED"=>"未发布","PUBLISHED"=>"已发布","DELETED"=>"已删除",_=>value};
         var publicationInfo=InputDialog.Text("发布状态："+StatusLabel(original.Status));fields.Children.Add(publicationInfo);
-        fields.Children.Add(new TextBlock {Text="保存时保留现有标签和发布状态。",FontSize=11,Foreground=new SolidColorBrush(Color.FromRgb(140,161,179)),Margin=new Thickness(0,12,0,0),TextWrapping=TextWrapping.Wrap});
+        fields.Children.Add(new TextBlock {Text="标签和公开状态保持不变。",FontSize=11,Foreground=new SolidColorBrush(Color.FromRgb(140,161,179)),Margin=new Thickness(0,12,0,0),TextWrapping=TextWrapping.Wrap});
         var metadata=new ScrollViewer {Content=fields,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
         var searchPanel=new DockPanel {Margin=new Thickness(0,0,0,9)};
         searchPanel.Children.Add(new TextBlock {Text="筛选",Width=42,VerticalAlignment=VerticalAlignment.Center,Foreground=new SolidColorBrush(Color.FromRgb(88,113,138))});
@@ -40,13 +40,13 @@ internal static class NotepadEditor
         var toolbar=new WrapPanel {Margin=new Thickness(0,0,0,7)};
         Button Tool(string label){var button=new Button {Content=label,FontSize=11,Padding=new Thickness(9,5,9,5),Margin=new Thickness(0,0,7,4)};toolbar.Children.Add(button);return button;}
         var selectAll=Tool("全选当前结果");var clear=Tool("清除选择");var delete=Tool("删除选中");Add(toolbar,2);
-        var entryPanel=new Expander {Header="添加 / 编辑词条与分组",Margin=new Thickness(0,0,0,8)};
+        var entryPanel=new Expander {Header="添加或编辑单词与分组",Margin=new Thickness(0,0,0,8)};
         var entryBody=new Grid {Margin=new Thickness(0,8,0,5)};foreach(var height in new[]{GridLength.Auto,GridLength.Auto})entryBody.RowDefinitions.Add(new RowDefinition {Height=height});
         var entryInput=new TextBox {Text=original.Content,AcceptsReturn=true,AcceptsTab=true,TextWrapping=TextWrapping.Wrap,Height=150,VerticalContentAlignment=VerticalAlignment.Top,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,MaxLength=300000,FontFamily=new FontFamily("Consolas, Microsoft YaHei UI")};entryBody.Children.Add(entryInput);
         var entryFooter=new DockPanel {Margin=new Thickness(0,6,0,0)};Grid.SetRow(entryFooter,1);entryBody.Children.Add(entryFooter);
         var entryAction=new Button {Content="完成编辑",FontSize=11,Padding=new Thickness(12,5,12,5),HorizontalAlignment=HorizontalAlignment.Right};DockPanel.SetDock(entryAction,Dock.Right);entryFooter.Children.Add(entryAction);
-        var entryHint=InputDialog.Text("直接增删词条、调整顺序；# 开头为分组。支持粘贴多词并自动去重，列表实时更新。");entryFooter.Children.Add(entryHint);entryPanel.Content=entryBody;Add(entryPanel,3);
-        var list=new ListBox {HorizontalContentAlignment=HorizontalAlignment.Stretch,SelectionMode=SelectionMode.Extended,ToolTip="单击选择；Ctrl 点选多个，Shift 连续选择；Delete 删除；双击查词"};Add(list,4);
+        var entryHint=InputDialog.Text("每行一个单词，以 # 开头的行是分组。可直接粘贴多个单词，重复项会自动合并。");entryFooter.Children.Add(entryHint);entryPanel.Content=entryBody;Add(entryPanel,3);
+        var list=new ListBox {HorizontalContentAlignment=HorizontalAlignment.Stretch,SelectionMode=SelectionMode.Extended,ToolTip="单击选择；按住 Ctrl 多选，按住 Shift 连选；Delete 删除；双击查词"};Add(list,4);
         VirtualizingPanel.SetIsVirtualizing(list,true);VirtualizingPanel.SetVirtualizationMode(list,VirtualizationMode.Recycling);ScrollViewer.SetHorizontalScrollBarVisibility(list,ScrollBarVisibility.Disabled);
         var itemStyle=new Style(typeof(ListBoxItem),(Style)Application.Current.FindResource(typeof(ListBoxItem)));
         itemStyle.Setters.Add(new Setter(Control.FontFamilyProperty,new FontFamily("Microsoft YaHei UI")));itemStyle.Setters.Add(new Setter(Control.PaddingProperty,new Thickness(5,4,5,4)));
@@ -62,14 +62,14 @@ internal static class NotepadEditor
         browse.SizeChanged+=(_,e)=>upperScroll.MaxHeight=Math.Max(100,e.NewSize.Height-150);
         tabs.Items.Add(new TabItem {Header="单词与释义",Content=browse});
         tabs.Items.Add(new TabItem {Header="编辑词本",Content=metadata});
-        var status=InputDialog.Text("单击选择 · Ctrl 点选多个 · Shift 连选 · Delete 删除 · 双击查词。修改后点击保存同步云端。");status.Margin=new Thickness(0,9,0,10);Grid.SetRow(status,1);root.Children.Add(status);
+        var status=InputDialog.Text("单击选择 · 按住 Ctrl 多选 · Shift 连选 · Delete 删除 · 双击查词。修改后点击「保存到云词本」。");status.Margin=new Thickness(0,9,0,10);Grid.SetRow(status,1);root.Children.Add(status);
         tabs.SelectionChanged+=(_,e)=>
         {
-            if(ReferenceEquals(e.Source,tabs))status.Text=tabs.SelectedIndex==0?"单击选择 · Ctrl 点选多个 · Shift 连选 · Delete 删除 · 双击查词。":"编辑云词本名称与简介；保存时保留现有标签和发布状态。";
+            if(ReferenceEquals(e.Source,tabs))status.Text=tabs.SelectedIndex==0?"单击选择 · 按住 Ctrl 多选 · Shift 连选 · Delete 删除 · 双击查词。":"修改云词本名称和简介，标签和公开状态保持不变。";
         };
         var buttons=new WrapPanel {HorizontalAlignment=HorizontalAlignment.Right};Grid.SetRow(buttons,2);root.Children.Add(buttons);
         Button Footer(string label){var button=new Button {Content=label,Margin=new Thickness(7,0,0,0),FontSize=12};buttons.Children.Add(button);return button;}
-        var undo=Footer("撤销修改");var reload=Footer("重新载入");reload.ToolTip="载入云端内容，替换尚未保存的修改";
+        var undo=Footer("撤销修改");var reload=Footer("重新加载");reload.ToolTip="重新加载词本，将放弃尚未保存的修改";
         var close=Footer("关闭");var save=Footer("保存到云词本");save.Style=(Style)Application.Current.FindResource("AccentButton");
         InputDialog.SetBody(dialog,root);
         foreach(var control in new (string,FrameworkElement)[]{("NotepadWords",list),("NotepadFilter",search),("NotepadTitle",title),("NotepadBrief",brief),("NotepadEntryInput",entryInput),("NotepadEntryAction",entryAction),("NotepadEntryPanel",entryPanel),("NotepadDeleteSelected",delete),("NotepadSelectAll",selectAll),("NotepadClearSelection",clear),("NotepadSave",save),("NotepadUndo",undo),("NotepadTabs",tabs),("NotepadMetadata",metadata),("NotepadStatus",status)})dialog.RegisterName(control.Item1,control.Item2);
@@ -108,7 +108,7 @@ internal static class NotepadEditor
                 if(closed||current!=version||cancellation.IsCancellationRequested)return;rows=result.ToArray();totalWords=rows.Where(row=>!row.IsChapter).Select(row=>row.Word).Distinct(StringComparer.OrdinalIgnoreCase).Count();if(totalWords>0)lastNonEmptyContent=snapshot;Filter();
             }
             catch(OperationCanceledException){ }
-            catch{if(!closed)status.Text="中文释义载入失败，请重新载入后重试。";}
+            catch{if(!closed)status.Text="未能加载中文释义，请重新加载后重试。";}
         }
         async Task SetContent(string value)
         {
@@ -127,10 +127,10 @@ internal static class NotepadEditor
             if(busy)return;
             var count=NotepadContent.Words(draftContent).Count;
             if(!(confirmDeletion??NotepadDeletionDialog.Confirm)(dialog,original,count==0?NotepadContent.Words(original.Content).Count:count))
-            {status.Text="已取消删除云词本，云端内容已保留。";return;}
+            {status.Text="已取消删除，词本内容保持不变。";return;}
             Busy(true);status.Text="正在删除整个云词本…";
             try{await api.DeleteNotepadAsync(original);deleted?.Invoke(original.Id);Busy(false);dialog.Close();}
-            catch(Exception error){status.Text=error is MaiMemoException?error.Message:"删除结果尚未确认，请重新载入检查。";}
+            catch(Exception error){status.Text=error is MaiMemoException?error.Message:"删除结果尚未确认，请重新加载检查。";}
             finally{if(!closed)Busy(false);}
         }
         list.SelectionChanged+=(_,e)=>
@@ -194,7 +194,7 @@ internal static class NotepadEditor
         reload.Click+=async(_,_)=>
         {
             Busy(true);status.Text="正在读取云端词本…";
-            try{var pad=await api.GetNotepadAsync(original.Id);await Reset(pad);saved(pad);status.Text="已载入云端最新内容。";}
+            try{var pad=await api.GetNotepadAsync(original.Id);await Reset(pad);saved(pad);status.Text="已加载词本最新内容。";}
             catch(Exception error){status.Text=error is MaiMemoException?error.Message:"读取失败，请稍后重试。";}
             finally{Busy(false);}
         };
@@ -203,12 +203,12 @@ internal static class NotepadEditor
             if(NotepadContent.Words(draftContent).Count==0)
             {
                 await DeleteBook();
-                if(!closed){var message=status.Text;await SetContent(lastNonEmptyContent);status.Text=message+" 已恢复非空词表。";}
+                if(!closed){var message=status.Text;await SetContent(lastNonEmptyContent);status.Text=message+" 已恢复删除前的词表。";}
                 return;
             }
             Busy(true);status.Text="正在保存到云端…";
             try{var pad=await api.UpdateNotepadAsync(original,title.Text,brief.Text,draftContent);await Reset(pad);saved(pad);status.Text="已保存到云词本，收藏状态已同步。";}
-            catch(Exception error){status.Text=error is MaiMemoException or ArgumentException?error.Message:"保存未完成，修改仍保留，请重新载入确认。";}
+            catch(Exception error){status.Text=error is MaiMemoException or ArgumentException?error.Message:"保存未完成，修改仍保留，请重新加载确认。";}
             finally{Busy(false);}
         };
         close.Click+=(_,_)=>dialog.Close();dialog.Closing+=(_,e)=>{if(busy)e.Cancel=true;};

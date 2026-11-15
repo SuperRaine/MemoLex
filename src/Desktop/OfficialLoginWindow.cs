@@ -49,7 +49,7 @@ internal sealed class OfficialLoginWindow
     private void Navigate()
     {
         if(_browser.CoreWebView2==null){_=InitializeAsync();return;}
-        _status.Text="请在官方页面选择密码登录或验证码登录，完成后将自动连接。";
+        _status.Text="请在墨墨官方页面使用密码或验证码登录，完成后会自动返回软件。";
         _browser.CoreWebView2.Navigate(OfficialLoginProtocol.StartUrl);
     }
     private async Task InitializeAsync()
@@ -60,7 +60,7 @@ internal sealed class OfficialLoginWindow
             if(_resolveRuntime()==null)
             {
                 _installBrowser.Visibility=Visibility.Visible;
-                _status.Text="首次使用网页功能需安装网页组件。点击安装后将自动继续，安装过程需要联网。";
+                _status.Text="首次登录需要安装网页组件。请联网安装，完成后会自动继续。";
                 return;
             }
             _installBrowser.Visibility=Visibility.Collapsed;
@@ -106,21 +106,21 @@ internal sealed class OfficialLoginWindow
             core.NavigationCompleted+=async(_,e)=>
             {
                 if(_closed)return;
-                if(!e.IsSuccess){_status.Text="官方登录页暂时无法打开，请检查网络后点击重新打开。";return;}
+                if(!e.IsSuccess){_status.Text="暂时无法打开墨墨登录页，请检查网络后点击「重新打开」。";return;}
                 try
                 {
                     if(OfficialLoginProtocol.IsIdentitySource(core.Source)&&_identity.Length>0)
                         await core.ExecuteScriptAsync("document.querySelectorAll('input[name=identity]').forEach(x=>{x.value="+identityJson+";x.dispatchEvent(new Event('input',{bubbles:true}));});");
                     if(OfficialLoginProtocol.IsTokenDocument(core.Source))
                     {
-                        _status.Text="账号已登录，正在获取官方授权…";
+                        _status.Text="正在完成登录，请稍候…";
                         var body=await core.ExecuteScriptAsync("document.documentElement.outerHTML");
                         var text=JsonSerializer.Deserialize<string>(body)??"";
                         if(OfficialLoginProtocol.Parse(core.Source,text,DateTimeOffset.UtcNow) is {} auth)await CompleteAsync(auth);
-                        else if(!_completing)_status.Text="官方页面的授权信息尚未就绪，请点击重新打开。";
+                        else if(!_completing)_status.Text="暂时无法完成登录，请点击「重新打开」后重试。";
                     }
                 }
-                catch(Exception){if(!_closed)_status.Text="登录已完成但授权信息暂未就绪，请点击重新打开。";}
+                catch(Exception){if(!_closed)_status.Text="暂时无法完成登录，请点击「重新打开」后重试。";}
             };
             core.WebResourceResponseReceived+=async(_,e)=>
             {
@@ -135,11 +135,11 @@ internal sealed class OfficialLoginWindow
                     while(true){var count=await content.ReadAsync(buffer,_cancel.Token);if(count==0)break;if(memory.Length+count>65536)return;memory.Write(buffer,0,count);}
                     if(OfficialLoginProtocol.Parse(e.Request.Uri,Encoding.UTF8.GetString(memory.ToArray()),DateTimeOffset.UtcNow) is {} auth)await CompleteAsync(auth);
                 }
-                catch(Exception){if(!_closed)_status.Text="授权信息读取未完成，请点击重新打开。";}
+                catch(Exception){if(!_closed)_status.Text="未能获取登录信息，请点击「重新打开」后重试。";}
             };
             Navigate();
         }
-        catch(Exception){if(!_closed)_status.Text="官方登录组件未能启动，请点击重新打开后重试。";}
+        catch(Exception){if(!_closed)_status.Text="登录页面未能启动，请点击「重新打开」后重试。";}
     }
     private async Task InstallBrowserAsync()
     {
@@ -151,7 +151,7 @@ internal sealed class OfficialLoginWindow
     }
     private async Task CompleteAsync(OfficialAuthorization authorization)
     {
-        if(_closed||_completing)return;_completing=true;_status.Text="登录成功，正在确认墨墨授权…";
+        if(_closed||_completing)return;_completing=true;_status.Text="正在确认登录状态…";
         try
         {
             if(_validate!=null)await _validate(authorization,_cancel.Token);
@@ -165,6 +165,6 @@ internal sealed class OfficialLoginWindow
             _window.DialogResult=true;
         }
         catch(OperationCanceledException){}
-        catch(Exception error){if(!_closed){_completing=false;_status.Text=error is ArgumentException or InvalidOperationException?error.Message:"授权尚未确认，请检查网络或官方授权范围后点击重新打开。";}}
+        catch(Exception error){if(!_closed){_completing=false;_status.Text=error is ArgumentException or InvalidOperationException?error.Message:"未能完成登录，请检查网络，并确认已在墨墨页面同意授权，然后点击「重新打开」。";}}
     }
 }

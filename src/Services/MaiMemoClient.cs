@@ -97,7 +97,7 @@ public sealed partial class MaiMemoClient : IDisposable
             object body=string.IsNullOrWhiteSpace(noteId)?new {note=new {voc_id=vocId,note_type=noteType,note=text}}:new {note=new {note_type=noteType,note=text}};
             var data=await SendAsync(HttpMethod.Post,string.IsNullOrWhiteSpace(noteId)?"notes":"notes/"+Uri.EscapeDataString(noteId),body,cancellationToken);
             if(!data.TryGetProperty("note",out var note)||Text(note,"id").Length==0||noteId!=null&&Text(note,"id")!=noteId)
-                throw new MaiMemoException("墨墨未返回正确的助记保存结果，请重新查词确认后再操作。");
+                throw new MaiMemoException("暂时无法确认助记是否保存成功，请重新查词查看。");
             if(Text(note,"status")=="DELETED")throw new MaiMemoException("这条云端助记已删除，请重新查词后操作。");
             return new(Text(note,"id"),Text(note,"note_type",noteType),Text(note,"note",text),Text(note,"status","PUBLISHED"));
         }
@@ -148,13 +148,13 @@ public sealed partial class MaiMemoClient : IDisposable
     {
         using var accountScope=BeginAccountOperation();
         var data = await SendAsync(HttpMethod.Get, "notepads/" + Uri.EscapeDataString(id), null, cancellationToken);
-        if (!data.TryGetProperty("notepad", out var pad)) throw new MaiMemoException("墨墨没有返回完整云词本，请刷新后重试。");
+        if (!data.TryGetProperty("notepad", out var pad)) throw new MaiMemoException("未能加载完整词本，请刷新后重试。");
         if (pad.ValueKind != JsonValueKind.Object || !pad.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.String
             || !pad.TryGetProperty("title", out var title) || title.ValueKind != JsonValueKind.String
             || !pad.TryGetProperty("brief", out var brief) || brief.ValueKind != JsonValueKind.String
             || !pad.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Array
             || !pad.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String)
-            throw new MaiMemoException("墨墨没有返回完整云词本；为保留原有内容，此次操作已停止。");
+            throw new MaiMemoException("词本未加载完整，已停止修改。请刷新后重试。");
         return ParseNotepad(pad);
     }
 
@@ -193,7 +193,7 @@ public sealed partial class MaiMemoClient : IDisposable
             if (!ContainsWord(current, word)) return new(current, true);
             var pattern = @"(?im)^[\t ]*" + Regex.Escape(word) + @"[\t ]*(?:\r\n|\n|\r|$)";
             var content = Regex.Replace(current.Content, pattern, "", RegexOptions.CultureInvariant);
-            if (content == current.Content) throw new MaiMemoException("该词没有单独成行，请在编辑词本中移除，避免改动词组或说明。");
+            if (content == current.Content) throw new MaiMemoException("这个单词位于词组或说明中，请在「单词与释义」中编辑词表后移除。");
             if(NotepadContent.Words(content).Count==0)throw new EmptyNotepadException(current);
             return new(await SaveNotepadAsync(current, current.Title, current.Brief, content, cancellationToken), false);
         }
@@ -213,7 +213,7 @@ public sealed partial class MaiMemoClient : IDisposable
             EnsureEditable(current);
             if (current.Title != original.Title || current.Brief != original.Brief || current.Content != original.Content
                 || current.Status != original.Status || !current.Tags.SequenceEqual(original.Tags))
-                throw new MaiMemoException("云词本已在其他位置更新。你的修改仍保留，请复制后重新载入，再合并保存。");
+                throw new MaiMemoException("词本已在其他设备上更新。请先复制当前修改，再重新加载词本并合并保存。");
             if (current.Title == title && current.Brief == brief && current.Content == content) return current;
             if(NotepadContent.Words(content).Count==0)throw new EmptyNotepadException(current);
             return await SaveNotepadAsync(current, title, brief, content, cancellationToken);
@@ -240,7 +240,7 @@ public sealed partial class MaiMemoClient : IDisposable
             if(current.Status=="DELETED")return current;
             EnsureEditable(current);
             if(current.Title!=original.Title||current.Brief!=original.Brief||current.Content!=original.Content||current.Status!=original.Status||!current.Tags.SequenceEqual(original.Tags))
-                throw new MaiMemoException("云词本已在其他位置更新，已停止删除。请重新载入并确认后再操作。");
+                throw new MaiMemoException("词本已在其他设备上更新，已停止删除。请重新加载后确认。");
             var path="notepads/"+Uri.EscapeDataString(original.Id);
             var deleted=current with {Status="DELETED"};
             JsonElement data=default;
@@ -274,13 +274,13 @@ public sealed partial class MaiMemoClient : IDisposable
     {
         var data = await SendAsync(HttpMethod.Post, "notepads/" + Uri.EscapeDataString(current.Id),
             new { notepad = new { title, brief, content, tags = current.Tags, status = current.Status } }, cancellationToken);
-        if (!data.TryGetProperty("notepad", out var saved)) throw new MaiMemoException("墨墨未返回保存结果，请重新载入词本确认后再操作。");
-        if(Text(saved,"id")!=current.Id)throw new MaiMemoException("保存响应缺少正确词本 ID，请重新载入确认后再操作。");
+        if (!data.TryGetProperty("notepad", out var saved)) throw new MaiMemoException("墨墨未返回保存结果，请重新加载词本确认后再操作。");
+        if(Text(saved,"id")!=current.Id)throw new MaiMemoException("暂时无法确认词本是否保存成功，请重新加载后查看。");
         var returned=ParseNotepad(saved);
         if(returned.HasContent&&returned.Content.Replace("\r\n","\n")!=content.Replace("\r\n","\n"))
-            throw new MaiMemoException("保存响应与提交内容不一致，请重新载入云词本确认后再操作。");
+            throw new MaiMemoException("词本的保存结果与预期不符，请重新加载后查看。");
         if(saved.TryGetProperty("status",out _)&&returned.Status!=current.Status)
-            throw new MaiMemoException("词本发布状态与提交内容不一致，请重新载入确认。");
+            throw new MaiMemoException("词本的公开状态与预期不符，请重新加载后查看。");
         // Update responses may contain only brief fields, or a stale parsed list.
         // Acknowledged submitted content is the membership source of truth.
         return current with {Title=title,Brief=brief,Content=content,Words=NotepadContent.Words(content),HasContent=true};
@@ -377,7 +377,7 @@ public sealed partial class MaiMemoClient : IDisposable
         {
             if(studyWrite)throw new StudyAddUncertainException("添加请求超时，结果尚未确认，请核对今日新学。");
             if(studyRequest)throw new MaiMemoException("读取学习数据超时，请确认墨墨 App 已开启自动同步后重试。");
-            if(method==HttpMethod.Delete)throw new MaiMemoException("请求超时，删除结果尚未确认。请重新载入云词本检查后再操作。");
+            if(method==HttpMethod.Delete)throw new MaiMemoException("请求超时，删除结果尚未确认。请重新加载云词本检查后再操作。");
             throw new MaiMemoException(method == HttpMethod.Post
                 ? "请求超时，保存结果尚未确认。请刷新云词本检查后再操作。"
                 : "连接墨墨超时，请检查网络后重试。");
@@ -386,7 +386,7 @@ public sealed partial class MaiMemoClient : IDisposable
         {
             if(studyWrite)throw new StudyAddUncertainException("添加时连接中断，结果尚未确认，请核对今日新学。");
             if(studyRequest)throw new MaiMemoException("暂时无法读取学习数据，请检查网络及墨墨 App 的自动同步。");
-            if(method==HttpMethod.Delete)throw new MaiMemoException("连接中断，删除结果尚未确认。请重新载入云词本检查后再操作。");
+            if(method==HttpMethod.Delete)throw new MaiMemoException("连接中断，删除结果尚未确认。请重新加载云词本检查后再操作。");
             throw new MaiMemoException(method == HttpMethod.Post
                 ? "网络连接中断，保存结果尚未确认。请刷新云词本检查后再操作。"
                 : "暂时无法连接墨墨，请检查网络后重试。");
@@ -395,7 +395,7 @@ public sealed partial class MaiMemoClient : IDisposable
         {
             if(studyWrite)throw new StudyAddUncertainException("添加结果无法读取，请核对今日新学。");
             if(studyRequest)throw new MaiMemoException("墨墨的学习数据格式有变化，请稍后重试。");
-            if(method==HttpMethod.Delete)throw new MaiMemoException("删除结果无法读取，请重新载入云词本确认。");
+            if(method==HttpMethod.Delete)throw new MaiMemoException("删除结果无法读取，请重新加载云词本确认。");
             throw new MaiMemoException(method == HttpMethod.Post
                 ? "墨墨的保存结果无法读取。请先刷新云词本确认结果，再决定是否重试。"
                 : "墨墨返回的数据格式有变化，请稍后重试。");

@@ -27,7 +27,7 @@ public partial class MainWindow
             var gesture=ShortcutGestures.Get(_preferences,command);
             if(gesture==null)continue;
             if(RegisterHotKey(new WindowInteropHelper(this).Handle,id,NativeModifiers(gesture.Modifiers),(uint)KeyInterop.VirtualKeyFromKey(gesture.Key)))_registeredHotkeys.Add(id);
-            else StatusText.Text=$"{ShortcutDefinitions.All.First(item=>item.Id==command).Label}被占用，请在账号与设置中更换。";
+            else StatusText.Text=$"{ShortcutDefinitions.All.First(item=>item.Id==command).Label}已被占用，请在「设置 → 快捷键」中更换。";
         }
     }
     private string? ValidateGlobalShortcut(Dictionary<string,string> values)

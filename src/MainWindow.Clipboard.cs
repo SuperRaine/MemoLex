@@ -14,7 +14,7 @@ public partial class MainWindow
         _clipboardCts?.Cancel();
         if(!_desktopIntegration||!_preferences.DoubleCopyEnabled)return;
         try{_doubleCopy=new DoubleCopyMonitor(signal=>Dispatcher.BeginInvoke(new Action(()=>DoubleCopyAsync(signal))));}
-        catch{StatusText.Text="双击 Ctrl+C 暂不可用，仍可使用全局剪贴板快捷键。";}
+        catch{StatusText.Text="连按两次 Ctrl+C 暂时不可用，请使用剪贴板查词快捷键。";}
     }
     private async void DoubleCopyAsync(DoubleCopySignal signal)
     {
@@ -54,7 +54,7 @@ public partial class MainWindow
                 if(_viewTarget==ViewTarget.ChineseSearch&&_chineseQuery==request.Text&&_chineseReady&&_chineseTotal==0)await TranslateClipboardAsync(request.Text,"zh-CN|en");
                 break;
             case ClipboardLookupKind.Paragraph:await TranslateClipboardAsync(request.Text,request.Direction);break;
-            default:StatusText.Text="剪贴板中没有适合查词或翻译的文本。";break;
+            default:StatusText.Text="剪贴板中没有可查询的文字。";break;
         }
     }
     private async Task TranslateClipboardAsync(string text,string direction)

@@ -17,7 +17,7 @@ internal static class MnemonicEditor
         body.Children.Add(type);
         var text=new TextBox {Text=initial,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,VerticalContentAlignment=VerticalAlignment.Top,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,MaxLength=20000,FontSize=15,FontFamily=new FontFamily("Microsoft YaHei UI")};
         Grid.SetRow(text,1);body.Children.Add(text);dialog.RegisterName("MnemonicText",text);dialog.RegisterName("MnemonicType",type);
-        var status=InputDialog.Text("本地保存可离线使用；下次查到云端助记时以云端为准。同步到墨墨会同时保存本地。");status.Margin=new Thickness(0,12,0,13);Grid.SetRow(status,2);body.Children.Add(status);
+        var status=InputDialog.Text("保存到本地后可离线查看。联网查词时优先显示云端助记；同步到墨墨也会保留本地副本。");status.Margin=new Thickness(0,12,0,13);Grid.SetRow(status,2);body.Children.Add(status);
         var buttons=new StackPanel {Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right};Grid.SetRow(buttons,3);body.Children.Add(buttons);
         var cancel=new Button {Content="取消",Margin=new Thickness(0,0,8,0)};cancel.Click+=(_,_)=>dialog.Close();buttons.Children.Add(cancel);
         var local=new Button {Content="保存到本地",Margin=new Thickness(0,0,8,0),IsDefault=true};buttons.Children.Add(local);dialog.RegisterName("SaveMnemonicLocal",local);
@@ -27,9 +27,9 @@ internal static class MnemonicEditor
         async Task Save(bool sync)
         {
             if(string.IsNullOrWhiteSpace(text.Text)){status.Text="请先填写助记内容。";return;}
-            busy=true;body.IsEnabled=false;status.Text=sync?"正在保存本地并同步到墨墨…":"正在保存本地助记…";
+            busy=true;body.IsEnabled=false;status.Text=sync?"正在保存并同步到墨墨…":"正在保存本地助记…";
             try{await save((string)type.SelectedItem,text.Text.Trim(),sync);busy=false;dialog.Close();}
-            catch(Exception error){status.Text=error is Services.MaiMemoException or ArgumentException or System.IO.IOException?error.Message:"保存未完成，请稍后重试。";}
+            catch(Exception error){status.Text=error is Services.MaiMemoException or ArgumentException or System.IO.IOException?error.Message:"未能保存助记，请稍后重试。";}
             finally{busy=false;body.IsEnabled=true;}
         }
         local.Click+=async(_,_)=>await Save(false);cloud.Click+=async(_,_)=>await Save(true);

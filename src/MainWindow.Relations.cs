@@ -20,7 +20,7 @@ public partial class MainWindow
             void Render(StackPanel panel,ToggleButton toggle,string title,IReadOnlyList<RelatedWord> items)
             {
                 toggle.Content=$"{title} · {items.Count}";
-                if(items.Count==0){panel.Children.Add(new TextBlock {Text="当前词暂无相关条目",FontSize=12,Foreground=Brush("#91A7BA")});return;}
+                if(items.Count==0){panel.Children.Add(new TextBlock {Text="暂未找到相关单词",FontSize=12,Foreground=Brush("#91A7BA")});return;}
                 foreach(var item in items)
                 {
                     var block=new TextBlock {TextWrapping=TextWrapping.Wrap,FontSize=13,LineHeight=24,Margin=new Thickness(0,0,0,8),Foreground=Brush("#718EA5")};

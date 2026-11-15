@@ -112,10 +112,10 @@ public sealed record ShortcutDefinition(string Id,string Label,string Default,bo
 public static class ShortcutDefinitions
 {
     public static IReadOnlyList<ShortcutDefinition> All {get;} = [
-        new("clipboard","唤起并查询剪贴板（全局）","Ctrl+Alt+D",true),
+        new("clipboard","查询剪贴板（全局）","Ctrl+Alt+D",true),
         new("screenshot","截图翻译（全局）","Ctrl+Alt+S",true),
-        new("search","唤起快速查词（全局）","Ctrl+L",true),new("history","搜词历史","Ctrl+H"),
-        new("toggleWord","加入 / 移除云词本","Ctrl+Enter"),new("back","后退","Alt+Left"),new("forward","前进","Alt+Right"),
+        new("search","打开快速查词（全局）","Ctrl+L",true),new("history","查词历史","Ctrl+H"),
+        new("toggleWord","加入或移出云词本","Ctrl+Enter"),new("back","后退","Alt+Left"),new("forward","前进","Alt+Right"),
         new("translation","打开段落翻译","Ctrl+T"),new("translate","开始段落翻译","Ctrl+Shift+Enter")];
 }
 

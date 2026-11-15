@@ -1,12 +1,12 @@
 name: 功能建议
-description: 提出使用体验或功能改进建议
+description: 告诉我们你希望增加或改进的功能
 title: "[建议] "
 body:
   - type: textarea
     id: use-case
     attributes:
       label: 使用场景
-      description: 你在什么情况下需要这个功能？
+      description: 你想用这个功能做什么？
     validations:
       required: true
   - type: textarea

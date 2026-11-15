@@ -21,7 +21,7 @@ public partial class MainWindow
         try{NotepadCombo.ItemsSource=pads;NotepadCombo.SelectedItem=pads.FirstOrDefault();}
         finally{_changingLists=false;}
         _preferences.NotepadId=(NotepadCombo.SelectedItem as CloudNotepad)?.Id;_preferences.Save();
-        CloudDetailText.Text=pads.Length==0?"还没有云词本，点击新建":$"{pads.Length} 个云词本 · 自动保存选择";
+        CloudDetailText.Text=pads.Length==0?"还没有云词本，点击新建":$"{pads.Length} 个云词本";
         StatusText.Text="云词本已删除。";
     }
     private void CacheNotepad(CloudNotepad pad)=>_notepadCache[pad.Id]=(DateTime.UtcNow,pad);
@@ -54,7 +54,7 @@ public partial class MainWindow
         _membershipWord=_membershipPad="";
         if(!_ready||!_allowCloud||!_tokens.HasToken) {AddButton.IsEnabled=_allowCloud&&!_adding;return;}
         if(pad==null){AddButton.Content="＋ 新建词本并加入";AddButton.IsEnabled=!_adding&&!_refreshing;EditNotepadButton.IsEnabled=false;return;}
-        AddButton.Content="读取词本…";AddButton.IsEnabled=false;EditNotepadButton.IsEnabled=!_adding&&!_refreshing;
+        AddButton.Content="正在加载词本…";AddButton.IsEnabled=false;EditNotepadButton.IsEnabled=!_adding&&!_refreshing;
         try
         {
             CloudNotepad full;
@@ -62,15 +62,15 @@ public partial class MainWindow
             else full=await ReadNotepadAsync(pad.Id);
             if(version!=_membershipVersion||word!=_word)return;
             _membershipWord=word;_membershipPad=pad.Id;_isMember=MaiMemoClient.ContainsWord(full,word);
-            AddButton.Content=_isMember?"✓ 已加入 · 点击取消":"＋ 加入云词本";
+            AddButton.Content=_isMember?"✓ 已收藏 · 点击移除":"＋ 加入云词本";
             AddButton.ToolTip=(_isMember?"从当前云词本移除这个单词":"加入当前云词本")+"（"+ShortcutLabel("toggleWord")+"）";
-            if(_isMember&&Core.NotepadContent.Words(full.Content).Count==1)AddButton.ToolTip="移除最后一个单词将删除整个云词本，需要额外确认。";
+            if(_isMember&&Core.NotepadContent.Words(full.Content).Count==1)AddButton.ToolTip="这是词本中的最后一个单词，移除时会询问是否删除整个词本。";
             AddButton.IsEnabled=!_adding&&!_refreshing&&ValidWord(word);
         }
         catch(Exception error)
         {
             if(version!=_membershipVersion)return;
-            AddButton.Content="重试读取词本";AddButton.IsEnabled=!_adding&&!_refreshing;
+            AddButton.Content="重新加载词本";AddButton.IsEnabled=!_adding&&!_refreshing;
             StatusText.Text=UserError(error);
         }
     }

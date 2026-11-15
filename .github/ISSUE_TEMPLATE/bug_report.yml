@@ -1,12 +1,12 @@
 name: 问题反馈
-description: 报告软件异常或功能问题
+description: 遇到问题时，在这里告诉我们
 title: "[问题] "
 body:
   - type: input
     id: version
     attributes:
       label: 软件版本
-      placeholder: 例如 1.0.0
+      placeholder: 在软件设置中查看版本号
     validations:
       required: true
   - type: input
@@ -18,16 +18,16 @@ body:
     id: description
     attributes:
       label: 问题描述
-      description: 请写明实际发生的情况和你期望的结果。
+      description: 发生了什么？你原本希望看到什么结果？
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: 复现步骤
+      label: 操作步骤
       placeholder: "1. 打开……\n2. 点击……\n3. 出现……"
   - type: textarea
     id: screenshots
     attributes:
       label: 截图或补充说明
-      description: 如有截图，可在这里添加；请遮盖 Token 等账号凭据。
+      description: 可以拖入截图。请遮住手机号、验证码、Token 等隐私信息。

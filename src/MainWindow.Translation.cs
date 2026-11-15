@@ -44,7 +44,7 @@ public partial class MainWindow
             TranslationDirectionCombo.SelectedIndex=snapshot.Direction=="zh-CN|en"?1:0;
             _translatedText=snapshot.Output;_translatedSource=snapshot.Source;_translatedProvider=snapshot.Provider;
             RenderTranslationText();
-            TranslationHintText.Text=snapshot.Output.Length>0?_translatedProvider+" · 原文与译文中的英文单词均可点击查词。":"优先使用 "+_translation.PreferredProvider+"，DeepL 连接失败自动改用 MyMemory。";
+            TranslationHintText.Text=snapshot.Output.Length>0?_translatedProvider+" · 点击原文或译文中的英文单词可查看释义。":"优先使用 "+_translation.PreferredProvider+"，连接失败时切换备用翻译。";
             QueueViewRestore(_wordVersion,()=>{TranslationScroll.UpdateLayout();TranslationScroll.ScrollToVerticalOffset(snapshot.ScrollOffset);});
         }
         _navigating=false;UpdateNavigationButtons();
@@ -74,13 +74,13 @@ public partial class MainWindow
             var translated=await _translation.TranslateAsync(text,pair,cancellation);
             if(version!=_translationVersion||_viewTarget!=ViewTarget.Translation)return;
             _translatedText=translated;_translatedProvider=_translation.LastProvider;RenderTranslationText();
-            TranslationHintText.Text=_translatedProvider+" · 原文与译文中的英文单词均可点击查词。";
+            TranslationHintText.Text=_translatedProvider+" · 点击原文或译文中的英文单词可查看释义。";
             TranslationScroll.ScrollToTop();RememberCurrentView();
         }
         catch(OperationCanceledException){ }
         catch(Exception error)
         {
-            if(version==_translationVersion)TranslationHintText.Text=error is Services.TranslationException or ArgumentException?error.Message:"翻译未完成，请重试。";
+            if(version==_translationVersion)TranslationHintText.Text=error is Services.TranslationException or ArgumentException?error.Message:"暂时无法翻译，请稍后重试。";
         }
         finally{if(version==_translationVersion){TranslateButton.IsEnabled=true;TranslateButton.Content="翻译";}}
     }

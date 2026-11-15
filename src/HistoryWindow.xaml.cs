@@ -63,7 +63,7 @@ public partial class HistoryWindow : Window
     }
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
-        if (MessageBox.Show(this, $"清空全部 {_preferences.SearchHistory.Count} 条搜词历史？", "清空搜词历史", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        if (MessageBox.Show(this, $"清空全部 {_preferences.SearchHistory.Count} 条查词历史？", "清空查词历史", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         _preferences.ClearHistory();
         _preferences.Save();
         RefreshEntries();

@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="搜词历史 · 墨墨搜词" Width="660" Height="600" MinWidth="560" MinHeight="420" WindowStyle="None"
+        Title="查词历史 · 墨墨搜词" Width="660" Height="600" MinWidth="560" MinHeight="420" WindowStyle="None"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         FontFamily="Microsoft YaHei UI" FontSize="13" Background="#F4F9FD" Foreground="#25384A">
     <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="0" UseAeroCaptionButtons="False"/></shell:WindowChrome.WindowChrome>
@@ -12,7 +12,7 @@
     <Grid Grid.Row="1" Margin="25,19,25,24">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <StackPanel>
-            <TextBlock Text="搜词历史" FontSize="24" FontWeight="SemiBold"/>
+            <TextBlock Text="查词历史" FontSize="24" FontWeight="SemiBold"/>
             <TextBlock x:Name="CountText" Foreground="#8BA1B4" Margin="0,8,0,15"/>
         </StackPanel>
         <Grid Grid.Row="1" Margin="0,0,0,14">
@@ -28,7 +28,7 @@
                 <ListView.View>
                     <GridView>
                         <GridViewColumn Header="单词" Width="245" DisplayMemberBinding="{Binding Word}"/>
-                        <GridViewColumn Header="最近查询" Width="165" DisplayMemberBinding="{Binding DisplayTime}"/>
+                        <GridViewColumn Header="最近查词" Width="165" DisplayMemberBinding="{Binding DisplayTime}"/>
                         <GridViewColumn Header="次数" Width="65" DisplayMemberBinding="{Binding LookupCount}"/>
                     </GridView>
                 </ListView.View>
@@ -42,7 +42,7 @@
                     </Style>
                 </ListView.ItemContainerStyle>
             </ListView>
-            <TextBlock x:Name="EmptyText" Text="还没有搜词记录，查询单词后会自动保存。" Foreground="#8BA1B4"
+            <TextBlock x:Name="EmptyText" Text="还没有查词记录，查过的单词会自动保存在这里。" Foreground="#8BA1B4"
                        HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
         </Grid>
         <Grid Grid.Row="3" Margin="0,17,0,0">

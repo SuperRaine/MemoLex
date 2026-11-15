@@ -27,7 +27,7 @@ internal sealed class HoverLookupWindow : Window
         var definitions=new StackPanel();_meaning.FontSize=14;_meaning.LineHeight=22;definitions.Children.Add(_meaning);
         _mnemonic.Margin=new Thickness(0,12,0,0);_mnemonic.FontSize=12;definitions.Children.Add(_mnemonic);
         content.Children.Add(new ScrollViewer{Content=definitions,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,MaxHeight=205});
-        var open=new Button {Content="在主窗口查看 →",HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,13,0,0),Padding=new Thickness(9,5,9,5)};
+        var open=new Button {Content="查看完整释义 →",HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,13,0,0),Padding=new Thickness(9,5,9,5)};
         open.Click+=(_,_)=>OpenWord?.Invoke(_currentWord);content.Children.Add(open);
         Content=new Border {Child=content,CornerRadius=new CornerRadius(10),Background=Brushes.White,BorderBrush=new SolidColorBrush(Color.FromRgb(113,205,249)),BorderThickness=new Thickness(1),Padding=new Thickness(1)};
         SourceInitialized+=(_,_)=>
@@ -52,7 +52,7 @@ internal sealed class HoverLookupWindow : Window
     {
         _currentWord=entry.word;_word.Text=entry.word;
         var origin=entry.source=="local-brief"?LocalBriefDictionary.SourceLabel:"离线释义";
-        _pronunciation.Text=entry.word.Equals(hit.Word,StringComparison.OrdinalIgnoreCase)?(entry.phonetic.Length>0?entry.phonetic+" · ":"")+origin+" · "+hit.Method:"未找到 “"+hit.Word+"”，近似词："+entry.word+" · "+origin;
+        _pronunciation.Text=entry.word.Equals(hit.Word,StringComparison.OrdinalIgnoreCase)?(entry.phonetic.Length>0?entry.phonetic+" · ":"")+origin+" · "+hit.Method:"未找到 “"+hit.Word+"”，相近单词："+entry.word+" · "+origin;
         _meaning.Text=entry.translation.Length<=600?entry.translation:entry.translation[..600]+"…";
         _mnemonic.Text=notes.FirstOrDefault()?.Text??"";if(_mnemonic.Text.Length>280)_mnemonic.Text=_mnemonic.Text[..280]+"…";
         _mnemonic.Visibility=_mnemonic.Text.Length>0?Visibility.Visible:Visibility.Collapsed;

@@ -11,20 +11,20 @@ internal static class AccountSettingsPanel
         var panel=new StackPanel();
         var headline=new TextBlock {FontSize=16,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,14)};panel.Children.Add(headline);
         panel.Children.Add(InputDialog.Text("使用墨墨官方手机号或邮箱登录，支持密码与验证码。成功后自动保存登录状态。"));
-        var login=new Button {Content="登录 / 添加墨墨账号",Style=(Style)Application.Current.FindResource("AccentButton"),HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,18,0,22)};
+        var login=new Button {Content="登录或添加账号",Style=(Style)Application.Current.FindResource("AccentButton"),HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,18,0,22)};
         panel.Children.Add(login);
-        panel.Children.Add(new TextBlock {Text="选择账号后立即切换",FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,9)});
+        panel.Children.Add(new TextBlock {Text="选择账号即可切换",FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,9)});
         var accounts=new ComboBox {MinHeight=37,Margin=new Thickness(0,0,0,12)};panel.Children.Add(accounts);
         var actions=new WrapPanel();panel.Children.Add(actions);
         Button Add(string text){var b=new Button {Content=text,Margin=new Thickness(0,0,8,10)};actions.Children.Add(b);return b;}
         var use=Add("切换到此账号");var relogin=Add("重新登录");var logout=Add("退出当前登录");var remove=Add("移除保存账号");
-        var nameRow=new DockPanel {Margin=new Thickness(0,6,0,12)};var rename=new Button {Content="保存名称",Margin=new Thickness(10,0,0,0)};DockPanel.SetDock(rename,Dock.Right);nameRow.Children.Add(rename);
+        var nameRow=new DockPanel {Margin=new Thickness(0,6,0,12)};var rename=new Button {Content="保存账号名称",Margin=new Thickness(10,0,0,0)};DockPanel.SetDock(rename,Dock.Right);nameRow.Children.Add(rename);
         var name=new TextBox {MaxLength=80,Padding=new Thickness(9),ToolTip="给账号起一个方便区分的名称"};nameRow.Children.Add(name);panel.Children.Add(nameRow);
         var status=InputDialog.Text("");status.Margin=new Thickness(0,8,0,14);panel.Children.Add(status);
         panel.Children.Add(InputDialog.Text("登录信息使用 Windows 加密保存在本机。过期后自动退出，并提示重新登录；其他已保存账号仍可切换使用。"));
         var importPanel=new StackPanel();var secret=new PasswordBox {MaxLength=512,Padding=new Thickness(9),Margin=new Thickness(0,10,0,10)};importPanel.Children.Add(secret);
         var import=new Button {Content="验证并导入 Token",HorizontalAlignment=HorizontalAlignment.Left};importPanel.Children.Add(import);
-        panel.Children.Add(new Expander {Header="高级：手动导入已有 Token",Content=importPanel,Margin=new Thickness(0,22,0,0)});
+        panel.Children.Add(new Expander {Header="手动导入 Token（高级）",Content=importPanel,Margin=new Thickness(0,22,0,0)});
         var busy=false;var refreshing=false;string state="";
         SavedAccount? Selected()=>accounts.SelectedItem as SavedAccount;
         void Enable()
@@ -45,10 +45,10 @@ internal static class AccountSettingsPanel
                     finally{refreshing=false;}
                 }
                 var active=saved.FirstOrDefault(a=>a.Active);
-                headline.Text=active!=null?"当前账号："+active.Name:store.HasExpiredSession?"登录已过期，请重新登录":"尚未登录墨墨账号";
+                headline.Text=active!=null?"当前账号："+active.Name:store.HasExpiredSession?"登录已过期，请重新登录":"还未登录墨墨账号";
                 Enable();
             }
-            catch{status.Text="无法读取已保存账号，原文件已保留。";use.IsEnabled=relogin.IsEnabled=remove.IsEnabled=rename.IsEnabled=false;}
+            catch{status.Text="无法加载已保存的账号，请稍后重试。";use.IsEnabled=relogin.IsEnabled=remove.IsEnabled=rename.IsEnabled=false;}
         }
         accounts.SelectionChanged+=async(_,_)=>
         {
@@ -59,7 +59,7 @@ internal static class AccountSettingsPanel
         {
             if(busy)return;busy=true;Enable();
             try{mutation();Refresh(true);await changed();status.Text="账号已更新。";}
-            catch(Exception error){status.Text=error is ArgumentException or InvalidOperationException?error.Message:"账号更新未完成，请检查网络或本机文件权限。";}
+            catch(Exception error){status.Text=error is ArgumentException or InvalidOperationException?error.Message:"未能更新账号信息，请检查网络后重试。";}
             finally{busy=false;Refresh(true);}
         }
         async Task Login(SavedAccount? target)
@@ -68,9 +68,9 @@ internal static class AccountSettingsPanel
             try
             {
                 var dialog=new OfficialLoginWindow(owner,store,target);
-                if(dialog.ShowDialog()==true){Refresh(true);await changed();status.Text="已登录，登录信息已加密保存。";}
+                if(dialog.ShowDialog()==true){Refresh(true);await changed();status.Text="登录成功，已记住此账号。";}
             }
-            catch{status.Text="官方登录未完成，请稍后重试。";}
+            catch{status.Text="登录未完成，请稍后重试。";}
             finally{busy=false;Refresh(true);}
         }
         login.Click+=async(_,_)=>await Login(null);
@@ -80,7 +80,7 @@ internal static class AccountSettingsPanel
         rename.Click+=async(_,_)=>{if(Selected() is {} account)await Change(()=>store.RenameAccount(account.Id,name.Text));};
         remove.Click+=async(_,_)=>
         {
-            if(Selected() is {} account&&MessageBox.Show(owner,"移除“"+account.Name+"”的已保存登录信息？本地助记和查词历史会保留。","移除账号",MessageBoxButton.OKCancel,MessageBoxImage.Question,MessageBoxResult.Cancel)==MessageBoxResult.OK)
+            if(Selected() is {} account&&MessageBox.Show(owner,"移除账号“"+account.Name+"”的登录信息？本地助记和查词历史会保留。","移除账号",MessageBoxButton.OKCancel,MessageBoxImage.Question,MessageBoxResult.Cancel)==MessageBoxResult.OK)
                 await Change(()=>store.RemoveAccount(account.Id));
         };
         import.Click+=async(_,_)=>

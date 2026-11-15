@@ -69,11 +69,11 @@ internal static class SettingsDialog
         dialog.RegisterName("ExamDateYear",examDate.Year);dialog.RegisterName("ExamDateMonth",examDate.Month);dialog.RegisterName("ExamDateDay",examDate.Day);
         Heading(general,"关闭窗口");
         var tray=new RadioButton {Content="最小化到托盘",GroupName="CloseAction",IsChecked=preferences.CloseToTray,Margin=new Thickness(0,0,0,12)};
-        var exit=new RadioButton {Content="直接退出程序",GroupName="CloseAction",IsChecked=!preferences.CloseToTray,Margin=new Thickness(0,0,0,12)};
+        var exit=new RadioButton {Content="退出软件",GroupName="CloseAction",IsChecked=!preferences.CloseToTray,Margin=new Thickness(0,0,0,12)};
         var rememberClose=new CheckBox {Content="记住关闭方式，下次不再询问",IsChecked=preferences.RememberCloseAction,Margin=new Thickness(0,2,0,8)};
         general.Children.Add(tray);general.Children.Add(exit);general.Children.Add(rememberClose);
         general.Children.Add(InputDialog.Text("收进托盘后，点击托盘图标或使用全局快捷键恢复窗口。"));Divider(general);
-        Heading(general,"启动与快速翻译");
+        Heading(general,"启动与快捷查词");
         startupRegistration??=new StartupRegistration();bool? startupEnabled=null;string? startupReadError=null;
         try{startupEnabled=startupRegistration.Enabled;}catch{startupReadError="无法读取开机自启动状态，请检查当前用户权限。";}
         var autoStart=new CheckBox {Content="开机自启动",IsChecked=startupEnabled==true,IsEnabled=startupEnabled.HasValue,Margin=new Thickness(0,0,0,8)};
@@ -82,7 +82,7 @@ internal static class SettingsDialog
         dialog.RegisterName("DoubleCopyEnabled",doubleCopy);general.Children.Add(doubleCopy);general.Children.Add(InputDialog.Text("在其他应用选中文本后，750 毫秒内复制两次，唤起窗口查询。单词离线查询；段落自动判断语言，优先使用 DeepL，连接失败自动改用 MyMemory。"));
         Divider(general);var guide=new Button{Content="查看新手引导",HorizontalAlignment=HorizontalAlignment.Left,IsEnabled=startOnboarding!=null};guide.Click+=(_,_)=>{dialog.Close();owner.Dispatcher.BeginInvoke(startOnboarding!);};general.Children.Add(guide);dialog.RegisterName("OpenOnboarding",guide);
 
-        var shortcutsPage=Page("快捷键","点击输入框后按组合键，按 Delete 清除。保存后立即生效。");
+        var shortcutsPage=Page("快捷键","点击输入框，按下想用的组合键；按 Delete 可清除。保存后生效。");
         var shortcutInputs=new Dictionary<string,TextBox>();
         foreach(var definition in ShortcutDefinitions.All)
         {
@@ -92,7 +92,7 @@ internal static class SettingsDialog
             input.PreviewKeyDown+=ShortcutGestures.Capture;Grid.SetColumn(input,1);row.Children.Add(input);shortcutsPage.Children.Add(row);shortcutInputs[definition.Id]=input;
             dialog.RegisterName("ShortcutInput_"+definition.Id,input);
         }
-        shortcutsPage.Children.Add(InputDialog.Text("标为“全局”的快捷键可从后台或托盘唤起软件。鼠标侧键也可前进、后退。"));
+        shortcutsPage.Children.Add(InputDialog.Text("全局快捷键可在其他软件中使用。鼠标侧键可后退或前进。"));
 
         var tokenChanged=false;
         var account=Page("墨墨账号","官方登录、记住账号，并在多个账号间自由切换。离线查词无需登录。");
@@ -101,7 +101,7 @@ internal static class SettingsDialog
         account.Children.Add(AccountSettingsPanel.Build(dialog,store,async()=>{tokenChanged=true;if(accountChanged!=null)await accountChanged();}));
         void OpenLink(string url,string error){try{Process.Start(new ProcessStartInfo(url){UseShellExecute=true});}catch{status.Text=error;}}
 
-        var feedback=Page("反馈","遇到问题或有新想法，欢迎通过以下方式联系。");
+        var feedback=Page("反馈","遇到问题或有改进建议，欢迎联系我们。");
         void FeedbackCard(string title,string description,string value,string buttonLabel,string name,Action action)
         {
             var card=new StackPanel {Margin=new Thickness(16)};
@@ -115,33 +115,33 @@ internal static class SettingsDialog
         void CopyContact(string value,string message){try{Clipboard.SetText(value);status.Text=message;}catch{status.Text="复制失败，请选中上方文字手动复制。";}}
         FeedbackCard("反馈邮箱","通过邮件反馈问题与建议。",FeedbackEmail,"写邮件","FeedbackEmailButton",()=>OpenLink("mailto:"+FeedbackEmail+"?subject="+Uri.EscapeDataString("墨墨搜词 "+Version+" 反馈"),"无法打开邮件应用，可复制邮箱后手动发送。"));
         FeedbackCard("QQ 交流群","复制群号，在 QQ 中搜索加入。",FeedbackQqGroup,"复制群号","CopyFeedbackQq",()=>CopyContact(FeedbackQqGroup,"QQ群号已复制。"));
-        FeedbackCard("GitHub Issues","提交问题、提出功能建议，跟踪处理进度。",RepositoryUrl+"/issues","提交 Issue","FeedbackIssueButton",()=>OpenLink(IssueUrl,"无法打开浏览器，可复制上方地址访问 Issues。"));
-        var copyEmail=new Button {Content="复制反馈邮箱",HorizontalAlignment=HorizontalAlignment.Left};copyEmail.Click+=(_,_)=>CopyContact(FeedbackEmail,"反馈邮箱已复制。");feedback.Children.Add(copyEmail);dialog.RegisterName("CopyFeedbackEmail",copyEmail);
+        FeedbackCard("GitHub Issues","反馈问题、提出建议，查看处理进度。",RepositoryUrl+"/issues","反馈问题","FeedbackIssueButton",()=>OpenLink(IssueUrl,"无法打开浏览器，可复制上方地址访问 Issues。"));
+        var copyEmail=new Button {Content="复制邮箱",HorizontalAlignment=HorizontalAlignment.Left};copyEmail.Click+=(_,_)=>CopyContact(FeedbackEmail,"反馈邮箱已复制。");feedback.Children.Add(copyEmail);dialog.RegisterName("CopyFeedbackEmail",copyEmail);
 
-        var support=Page("赞助与关于","墨墨搜词 MemoLex · "+Version);
+        var support=Page("关于与发电","墨墨搜词 MemoLex · "+Version);
         var projectNotice=InputDialog.Text(IndependenceNotice);
         support.Children.Add(new Border {Child=projectNotice,Padding=new Thickness(12),Margin=new Thickness(0,0,0,16),
             Background=new SolidColorBrush(Color.FromRgb(239,248,255)),CornerRadius=new CornerRadius(8)});
         dialog.RegisterName("ProjectDisclaimer",projectNotice);
-        support.Children.Add(InputDialog.Text("如果墨墨搜词对你有帮助，欢迎自愿赞助，支持后续开发与维护。感谢你的支持！"));
+        support.Children.Add(InputDialog.Text("如果墨墨搜词对你有帮助，欢迎如果觉得好用，欢迎为开发者发电，支持后续维护。感谢你的支持！"));
         var payments=new TabControl {Margin=new Thickness(0,16,0,12),BorderThickness=new Thickness(0),Background=Brushes.Transparent};
         foreach(var (label,asset,name) in new[]{("微信支付","sponsor-wechat.jpg","Wechat"),("支付宝","sponsor-alipay.jpg","Alipay")})
         {
             var picture=new Image {Source=new BitmapImage(new Uri("pack://application:,,,/MemoLex;component/Assets/"+asset)),MaxHeight=390,Stretch=Stretch.Uniform};RenderOptions.SetBitmapScalingMode(picture,BitmapScalingMode.HighQuality);
-            var enlarge=new Button {Content=picture,Background=Brushes.Transparent,BorderThickness=new Thickness(0),Padding=new Thickness(6),HorizontalAlignment=HorizontalAlignment.Center,Cursor=Cursors.Hand,ToolTip="点击查看收款码大图"};
+            var enlarge=new Button {Content=picture,Background=Brushes.Transparent,BorderThickness=new Thickness(0),Padding=new Thickness(6),HorizontalAlignment=HorizontalAlignment.Center,Cursor=Cursors.Hand,ToolTip="点击放大收款码"};
             enlarge.Click+=(_,_)=>BuildPaymentDialog(dialog,label,asset).ShowDialog();
             payments.Items.Add(new TabItem {Header=label,Content=enlarge});dialog.RegisterName(name+"PaymentImage",picture);dialog.RegisterName("Open"+name+"Code",enlarge);
         }
-        support.Children.Add(payments);support.Children.Add(InputDialog.Text("点击收款码可放大查看。"));Divider(support);
-        var sourceLink=new Button {Content="GitHub 开源项目",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,10,0,0)};
+        support.Children.Add(payments);support.Children.Add(InputDialog.Text("点击收款码可查看大图。"));Divider(support);
+        var sourceLink=new Button {Content="GitHub",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,10,0,0)};
         sourceLink.Click+=(_,_)=>OpenLink(RepositoryUrl,"无法打开浏览器，请稍后重试。");support.Children.Add(sourceLink);
-        var updatePage=Page("软件更新","从 GitHub 获取最新版本，按你的习惯检查更新。");
+        var updatePage=Page("软件更新","检查新版本，设置自动更新。");
         var ownedUpdates=updates==null;updates??=new UpdateManager(preferences,()=>{});updatePage.Children.Add(updates.BuildPanel(dialog));
         if(ownedUpdates)dialog.Closed+=(_,_)=>updates.Dispose();
         dialog.RegisterName("SettingsUpdatePage",PageView("软件更新"));
-        var hoverPage=Page("鼠标取词","悬停显示释义和助记，离开自动收起。");hoverPage.Children.Add(HoverSettingsPanel.Build(dialog,preferences,out var applyHover));
+        var hoverPage=Page("鼠标取词","鼠标停在英文单词上时显示释义，移开后自动收起。");hoverPage.Children.Add(HoverSettingsPanel.Build(dialog,preferences,out var applyHover));
         dialog.RegisterName("SettingsHoverPage",PageView("鼠标取词"));
-        var pageOrder=new[]{"常规","墨墨账号","鼠标取词","快捷键","软件更新","反馈","赞助与关于"};
+        var pageOrder=new[]{"常规","墨墨账号","鼠标取词","快捷键","软件更新","反馈","关于与发电"};
         pages=pageOrder.Select(title=>pages.Single(page=>page.Title==title)).ToList();
         foreach(var page in pages)navigation.Items.Add(page.Title);
         navigation.SelectionChanged+=(_,_)=>{if(navigation.SelectedIndex>=0)host.Content=pages[navigation.SelectedIndex].View;};
@@ -166,15 +166,15 @@ internal static class SettingsDialog
                 preferences.ExamName=string.IsNullOrWhiteSpace(examName.Text)?"考试":examName.Text.Trim();if(validExamDate)preferences.ExamDate=selectedExamDate;
                 preferences.DoubleCopyEnabled=doubleCopy.IsChecked==true;preferences.Shortcuts=shortcuts;preferences.Save();dialog.DialogResult=true;
             }
-            catch{status.Text="保存失败，请检查输入内容或本机文件权限。";}
+            catch{status.Text="未能保存设置，请检查填写内容后重试。";}
         };
-        foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SaveSettings",save),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",PageView("常规")),("SettingsShortcutsPage",PageView("快捷键")),("SettingsAccountPage",PageView("墨墨账号")),("SettingsFeedbackPage",PageView("反馈")),("SettingsSupportPage",PageView("赞助与关于")),("SponsorPaymentTabs",payments)})dialog.RegisterName(name,control);
+        foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SaveSettings",save),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",PageView("常规")),("SettingsShortcutsPage",PageView("快捷键")),("SettingsAccountPage",PageView("墨墨账号")),("SettingsFeedbackPage",PageView("反馈")),("SettingsSupportPage",PageView("关于与发电")),("SponsorPaymentTabs",payments)})dialog.RegisterName(name,control);
         changed=()=>tokenChanged;return dialog;
     }
 
     internal static Window BuildPaymentDialog(Window owner,string label,string asset)
     {
-        var dialog=InputDialog.Shell(owner,label+" · 赞助支持",out _);
+        var dialog=InputDialog.Shell(owner,label+" · 为开发者发电",out _);
         dialog.Width=Math.Min(640,SystemParameters.WorkArea.Width-60);dialog.Height=Math.Min(880,SystemParameters.WorkArea.Height-50);dialog.SizeToContent=SizeToContent.Manual;
         var picture=new Image {Source=new BitmapImage(new Uri("pack://application:,,,/MemoLex;component/Assets/"+asset)),Stretch=Stretch.Uniform,Margin=new Thickness(12)};RenderOptions.SetBitmapScalingMode(picture,BitmapScalingMode.HighQuality);
         InputDialog.SetBody(dialog,picture);return dialog;

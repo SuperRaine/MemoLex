@@ -18,7 +18,7 @@ public partial class MainWindow
         foreach(var note in notes)
         {
             var stack=new StackPanel();var header=new Grid();header.ColumnDefinitions.Add(new ColumnDefinition());header.ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
-            var origin=note.Origin=="cloud"?(cloud?"云端助记":"本地缓存"):"本地助记";
+            var origin=note.Origin=="cloud"?(cloud?"云端助记":"云端助记（离线）"):"本地助记";
             header.Children.Add(new TextBlock {Text=note.NoteType+" · "+origin,FontSize=11,FontWeight=FontWeights.SemiBold,Foreground=Brush("#1688B7"),VerticalAlignment=VerticalAlignment.Center});
             var edit=new Button {Content="编辑",FontSize=11,Padding=new Thickness(7,4,7,4),Background=System.Windows.Media.Brushes.Transparent,BorderThickness=new Thickness(0)};
             edit.Click+=(_,_)=>OpenMnemonicEditor(note);Grid.SetColumn(edit,1);header.Children.Add(edit);stack.Children.Add(header);
@@ -26,7 +26,7 @@ public partial class MainWindow
             NotesPanel.Children.Add(new Border {Child=stack,Padding=new Thickness(15),Margin=new Thickness(0,8,0,0),Background=Brush("#F3F9FE"),CornerRadius=new CornerRadius(8)});
         }
     }
-    private string LocalNotesHint()=>_displayedNotes.Length>0?$"本地助记 · {_displayedNotes.Length} 条，支持编辑":"暂无本地助记，点击「编辑助记」创建。";
+    private string LocalNotesHint()=>_displayedNotes.Length>0?$"本地助记 · {_displayedNotes.Length} 条":"暂无助记，点击「编辑助记」添加。";
     private async Task LoadLocalAndCloudNotesAsync(string word,CancellationToken cancellation)
     {
         _notesCts?.Cancel();_notesCts?.Dispose();_notesCts=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
@@ -40,11 +40,11 @@ public partial class MainWindow
         if(!_allowCloud||!_tokens.HasToken)
         {
             SetAccountStatus(!_allowCloud?"离线模式":"未连接");
-            StatusText.Text="离线释义与本地助记已就绪。";
+            StatusText.Text="已显示离线释义和本地助记。";
             if(_mnemonics.LoadWarning!=null)NotesHintText.Text+=" · "+_mnemonics.LoadWarning;
             return;
         }
-        NotesHintText.Text="正在核对云端助记 · 已先显示本地内容…";
+        NotesHintText.Text="正在加载云端助记…";
         var studyStarted=false;var studyTask=Task.CompletedTask;
         try
         {
@@ -63,16 +63,16 @@ public partial class MainWindow
             var usable=notes.Where(note=>!string.IsNullOrWhiteSpace(note.Text)).Select(note=>new StoredMnemonic("cloud:"+note.Id,note.NoteType,note.Text,note.Id,"cloud",accountKey)).ToArray();
             if(usable.Length>0)
             {
-                RenderNotes(word,usable,true);NotesHintText.Text=$"云端助记 · {usable.Length} 条，已覆盖本地显示";
-                try{if(accountKey!=null)_mnemonics.SaveCloud(word,usable,accountKey);NotesHintText.Text+="并缓存";}
-                catch(Exception error)when(error is System.IO.IOException or UnauthorizedAccessException){NotesHintText.Text+="；本地缓存保存失败";}
+                RenderNotes(word,usable,true);NotesHintText.Text=$"云端助记 · {usable.Length} 条";
+                try{if(accountKey!=null)_mnemonics.SaveCloud(word,usable,accountKey);NotesHintText.Text+=" · 已保存到本地";}
+                catch(Exception error)when(error is System.IO.IOException or UnauthorizedAccessException){NotesHintText.Text+=" · 未能保存到本地";}
             }
             else
             {
                 if(accountKey!=null)_mnemonics.SaveCloud(word,[],accountKey);
                 RenderNotes(word,_mnemonics.Get(word,accountKey));NotesHintText.Text=LocalNotesHint()+" · 云端暂无助记";
             }
-            StatusText.Text="查询完成 · 助记可在本地编辑";
+            StatusText.Text="查词完成";
         }
         catch(OperationCanceledException){ }
         catch(Exception error)
@@ -101,7 +101,7 @@ public partial class MainWindow
                 var current=_mnemonics.Get(word,accountKey).ToList();var index=current.FindIndex(item=>item.Id==note.Id);
                 if(index<0)current.Add(value);else current[index]=value;
                 _mnemonics.SaveEdit(word,value,accountKey);_cloudCache.Remove((_accountCredentialKey??"offline")+":"+word.ToLowerInvariant());
-                if(word==_word){RenderNotes(word,current,value.Origin=="cloud");NotesHintText.Text=value.Origin=="cloud"?"已同步到墨墨，并保存在本地。":"已保存到本地 · 下次查到云端助记时以云端为准。";}
+                if(word==_word){RenderNotes(word,current,value.Origin=="cloud");NotesHintText.Text=value.Origin=="cloud"?"已同步到墨墨，并保存在本地。":"已保存到本地；联网查词时优先显示云端助记。";}
             }
             Persist(edited);
             if(!sync)return;
@@ -114,7 +114,7 @@ public partial class MainWindow
                 edited=edited with {CloudId=saved.Id,NoteType=saved.NoteType,Text=saved.Text,Origin="cloud",AccountKey=accountKey};
                 note=edited;Persist(edited);
             }
-            catch(Exception error){SetAccountError(error);throw new MaiMemoException("本地已保存，云端同步未完成："+UserError(error));}
+            catch(Exception error){SetAccountError(error);throw new MaiMemoException("已保存到本地，未能同步到墨墨："+UserError(error));}
         });
     }
 }
