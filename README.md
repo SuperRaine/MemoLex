@@ -12,12 +12,14 @@ Windows 英汉查词工具，支持离线查词、中文反查、助记、真题
 
 | 版本 | 使用方法 |
 | --- | --- |
-| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.3.0/MemoLex-1.3.0-Windows-x64-Setup.msi) | 下载后双击，按向导安装。 |
-| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.3.0/MemoLex-1.3.0-Windows-x64.zip) | 完整解压，运行 `MemoLex/MemoLex.exe`。 |
+| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.4.0/MemoLex-1.4.0-Windows-x64-Setup.msi) | 下载后双击，按向导安装。 |
+| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.4.0/MemoLex-1.4.0-Windows-x64.zip) | 完整解压，运行 `MemoLex/MemoLex.exe`。 |
+
+网页登录和海词页面使用系统网页组件；缺少时，按提示联网安装一次即可。
 
 ## 主要功能
 
-- **离线查词**：英文单词、短语和中文反查，附近义词、形近词与派生词。
+- **离线查词**：英文单词、短语和中文反查，提供近义词、形近词与派生词。
 - **助记与例句**：查看和编辑本地助记，按考研、四级、六级、高考筛选真题例句。
 - **墨墨云功能**：管理云词本、收藏单词、添加今日新学，支持切换账号。
 - **阅读与翻译**：鼠标悬停取词、截图翻译、段落翻译，点击英文单词继续查词。

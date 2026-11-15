@@ -15,18 +15,20 @@ internal sealed class OfficialLoginWindow
     private readonly WebView2 _browser=new();
     private readonly TextBlock _status=InputDialog.Text("正在打开墨墨官方登录页…");
     private readonly TextBlock _address=InputDialog.Text("https://accounts.maimemo.com");
+    private readonly Button _installBrowser=new(){Content="安装网页组件",Visibility=Visibility.Collapsed,Margin=new Thickness(10,0,0,0)};
     private readonly TokenStore _store;
     private readonly SavedAccount? _target;
     private readonly CancellationTokenSource _cancel=new();
     private readonly string _profileDirectory;
     private readonly Func<OfficialAuthorization,CancellationToken,Task>? _validate;
+    private readonly Func<BrowserRuntimeChoice?> _resolveRuntime;
     private bool _completing,_closed;
     private string _identity="";
     internal SavedAccount? Result {get;private set;}
     internal Window Window=>_window;
-    internal OfficialLoginWindow(Window owner,TokenStore store,SavedAccount? target=null,string? profileDirectory=null,Func<OfficialAuthorization,CancellationToken,Task>? validate=null)
+    internal OfficialLoginWindow(Window owner,TokenStore store,SavedAccount? target=null,string? profileDirectory=null,Func<OfficialAuthorization,CancellationToken,Task>? validate=null,Func<BrowserRuntimeChoice?>? runtimeResolver=null)
     {
-        _store=store;_target=target;_validate=validate;_identity=target?.Identity??"";
+        _store=store;_target=target;_validate=validate;_identity=target?.Identity??"";_resolveRuntime=runtimeResolver??BrowserRuntime.Resolve;
         _profileDirectory=profileDirectory??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MemoLex","official-login");
         _window=InputDialog.Shell(owner,"登录墨墨官方账号",out _);
         _window.Width=Math.Min(760,SystemParameters.WorkArea.Width-50);_window.Height=Math.Min(840,SystemParameters.WorkArea.Height-45);
@@ -36,8 +38,10 @@ internal sealed class OfficialLoginWindow
         var footer=new DockPanel {Margin=new Thickness(18,10,18,14)};
         var cancel=new Button {Content="取消",IsCancel=true,Margin=new Thickness(10,0,0,0)};DockPanel.SetDock(cancel,Dock.Right);footer.Children.Add(cancel);
         var refresh=new Button {Content="重新打开",Margin=new Thickness(10,0,0,0)};refresh.Click+=(_,_)=>Navigate();DockPanel.SetDock(refresh,Dock.Right);footer.Children.Add(refresh);
+        _installBrowser.Click+=async(_,_)=>await InstallBrowserAsync();DockPanel.SetDock(_installBrowser,Dock.Right);footer.Children.Add(_installBrowser);
         _status.TextWrapping=TextWrapping.Wrap;_status.VerticalAlignment=VerticalAlignment.Center;footer.Children.Add(_status);Grid.SetRow(footer,2);grid.Children.Add(footer);
         InputDialog.SetBody(_window,grid);
+        _window.RegisterName("OfficialLoginBrowser",_browser);_window.RegisterName("LoginInstallBrowser",_installBrowser);_window.RegisterName("OfficialLoginStatus",_status);
         _window.Loaded+=async(_,_)=>await InitializeAsync();
         _window.Closed+=(_,_)=>{_closed=true;_cancel.Cancel();_browser.Dispose();};
     }
@@ -53,8 +57,14 @@ internal sealed class OfficialLoginWindow
         try
         {
             if(_browser.CoreWebView2!=null){Navigate();return;}
-            var bundled=Path.Combine(AppContext.BaseDirectory,"webview2");
-            var environment=await CoreWebView2Environment.CreateAsync(File.Exists(Path.Combine(bundled,"msedgewebview2.exe"))?bundled:null,_profileDirectory);
+            if(_resolveRuntime()==null)
+            {
+                _installBrowser.Visibility=Visibility.Visible;
+                _status.Text="首次使用网页功能需安装网页组件。点击安装后将自动继续，安装过程需要联网。";
+                return;
+            }
+            _installBrowser.Visibility=Visibility.Collapsed;
+            var environment=await BrowserRuntime.CreateEnvironmentAsync(_profileDirectory);
             if(_closed)return;
             var options=environment.CreateCoreWebView2ControllerOptions();
             options.ProfileName="MemoLex-"+Guid.NewGuid().ToString("N");options.IsInPrivateModeEnabled=true;
@@ -129,7 +139,15 @@ internal sealed class OfficialLoginWindow
             };
             Navigate();
         }
-        catch(Exception){if(!_closed)_status.Text="官方登录组件未能启动。请确认电脑已安装 Microsoft Edge WebView2，关闭此窗口后重试。";}
+        catch(Exception){if(!_closed)_status.Text="官方登录组件未能启动，请点击重新打开后重试。";}
+    }
+    private async Task InstallBrowserAsync()
+    {
+        _installBrowser.IsEnabled=false;_status.Text="正在安装网页组件，请稍候；完成后会自动继续登录。";
+        try{await BrowserRuntime.InstallAsync(_cancel.Token);if(!_closed)await InitializeAsync();}
+        catch(OperationCanceledException){}
+        catch(Exception error){if(!_closed)_status.Text=error is InvalidOperationException or IOException?error.Message:"网页组件安装未完成，请检查网络后重试。";}
+        finally{if(!_closed)_installBrowser.IsEnabled=true;}
     }
     private async Task CompleteAsync(OfficialAuthorization authorization)
     {

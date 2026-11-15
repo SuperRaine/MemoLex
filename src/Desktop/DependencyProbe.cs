@@ -29,12 +29,15 @@ internal static class DependencyProbe
         }
         var runtime=Path.Combine(AppContext.BaseDirectory,"webview2");
         result["bundledBrowserExists"]=File.Exists(Path.Combine(runtime,"msedgewebview2.exe"));
+        var choice=BrowserRuntime.Resolve();
+        result["browserRuntimeSource"]=choice?.Kind??"missing";
+        result["browserInstallerVerified"]=BrowserRuntime.VerifyInstaller(BrowserRuntime.InstallerPath);
         var profile=Path.Combine(Path.GetTempPath(),"MemoLex.BrowserProbe."+Guid.NewGuid().ToString("N"));
         using var browser=new WebView2();var window=new Window{Content=browser,Width=640,Height=480,Left=-32000,Top=-32000,WindowStartupLocation=WindowStartupLocation.Manual,ShowInTaskbar=false,ShowActivated=false};
         try
         {
             window.Show();
-            var environment=await CoreWebView2Environment.CreateAsync(runtime,profile);
+            var environment=await BrowserRuntime.CreateEnvironmentAsync(profile);
             await browser.EnsureCoreWebView2Async(environment).WaitAsync(TimeSpan.FromSeconds(20));
             result["browserVersion"]=environment.BrowserVersionString;
             var complete=new TaskCompletionSource<bool>();browser.CoreWebView2.NavigationCompleted+=(_,args)=>complete.TrySetResult(args.IsSuccess);
@@ -42,7 +45,7 @@ internal static class DependencyProbe
             result["browserRender"]=await complete.Task.WaitAsync(TimeSpan.FromSeconds(15));
         }
         finally{window.Close();}
-        result["ok"]=result.GetValueOrDefault("englishImageOcr") is true&&result.GetValueOrDefault("browserRender") is true&&result.GetValueOrDefault("bundledBrowserExists") is true;
+        result["ok"]=result.GetValueOrDefault("englishImageOcr") is true&&result.GetValueOrDefault("browserRender") is true;
         return result;
     }
 }

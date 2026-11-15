@@ -11,4 +11,4 @@
 # Preserve the upstream license files verbatim.
 src/ThirdParty/* -whitespace
 mnemonics/*.json -text whitespace=cr-at-eol
-mnemonics/mnemonic-authoring/review-1.3.0/review-ledger.jsonl -text
+mnemonics/**/review-ledger.jsonl -text

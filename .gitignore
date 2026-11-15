@@ -17,3 +17,6 @@ token.dpapi
 preferences.json
 mnemonics.user.json
 smoke-test.json
+__pycache__/
+*.py[cod]
+payload-policy-check-*.json

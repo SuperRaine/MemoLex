@@ -69,6 +69,20 @@ public sealed class LocalBriefDictionary
         return entry is not null;
     }
 
+    internal IEnumerable<DictionaryEntry> EnumerateEntries()
+    {
+        var state = Volatile.Read(ref _state);
+        if (state is null) yield break;
+        foreach (var address in state.Entries.Values)
+            if (address.Length > 0)
+                yield return new DictionaryEntry
+                {
+                    word = address.Word,
+                    translation = StrictUtf8.GetString(state.Text, address.Offset, address.Length),
+                    source = "local-brief"
+                };
+    }
+
     private void LoadCore()
     {
         try

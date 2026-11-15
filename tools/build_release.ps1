@@ -1,4 +1,4 @@
-param([string]$DataDirectory,[string]$WebViewDirectory,[string]$DotnetCommand='dotnet')
+param([string]$DataDirectory,[string]$WebViewDirectory,[string]$DotnetCommand='dotnet',[switch]$IncludeBrowserRuntime)
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 if(-not $DataDirectory){$DataDirectory=Join-Path $repo 'data'}
@@ -7,15 +7,16 @@ foreach($name in @('dictionary.data','dictionary.index.tsv','related.data','chin
     if(-not(Test-Path -LiteralPath (Join-Path $data $name))){throw 'Copy the complete data folder from the portable release first.'}
 }
 $destination=Join-Path $repo 'dist/MemoLex'
+if(-not $IncludeBrowserRuntime -and (Test-Path -LiteralPath (Join-Path $destination 'webview2'))){throw 'The build folder contains an optional runtime from an earlier full build. Use a fresh build folder.'}
 & $DotnetCommand publish (Join-Path $repo 'src/MemoLex.csproj') -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=8.0.34 -p:DebugType=None -p:DebugSymbols=false -o $destination
 if($LASTEXITCODE -ne 0){throw 'Application build failed'}
 $targetData=Join-Path $destination 'data';New-Item -ItemType Directory -Path $targetData -Force | Out-Null
 Copy-Item -Path (Join-Path $data '*') -Destination $targetData -Recurse -Force
 if(-not $WebViewDirectory){$WebViewDirectory=Join-Path $repo 'webview2'}
-if(Test-Path -LiteralPath (Join-Path $WebViewDirectory 'msedgewebview2.exe')){
+if($IncludeBrowserRuntime -and (Test-Path -LiteralPath (Join-Path $WebViewDirectory 'msedgewebview2.exe'))){
     $webviewTarget=Join-Path $destination 'webview2';New-Item -ItemType Directory -Path $webviewTarget -Force | Out-Null
     Copy-Item -Path (Join-Path $WebViewDirectory '*') -Destination $webviewTarget -Recurse -Force
-}else{Write-Warning 'Fixed WebView2 runtime was not supplied. The official login will require an installed Evergreen WebView2 runtime.'}
+}elseif($IncludeBrowserRuntime){throw 'An optional browser runtime was requested but was not supplied.'}
 foreach($file in Get-ChildItem -LiteralPath (Join-Path $repo 'mnemonics') -File){
     if($file.Name -in @('mnemonics.json','mnemonics.meta.json','mnemonics.revisions.json','Mnemonics-CC-BY-SA-3.0.txt','README-Mnemonics.txt')){Copy-Item -LiteralPath $file.FullName -Destination $targetData -Force}
 }

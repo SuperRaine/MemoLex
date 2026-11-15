@@ -4,12 +4,15 @@
   "covered_target_words": 10613,
   "legacy_family_lists_rewritten": 2773,
   "legacy_family_categories_remaining": 0,
-  "individually_rewritten_to_new_standard": 7450,
+  "individually_rewritten_to_new_standard": 10613,
+  "pending_rewrite_words": 0,
+  "mnemonic_revision": "1.3.1",
   "other_notes_pending_new_standard_review": 0,
   "reviewed_target_words": 10613,
-  "entries_changed_this_release": 3249,
-  "review_ledger_sha256": "1dc60b08bce9d1e4328ba7073c7c8b3122f421691c08b31c5db4529c97492482",
-  "review_method": "Per-entry template, size and connection checks; source-based complete derivation checks; explicit semantic revisions. This is not a claim of independent human linguistic review of every entry.",
+  "entries_changed_this_release": 3233,
+  "review_ledger_sha256": "8f4f232036f3cb661e9fa253e5b55a427a654194559ae798fc31fc36fa539b4a",
+  "review_ledger_file": "mnemonic-authoring/rewrite-remaining-1.3.1/review-ledger.jsonl",
+  "review_method": "Explicit semantic revisions and complete morphological bases with word-specific memory cues. Literal spelling operations checked separately. Automated checks do not certify every linguistic judgement.",
   "scope": "Generated local notes for the requested vocabulary and public exam lists. Per-entry structural review and explicit semantic revisions are recorded separately from the rewrite count.",
   "aliases": [
     {
@@ -28,5 +31,5 @@
   "personal_profiles_included": false,
   "cloud_content_included": false,
   "license": "CC-BY-SA-3.0",
-  "sha256": "2de113b4b01dee2f798b150aec6a70b6f17ee417587fcaf73a03a1ae7ceb9f6d"
+  "sha256": "97a3cb1cd8b1c7d228aa5b38c83c855b3e236a517409aa84272852ad56bf3334"
 }

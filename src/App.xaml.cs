@@ -40,7 +40,9 @@ public partial class App : Application
                 result["relatedPhraseCheck"]=phraseRelations.Phrases.Any(item=>item.Word=="take off"&&item.Meaning.Contains("起飞"));
                 using var chinese=new ChineseReverseSearch(dictionary);await chinese.LoadAsync();
                 var reverse=await chinese.SearchAsync("快乐",120);
-                result["chineseReverseCheck"]=reverse.Items.Take(10).Any(item=>item.Word=="happy")&&reverse.Items.Any(item=>item.Word=="cheerful");
+                result["chineseReverseCheck"]=reverse.Items.Any(item=>item.Word=="happy")&&reverse.Items.Any(item=>item.Word=="cheerful");
+                result["chinesePreferredSourceCheck"]=!dictionary.PreferredAvailable||reverse.Items.Any(item=>item.Word=="cheerful"&&item.IsPreferredSource)
+                    &&reverse.Items.All(item=>item.Meaning==dictionary.Lookup(item.Word)?.translation);
                 var mnemonics=new MnemonicStore(Path.Combine(Path.GetTempPath(),"MemoLex-smoke-"+Guid.NewGuid().ToString("N"),"unused.json"));await mnemonics.LoadAsync();
                 result["localMnemonicCount"]=mnemonics.BundledCount;
                 result["localMnemonicCheck"]=mnemonics.BundledCount>=10613
@@ -57,7 +59,7 @@ public partial class App : Application
                     result["notepadCount"] = (await api.ListNotepadsAsync()).Count;
                     result["noteCount"] = word == null ? null : (await api.GetNotesAsync(word.Id)).Count;
                 }
-                result["ok"] = dictionary.Count > 1000 && result["apple"] != null && (bool)result["missing"]! && (bool)result["synonymCheck"]! && (bool)result["relatedPhraseCheck"]! && (bool)result["chineseReverseCheck"]!&&(bool)result["localMnemonicCheck"]!;
+                result["ok"] = dictionary.Count > 1000 && result["apple"] != null && (bool)result["missing"]! && (bool)result["synonymCheck"]! && (bool)result["relatedPhraseCheck"]! && (bool)result["chineseReverseCheck"]!&&(bool)result["chinesePreferredSourceCheck"]!&&(bool)result["localMnemonicCheck"]!;
                 if(e.Args.Contains("--dependencies")){var dependencies=await Desktop.DependencyProbe.RunAsync();result["dependencies"]=dependencies;result["ok"]=result["ok"] is true&&dependencies["ok"] is true;}
             }
             catch (Exception ex) { result["ok"] = false; result["errorType"] = ex.GetType().Name; }

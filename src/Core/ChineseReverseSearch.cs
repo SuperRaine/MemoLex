@@ -10,6 +10,9 @@ namespace MemoLex.Core;
 public sealed record ChineseSearchResult(string Word,string Meaning,string MatchedMeaning,string Kind,double Score)
 {
     public bool IsExactMatch {get;init;}
+    public string Source {get;init;}="ecdict";
+    public bool IsPreferredSource=>Source=="local-brief";
+    public string SourceLabel=>IsPreferredSource?"本地词库":"ECDICT";
     public override string ToString()=>Word;
 }
 public sealed record ChineseSearchPage(string Query,IReadOnlyList<ChineseSearchResult> Items,int Total);
@@ -21,10 +24,14 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
     private Dictionary<string,SemanticEntry> _semantic=new(StringComparer.Ordinal);
     private FileStream? _postings;
     private readonly object _gate=new();
+    private readonly object _loadGate=new();
+    private Task? _loadTask;
+    private PreferredIndex? _preferred;
+    private sealed record PreferredIndex(string[] Words,Dictionary<string,int[]> Tokens);
     private sealed class SemanticEntry {public int[] ids {get;set;}=[]; public string[] equivalents {get;set;}=[];}
     private sealed record QueryVariant(string Text,double Weight,bool Direct);
     private sealed record Sense(string Text,string Normalized,string Literal,bool Specialist,int Order,string Pos);
-    public bool Available=>_postings!=null;
+    public bool Available=>_postings!=null||_preferred!=null;
     private static readonly Regex Han=new(@"[\u3400-\u9fff]",RegexOptions.Compiled);
     private static readonly Regex Annotation=new(@"\[[^\]]*\]|\([^)]*\)|（[^）]*）",RegexOptions.Compiled);
     private static readonly Regex NegativePrefix=new(@"(?:不|没|无|非|未|欠|没有|缺乏|缺少|欠缺|不能|不太|难以|不善|不宜|不受)$",RegexOptions.Compiled);
@@ -56,7 +63,42 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
         return result.Length>2&&result.EndsWith('的')?result[..^1]:result;
     }
     private static string LiteralChinese(string text)=>string.Concat(Han.Matches(text).Select(match=>match.Value));
-    public Task LoadAsync()=>Task.Run(()=>
+    public Task LoadAsync()
+    {
+        lock(_loadGate)return _loadTask??=Task.Run(LoadCore);
+    }
+    private void LoadCore()
+    {
+        // This index stays in memory. The user's local dictionary file is never modified or
+        // copied into the application's distributable dictionary resources.
+        if(dictionary.PreferredAvailable)
+        {
+            var words=new List<string>();var postingsByToken=new Dictionary<string,List<int>>(StringComparer.Ordinal);
+            foreach(var entry in dictionary.EnumeratePreferredEntries())
+            {
+                var text=LiteralChinese(entry.translation);if(text.Length==0)continue;
+                var id=words.Count;words.Add(entry.word);
+                var grams=new HashSet<string>(StringComparer.Ordinal);
+                for(var index=0;index<text.Length;index++)
+                {
+                    grams.Add("1:"+text[index]);
+                    if(index+1<text.Length)grams.Add("2:"+text.Substring(index,2));
+                }
+                foreach(var gram in grams)
+                {
+                    if(!postingsByToken.TryGetValue(gram,out var ids))postingsByToken[gram]=ids=[];
+                    ids.Add(id);
+                }
+            }
+            _preferred=new(words.ToArray(),postingsByToken.ToDictionary(pair=>pair.Key,pair=>pair.Value.ToArray(),StringComparer.Ordinal));
+        }
+        try{LoadFallback();}
+        catch(Exception error)when(_preferred!=null&&error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            _tokens.Clear();_semantic.Clear();
+        }
+    }
+    private void LoadFallback()
     {
         var path=Path.Combine(_directory,"chinese.postings");var tokens=Path.Combine(_directory,"chinese.tokens.tsv");
         var meta=Path.Combine(_directory,"chinese.meta.json");var synonyms=Path.Combine(_directory,"chinese.synonyms.json");
@@ -79,7 +121,7 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
             _postings=file;file=null!;
         }
         finally{file?.Dispose();}
-    });
+    }
     private int[] Posting(string token,CancellationToken cancellation)
     {
         if(_postings==null||!_tokens.TryGetValue(token,out var entry))return [];
@@ -133,7 +175,7 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
     private static double MeaningScore(Sense sense,string query)
     {
         if(sense.Normalized==query)return 1100-(sense.Specialist?110:0)-Math.Min(180,sense.Order*19);
-        foreach(var prefix in new[]{"感到","觉得","令人","让人","使人","非常","十分"})
+        foreach(var prefix in new[]{"感到","觉得","令人","让人","使人","非常","十分","能","能够","可","可以"})
             if(sense.Normalized==prefix+query)return 1075-(sense.Specialist?110:0)-Math.Min(180,sense.Order*19);
         if(query.Length==1)return 0;
         var position=sense.Normalized.IndexOf(query,StringComparison.Ordinal);
@@ -162,28 +204,49 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
         if(query.Length is <1 or >40||raw.Length>100)throw new ArgumentException("请输入 1–40 个汉字的中文含义。");
         if(new[]{"的","了","和","是","一个","什么"}.Contains(query))return new ChineseSearchPage(raw,[],0);
         if(!Available)throw new IOException("中文反查词库未就绪，请使用完整运行包。");
-        var variants=Variants(query);var candidates=new Dictionary<int,double>();var semanticMeanings=new Dictionary<int,string>();
+        var variants=Variants(query);var candidates=new Dictionary<string,double>(StringComparer.OrdinalIgnoreCase);
+        void AddSource(int id,double score=0)
+        {
+            if(id<0||id>=dictionary.SourceRowCount)return;
+            var word=dictionary.SourceWord(id);
+            if(!candidates.TryGetValue(word,out var previous)||score>previous)
+            {
+                candidates[word]=score;
+            }
+        }
         foreach(var variant in variants)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var grams=variant.Text.Length==1?new[]{"1:"+variant.Text}:Enumerable.Range(0,variant.Text.Length-1).Select(index=>"2:"+variant.Text.Substring(index,2)).Distinct().ToArray();
+            if(_preferred is {} preferred)
+            {
+                var localPages=grams.Select(gram=>preferred.Tokens.GetValueOrDefault(gram)??[]).OrderBy(page=>page.Length).ToArray();
+                if(localPages.Length>0&&localPages[0].Length>0)
+                {
+                    var ids=localPages[0].ToHashSet();foreach(var page in localPages.Skip(1)){ids.IntersectWith(page);if(ids.Count==0)break;}
+                    foreach(var id in ids)candidates.TryAdd(preferred.Words[id],0);
+                }
+            }
             var pages=grams.Select(gram=>Posting(gram,cancellationToken)).OrderBy(page=>page.Length).ToArray();
             if(pages.Length>0&&pages[0].Length>0)
             {
                 var ids=pages[0].ToHashSet();foreach(var page in pages.Skip(1)){ids.IntersectWith(page);if(ids.Count==0)break;}
-                foreach(var id in ids)candidates.TryAdd(id,0);
+                foreach(var id in ids)AddSource(id);
             }
             if(_semantic.TryGetValue(variant.Text,out var semantic))
                 foreach(var id in semantic.ids)
                 {
                     var score=1010*variant.Weight;
-                    if(score>candidates.GetValueOrDefault(id)){candidates[id]=score;semanticMeanings[id]=variant.Text;}
+                    AddSource(id,score);
                 }
         }
         var results=new List<ChineseSearchResult>();var bases=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
         foreach(var pair in candidates)
         {
-            cancellationToken.ThrowIfCancellationRequested();var entry=dictionary.LookupBySourceId(pair.Key);if(entry==null)continue;
+            cancellationToken.ThrowIfCancellationRequested();
+            // Candidate IDs are only word identities. Matching, ranking and the
+            // displayed sense must all use the same preferred definition.
+            var entry=dictionary.Lookup(pair.Key);if(entry==null)continue;
             var senses=Senses(entry.translation);var best=pair.Value;var bestMeaningScore=0d;var meaning="";var kind=best>0?"词网同义":"释义匹配";
             // An explicitly typed 的 constrains the complete sense. Without it,
             // keep conventional adjective matching (快乐 also matches 快乐的).
@@ -204,7 +267,7 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
             if(!positive&&best>0)best-=110;
             if(best<640&&exactSense==null)continue;
             if(exactSense!=null){meaning=exactSense.Text;kind="完全匹配";}
-            if(meaning.Length==0)meaning=semanticMeanings.TryGetValue(pair.Key,out var semanticMeaning)?"词网义项："+semanticMeaning:senses.FirstOrDefault()?.Text??entry.translation;
+            if(meaning.Length==0)meaning=senses.FirstOrDefault()?.Text??entry.translation;
             var latin=Regex.Match(raw,@"[A-Za-z]{3,}").Value;
             var bonus=latin.Length>0&&entry.word.Contains(latin,StringComparison.OrdinalIgnoreCase)?50:0;
             var familiarity=Familiarity(entry);
@@ -217,7 +280,8 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
                 var lexicalAdjective=entry.HasAdjectiveDefinition&&baseEntry?.HasAdjectiveDefinition!=true;
                 if(!lexicalAdjective)bases[entry.word]=baseWord;
             }
-            results.Add(new(entry.word,entry.translation,meaning,kind,best+familiarity+bonus){IsExactMatch=exactSense!=null});
+            results.Add(new(entry.word,entry.translation,meaning,kind,best+familiarity+bonus){IsExactMatch=exactSense!=null,
+                Source=entry.source=="local-brief"?"local-brief":"ecdict"});
         }
         var minimum=results.Count>0?Math.Max(720,results.Max(item=>item.Score)-260):720;
         var scores=results.GroupBy(item=>item.Word,StringComparer.OrdinalIgnoreCase).ToDictionary(group=>group.Key,group=>group.Max(item=>item.Score),StringComparer.OrdinalIgnoreCase);
@@ -225,8 +289,8 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
         // Exact senses retain particles such as 的. Their tier cannot be outweighed
         // by familiarity or synonym scores. Keep the existing relevance filter;
         // collapse an exact inflection only when its base also matches exactly.
-        var ranked=results.Where(item=>item.Score>=minimum&&(!bases.TryGetValue(item.Word,out var basis)||item.IsExactMatch&&!exactWords.Contains(basis)||basis.Equals(item.Word,StringComparison.OrdinalIgnoreCase)||!scores.TryGetValue(basis,out var baseScore)||baseScore<item.Score-60))
-            .OrderByDescending(item=>item.IsExactMatch).ThenByDescending(item=>item.Score).ThenBy(item=>item.Word.Length).ThenBy(item=>item.Word,StringComparer.OrdinalIgnoreCase).DistinctBy(item=>item.Word,StringComparer.OrdinalIgnoreCase).ToArray();
+        var ranked=results.Where(item=>(item.IsExactMatch||item.Score>=minimum)&&(!bases.TryGetValue(item.Word,out var basis)||item.IsExactMatch&&!exactWords.Contains(basis)||basis.Equals(item.Word,StringComparison.OrdinalIgnoreCase)||!scores.TryGetValue(basis,out var baseScore)||baseScore<item.Score-60))
+            .OrderByDescending(item=>item.IsExactMatch).ThenByDescending(item=>item.IsPreferredSource).ThenByDescending(item=>item.Score).ThenBy(item=>item.Word.Length).ThenBy(item=>item.Word,StringComparer.OrdinalIgnoreCase).DistinctBy(item=>item.Word,StringComparer.OrdinalIgnoreCase).ToArray();
         return new ChineseSearchPage(raw,ranked.Take(Math.Clamp(limit,1,120)).ToArray(),ranked.Length);
     },cancellationToken);
     public void Dispose()=>_postings?.Dispose();

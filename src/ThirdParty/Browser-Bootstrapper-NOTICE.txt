@@ -1,0 +1,9 @@
+The optional browser component installer is the official Microsoft Edge WebView2
+Evergreen Bootstrapper. It downloads and installs the shared WebView2 Runtime
+only after the user chooses to install the web component.
+
+Microsoft WebView2 Runtime and SDK license notices are included alongside this
+file. No browser runtime is required for offline dictionary and mnemonic use.
+
+Deployment documentation:
+https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution

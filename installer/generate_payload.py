@@ -4,9 +4,17 @@ import hashlib
 from pathlib import Path
 import uuid
 import xml.etree.ElementTree as ET
+import sys
+
+project=Path(__file__).resolve().parents[1]
+helpers=project/'release-tools'
+if not helpers.is_dir():helpers=project/'tools'
+sys.path.insert(0,str(helpers))
+from payload_policy import include_file
 
 parser=argparse.ArgumentParser()
 parser.add_argument('payload',type=Path);parser.add_argument('output',type=Path)
+parser.add_argument('--include-browser-runtime',action='store_true')
 args=parser.parse_args();payload=args.payload.resolve()
 NS='http://wixtoolset.org/schemas/v4/wxs';ET.register_namespace('',NS)
 def node(parent,tag,**attrs):return ET.SubElement(parent,'{'+NS+'}'+tag,attrs)
@@ -15,7 +23,7 @@ root=ET.Element('{'+NS+'}Wix');fragment=node(root,'Fragment')
 directory=node(fragment,'DirectoryRef',Id='INSTALLFOLDER')
 group=node(node(root,'Fragment'),'ComponentGroup',Id='PayloadGroup')
 directories={'.':directory};owners=set()
-files=[p for p in sorted(payload.rglob('*')) if p.is_file() and p.suffix.lower()!='.pdb' and p.name!='smoke-test.json']
+files=[p for p in sorted(payload.rglob('*')) if p.is_file() and include_file(p.relative_to(payload),args.include_browser_runtime)]
 assert files and (payload/'MemoLex.exe').is_file()
 for path in files:
     relative=path.relative_to(payload)

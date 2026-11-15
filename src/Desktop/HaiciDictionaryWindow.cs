@@ -32,14 +32,17 @@ internal sealed class HaiciDictionaryWindow
     private readonly TextBlock _status=InputDialog.Text("正在打开海词词典…");
     private readonly TextBlock _address=InputDialog.Text("");
     private readonly Button _back,_forward;
+    private readonly Button _installBrowser=new(){Content="安装网页组件",Visibility=Visibility.Collapsed,Margin=new Thickness(10,0,0,0)};
+    private readonly CancellationTokenSource _cancel=new();
     private readonly Action<Uri> _openBrowser;
+    private readonly Func<BrowserRuntimeChoice?> _resolveRuntime;
     private Uri _entry;
     private bool _closed,_initializing;
     internal Window Window {get;}
     internal Uri CurrentUri {get;private set;}
-    internal HaiciDictionaryWindow(Window owner,string word,bool initializeBrowser=true,Action<Uri>? openBrowser=null)
+    internal HaiciDictionaryWindow(Window owner,string word,bool initializeBrowser=true,Action<Uri>? openBrowser=null,Func<BrowserRuntimeChoice?>? runtimeResolver=null)
     {
-        _entry=CurrentUri=HaiciDictionary.WordUri(word);_openBrowser=openBrowser??HaiciDictionary.OpenBrowser;
+        _entry=CurrentUri=HaiciDictionary.WordUri(word);_openBrowser=openBrowser??HaiciDictionary.OpenBrowser;_resolveRuntime=runtimeResolver??BrowserRuntime.Resolve;
         Window=InputDialog.Shell(owner,"海词词典",out _);Window.Title="海词词典 · "+word+" · 墨墨搜词";
         Window.Width=Math.Min(1000,SystemParameters.WorkArea.Width-50);Window.Height=Math.Min(800,SystemParameters.WorkArea.Height-50);
         Window.MinWidth=640;Window.MinHeight=460;Window.SizeToContent=SizeToContent.Manual;Window.ResizeMode=ResizeMode.CanResize;
@@ -58,10 +61,13 @@ internal sealed class HaiciDictionaryWindow
         reload.Click+=async(_,_)=>{if(_browser.CoreWebView2!=null)_browser.Reload();else if(initializeBrowser)await InitializeAsync();};
         _address.VerticalAlignment=VerticalAlignment.Center;_address.TextWrapping=TextWrapping.NoWrap;_address.TextTrimming=TextTrimming.CharacterEllipsis;_address.Text=_entry.AbsoluteUri;tools.Children.Add(_address);
         grid.Children.Add(tools);Grid.SetRow(_browser,1);grid.Children.Add(_browser);
-        _status.Margin=new Thickness(16,10,16,12);Grid.SetRow(_status,2);grid.Children.Add(_status);InputDialog.SetBody(Window,grid);
+        var footer=new DockPanel{Margin=new Thickness(16,10,16,12)};
+        DockPanel.SetDock(_installBrowser,Dock.Right);footer.Children.Add(_installBrowser);footer.Children.Add(_status);
+        _installBrowser.Click+=async(_,_)=>await InstallBrowserAsync();Grid.SetRow(footer,2);grid.Children.Add(footer);InputDialog.SetBody(Window,grid);
         foreach(var (name,element) in new (string,FrameworkElement)[]{("HaiciOpenBrowser",browserButton),("HaiciBack",_back),("HaiciForward",_forward),("HaiciReload",reload),("HaiciAddress",_address),("HaiciStatus",_status)})Window.RegisterName(name,element);
+        Window.RegisterName("HaiciInstallBrowser",_installBrowser);
         if(initializeBrowser)Window.Loaded+=async(_,_)=>await InitializeAsync();
-        Window.Closed+=(_,_)=>{_closed=true;_browser.Dispose();};
+        Window.Closed+=(_,_)=>{_closed=true;_cancel.Cancel();_browser.Dispose();};
     }
     internal void ShowWord(string word)
     {
@@ -74,9 +80,15 @@ internal sealed class HaiciDictionaryWindow
         _initializing=true;
         try
         {
-            var bundled=Path.Combine(AppContext.BaseDirectory,"webview2");
+            if(_resolveRuntime()==null)
+            {
+                _installBrowser.Visibility=Visibility.Visible;
+                _status.Text="安装网页组件后可在这里查看，也可直接用默认浏览器打开。";
+                return;
+            }
+            _installBrowser.Visibility=Visibility.Collapsed;
             var profile=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MemoLex","dictionary-browser");
-            var environment=await CoreWebView2Environment.CreateAsync(File.Exists(Path.Combine(bundled,"msedgewebview2.exe"))?bundled:null,profile);
+            var environment=await BrowserRuntime.CreateEnvironmentAsync(profile);
             if(_closed)return;
             var options=environment.CreateCoreWebView2ControllerOptions();options.ProfileName="Dictionary-"+Guid.NewGuid().ToString("N");options.IsInPrivateModeEnabled=true;
             await _browser.EnsureCoreWebView2Async(environment,options);
@@ -103,5 +115,13 @@ internal sealed class HaiciDictionaryWindow
         }
         catch{if(!_closed)_status.Text="暂时无法打开海词词典，可用默认浏览器查看。";}
         finally{_initializing=false;}
+    }
+    private async Task InstallBrowserAsync()
+    {
+        _installBrowser.IsEnabled=false;_status.Text="正在安装网页组件，请稍候；完成后会自动打开词典。";
+        try{await BrowserRuntime.InstallAsync(_cancel.Token);if(!_closed)await InitializeAsync();}
+        catch(OperationCanceledException){}
+        catch(Exception error){if(!_closed)_status.Text=error is InvalidOperationException or IOException?error.Message:"网页组件安装未完成，可重试或用默认浏览器查看。";}
+        finally{if(!_closed)_installBrowser.IsEnabled=true;}
     }
 }

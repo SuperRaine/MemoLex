@@ -59,6 +59,10 @@ public sealed class LocalDictionary : IDisposable
         preferredPath??=directory==null?ReadConfiguredBriefPath():null;
         if(!string.IsNullOrWhiteSpace(preferredPath))_preferred=new(preferredPath);
     }
+    internal LocalDictionary(string directory,LocalBriefDictionary preferred) : this(directory)
+    {
+        _preferred=preferred;
+    }
     public int Count => _entries.Count;
     public int PreferredCount=>_preferred?.Count??0;
     public bool PreferredAvailable=>_preferred?.Available==true;
@@ -105,7 +109,9 @@ public sealed class LocalDictionary : IDisposable
     internal int SourceRowCount=>_sourceWords.Count;
     internal string SourceWord(int id)=>_sourceWords[id];
     internal string IndexPath=>Path.Combine(_directory,"dictionary.index.tsv");
-    // The Chinese postings index was built from ECDICT; its source meanings must stay stable.
+    internal IEnumerable<DictionaryEntry> EnumeratePreferredEntries()=>_preferred?.EnumerateEntries()??[];
+    // Legacy postings and WordNet IDs identify ECDICT rows. Resolve their words
+    // through Lookup when showing preferred definitions; do not reinterpret IDs.
     internal DictionaryEntry? LookupBySourceId(int id)=>id>=0&&id<_sourceWords.Count?LookupBase(_sourceWords[id]):null;
     public IReadOnlyList<string> Suggest(string prefix, int count = 20)
     {

@@ -611,7 +611,7 @@ internal sealed class UiFixture
             Click("SearchButton");await WaitAsync(()=>Control<StackPanel>("ChineseResultsPanel").Children.Count>0&&Control<TextBlock>("ChineseQueryTitle").Text.Contains("生产的"),"exact Chinese result page");
             var productionCards=Control<StackPanel>("ChineseResultsPanel").Children.Cast<Border>().ToArray();
             Check(productionCards.Take(2).Any(card=>Blocks(card).SelectMany(block=>block.Inlines.OfType<Hyperlink>()).Any(link=>Equals(link.ToolTip,"查询 generative"))),"Complete match is not near the top of the result page");
-            Check(Blocks(productionCards[0]).Last().Text=="完全匹配","Exact result label is missing");
+            Check(Blocks(productionCards[0]).Last().Text=="ECDICT · 完全匹配","Exact result or dictionary source label is missing");
             Pass("Chinese suggestions and result cards put complete production meanings ahead of partial matches");
             Layout();await DrainAsync();
             Check(productionCards.Take(6).All(card=>card.ActualHeight<=52),"Chinese result rows are still oversized");
@@ -665,6 +665,9 @@ internal sealed class UiFixture
             Render(settings,840,740,Path.Combine(_previews,"24-settings-feedback.png"));
             Pass("The feedback page exposes the supplied email, QQ group and new GitHub issue destination without sending messages");
             settingsNav.SelectedItem="赞助与关于";
+            Check(((TextBlock)settings.FindName("ProjectDisclaimer")).Text==SettingsDialog.IndependenceNotice
+                &&((TextBlock)settings.FindName("AccountDisclaimer")).Text==SettingsDialog.IndependenceNotice
+                &&SettingsDialog.IndependenceNotice.Contains("个人开发")&&SettingsDialog.IndependenceNotice.Contains("无隶属关系"),"The independent-developer notice is missing from about or accounts");
             var paymentTabs=(TabControl)settings.FindName("SponsorPaymentTabs");
             Check(paymentTabs.Items.Cast<TabItem>().Select(item=>item.Header).SequenceEqual(new[]{"微信支付","支付宝"}),"Both sponsor methods must be available");
             foreach(var name in new[]{"WechatPaymentImage","AlipayPaymentImage"})

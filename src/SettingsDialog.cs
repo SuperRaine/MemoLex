@@ -17,6 +17,7 @@ internal static class SettingsDialog
     internal const string FeedbackEmail="1623255609@qq.com";
     internal const string FeedbackQqGroup="1132371819";
     internal const string IssueUrl=RepositoryUrl+"/issues/new/choose";
+    internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
     internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"1.1.0";
     public static SettingsResult Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null)
     {
@@ -95,6 +96,8 @@ internal static class SettingsDialog
 
         var tokenChanged=false;
         var account=Page("墨墨账号","官方登录、记住账号，并在多个账号间自由切换。离线查词无需登录。");
+        var accountNotice=InputDialog.Text(IndependenceNotice);accountNotice.Margin=new Thickness(0,0,0,16);
+        account.Children.Add(accountNotice);dialog.RegisterName("AccountDisclaimer",accountNotice);
         account.Children.Add(AccountSettingsPanel.Build(dialog,store,async()=>{tokenChanged=true;if(accountChanged!=null)await accountChanged();}));
         void OpenLink(string url,string error){try{Process.Start(new ProcessStartInfo(url){UseShellExecute=true});}catch{status.Text=error;}}
 
@@ -116,6 +119,10 @@ internal static class SettingsDialog
         var copyEmail=new Button {Content="复制反馈邮箱",HorizontalAlignment=HorizontalAlignment.Left};copyEmail.Click+=(_,_)=>CopyContact(FeedbackEmail,"反馈邮箱已复制。");feedback.Children.Add(copyEmail);dialog.RegisterName("CopyFeedbackEmail",copyEmail);
 
         var support=Page("赞助与关于","墨墨搜词 MemoLex · "+Version);
+        var projectNotice=InputDialog.Text(IndependenceNotice);
+        support.Children.Add(new Border {Child=projectNotice,Padding=new Thickness(12),Margin=new Thickness(0,0,0,16),
+            Background=new SolidColorBrush(Color.FromRgb(239,248,255)),CornerRadius=new CornerRadius(8)});
+        dialog.RegisterName("ProjectDisclaimer",projectNotice);
         support.Children.Add(InputDialog.Text("如果墨墨搜词对你有帮助，欢迎自愿赞助，支持后续开发与维护。感谢你的支持！"));
         var payments=new TabControl {Margin=new Thickness(0,16,0,12),BorderThickness=new Thickness(0),Background=Brushes.Transparent};
         foreach(var (label,asset,name) in new[]{("微信支付","sponsor-wechat.jpg","Wechat"),("支付宝","sponsor-alipay.jpg","Alipay")})
