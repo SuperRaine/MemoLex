@@ -23,7 +23,11 @@ function CheckedPath([string]$root, [string]$relative) {
 }
 try {
     if ($appRoot -eq [IO.Path]::GetPathRoot($appRoot).TrimEnd('\') -or -not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Invalid application directory' }
-    if ((Get-FileHash -LiteralPath $job.Package -Algorithm SHA256).Hash -ne $job.Sha256) { throw 'Package checksum changed' }
+    $hashStream=[IO.File]::OpenRead($job.Package)
+    $hashAlgorithm=[Security.Cryptography.SHA256]::Create()
+    try { $packageHash=[BitConverter]::ToString($hashAlgorithm.ComputeHash($hashStream)).Replace('-','') }
+    finally { $hashStream.Dispose();$hashAlgorithm.Dispose() }
+    if ($packageHash -ne $job.Sha256) { throw 'Package checksum changed' }
     $targets = @()
     if ($job.Portable) {
         foreach ($relative in $job.Files) {

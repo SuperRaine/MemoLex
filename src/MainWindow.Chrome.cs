@@ -17,6 +17,7 @@ public partial class MainWindow
             _compactLayout=compact;
             SidebarColumn.Width=new GridLength(compact?220:264);
             BrandColumn.Width=new GridLength(compact?180:238);
+            ExamCountdownText.MaxWidth=compact?160:260;
             MainContentGrid.Margin=compact?new Thickness(15,15,15,13):new Thickness(27,21,27,17);
             WordCard.Padding=compact?new Thickness(18):new Thickness(27,23,27,24);
             WordText.FontSize=compact?32:42;

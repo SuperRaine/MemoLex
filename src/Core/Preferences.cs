@@ -12,6 +12,9 @@ public sealed class Preferences
     public bool RememberCloseAction { get; set; }
     public bool DoubleCopyEnabled { get; set; } = true;
     public bool OnboardingCompleted {get;set;}
+    public bool ShowExamCountdown {get;set;}
+    public string ExamName {get;set;}="考试";
+    public DateTime? ExamDate {get;set;}
     public Dictionary<string,List<string>> ConfirmedLearnedWords {get;set;}=[];
     public bool HoverLookupEnabled {get;set;}=true;
     public int HoverDelayMs {get;set;}=500;
@@ -40,6 +43,9 @@ public sealed class Preferences
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { result = new(); }
         result._path = path;
         result.NormalizeHistory();
+        result.ExamName=string.IsNullOrWhiteSpace(result.ExamName)?"考试":result.ExamName.Trim();
+        if(result.ExamName.Length>40)result.ExamName=result.ExamName[..40];
+        result.ExamDate=result.ExamDate?.Date;
         result.ConfirmedLearnedWords=(result.ConfirmedLearnedWords??[])
             .Where(item=>!string.IsNullOrWhiteSpace(item.Key)&&item.Key.Length<=100&&item.Value!=null)
             .ToDictionary(item=>item.Key,item=>item.Value.Where(UsableWord).Select(word=>word.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),StringComparer.Ordinal);

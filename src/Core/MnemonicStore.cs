@@ -1,4 +1,6 @@
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace MemoLex.Core;
@@ -23,9 +25,46 @@ public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null
             try{if(File.Exists(_userPath))_saved=Read(_userPath);}
             catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
             {LoadWarning="本地个人助记文件读取失败，原文件已保留；暂时无法覆盖保存。";_writeBlocked=true;}
+            if(!_writeBlocked)MigrateGeneratedNotes();
             _loaded=true;
         }
     });
+    private sealed record RevisionManifest(int Schema,string BundleSha256,Dictionary<string,string[]> KnownGeneratedNotes);
+    private void MigrateGeneratedNotes()
+    {
+        var path=Path.Combine(Path.GetDirectoryName(_bundledPath)!,"mnemonics.revisions.json");
+        if(_saved.Count==0||!File.Exists(path))return;
+        try
+        {
+            var manifest=JsonSerializer.Deserialize<RevisionManifest>(File.ReadAllText(path));
+            if(manifest is not {Schema:1}||manifest.KnownGeneratedNotes is null)return;
+            using(var stream=File.OpenRead(_bundledPath))
+                if(!Convert.ToHexString(SHA256.HashData(stream)).Equals(manifest.BundleSha256,StringComparison.OrdinalIgnoreCase))return;
+            var known=new Dictionary<string,string[]>(manifest.KnownGeneratedNotes,StringComparer.OrdinalIgnoreCase);
+            var next=new Dictionary<string,StoredMnemonic[]>(_saved,StringComparer.OrdinalIgnoreCase);
+            var changed=false;
+            foreach(var (word,entries) in _saved)
+            {
+                if(!known.TryGetValue(word,out var hashes)||!_bundled.TryGetValue(word,out var bundled)||bundled.Length==0)continue;
+                var replaced=false;var updated=new List<StoredMnemonic>();
+                foreach(var note in entries)
+                {
+                    var digest=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(word.ToLowerInvariant()+"\0"+note.Id+"\0"+note.Text))).ToLowerInvariant();
+                    if(note.CloudId is null&&note.AccountKey is null&&note.Origin is "local" or "builtin"&&hashes.Contains(digest,StringComparer.OrdinalIgnoreCase))
+                    {if(!replaced)updated.AddRange(bundled);replaced=true;}
+                    else updated.Add(note);
+                }
+                if(replaced&&!entries.SequenceEqual(updated)){next[word]=updated.ToArray();changed=true;}
+            }
+            if(!changed)return;
+            var backup=_userPath+".before-bundled-update-"+DateTime.UtcNow.ToString("yyyyMMddHHmmssfff")+"-"+Guid.NewGuid().ToString("N")+".bak";
+            File.Copy(_userPath,backup,false);
+            var temporary=_userPath+".revision.tmp";
+            File.WriteAllText(temporary,JsonSerializer.Serialize(next));File.Move(temporary,_userPath,true);_saved=next;
+        }
+        catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+        {LoadWarning="新版助记暂未替换本地旧内容，原助记已保留。";}
+    }
     private static Dictionary<string,StoredMnemonic[]> Read(string path)
     {
         var entries=JsonSerializer.Deserialize<Dictionary<string,StoredMnemonic[]>>(File.ReadAllText(path))??[];

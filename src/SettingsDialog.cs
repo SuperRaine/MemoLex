@@ -47,12 +47,25 @@ internal static class SettingsDialog
             panel.Children.Add(new TextBlock {Text=title,FontSize=23,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(38,63,83))});
             var subtitle=InputDialog.Text(description);subtitle.Margin=new Thickness(0,8,0,22);panel.Children.Add(subtitle);
             var view=new ScrollViewer {Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
-            pages.Add((title,view));navigation.Items.Add(title);return panel;
+            pages.Add((title,view));return panel;
         }
+        ScrollViewer PageView(string title)=>pages.Single(page=>page.Title==title).View;
         void Heading(Panel page,string text)=>page.Children.Add(new TextBlock {Text=text,FontSize=14,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,12,0,12)});
         void Divider(Panel page)=>page.Children.Add(new Separator {Margin=new Thickness(0,16,0,8)});
 
         var general=Page("常规","让墨墨搜词按你的习惯工作。");
+        Heading(general,"考试倒计时");
+        var showCountdown=new CheckBox {Content="在标题栏显示考试倒计时",IsChecked=preferences.ShowExamCountdown,Margin=new Thickness(0,0,0,12)};
+        general.Children.Add(showCountdown);
+        general.Children.Add(InputDialog.Text("考试名称"));
+        var examName=new TextBox {Text=preferences.ExamName,MaxLength=40,Margin=new Thickness(0,6,0,12),Padding=new Thickness(9),MinHeight=35};
+        general.Children.Add(examName);general.Children.Add(InputDialog.Text("考试日期"));
+        var examDate=new DatePartsInput(preferences.ExamDate);
+        void EnableCountdownFields(){examName.IsEnabled=examDate.IsEnabled=showCountdown.IsChecked==true;}
+        showCountdown.Checked+=(_,_)=>EnableCountdownFields();showCountdown.Unchecked+=(_,_)=>EnableCountdownFields();EnableCountdownFields();
+        general.Children.Add(examDate);general.Children.Add(InputDialog.Text("可下拉选择，也可直接输入年月日。"));Divider(general);
+        dialog.RegisterName("ShowExamCountdown",showCountdown);dialog.RegisterName("ExamName",examName);dialog.RegisterName("ExamDate",examDate);
+        dialog.RegisterName("ExamDateYear",examDate.Year);dialog.RegisterName("ExamDateMonth",examDate.Month);dialog.RegisterName("ExamDateDay",examDate.Day);
         Heading(general,"关闭窗口");
         var tray=new RadioButton {Content="最小化到托盘",GroupName="CloseAction",IsChecked=preferences.CloseToTray,Margin=new Thickness(0,0,0,12)};
         var exit=new RadioButton {Content="直接退出程序",GroupName="CloseAction",IsChecked=!preferences.CloseToTray,Margin=new Thickness(0,0,0,12)};
@@ -65,7 +78,7 @@ internal static class SettingsDialog
         var autoStart=new CheckBox {Content="开机自启动",IsChecked=startupEnabled==true,IsEnabled=startupEnabled.HasValue,Margin=new Thickness(0,0,0,8)};
         general.Children.Add(autoStart);general.Children.Add(InputDialog.Text(startupReadError??"登录 Windows 时自动启动；取消勾选可关闭。"));
         var doubleCopy=new CheckBox {Content="连续按两次 Ctrl+C 自动查词 / 翻译",IsChecked=preferences.DoubleCopyEnabled,Margin=new Thickness(0,20,0,8)};
-        general.Children.Add(doubleCopy);general.Children.Add(InputDialog.Text("在其他应用选中文本后，750 毫秒内复制两次，唤起窗口查询。单词离线查询；段落自动判断语言，优先使用 DeepL，连接失败自动改用 MyMemory。"));
+        dialog.RegisterName("DoubleCopyEnabled",doubleCopy);general.Children.Add(doubleCopy);general.Children.Add(InputDialog.Text("在其他应用选中文本后，750 毫秒内复制两次，唤起窗口查询。单词离线查询；段落自动判断语言，优先使用 DeepL，连接失败自动改用 MyMemory。"));
         Divider(general);var guide=new Button{Content="查看新手引导",HorizontalAlignment=HorizontalAlignment.Left,IsEnabled=startOnboarding!=null};guide.Click+=(_,_)=>{dialog.Close();owner.Dispatcher.BeginInvoke(startOnboarding!);};general.Children.Add(guide);dialog.RegisterName("OpenOnboarding",guide);
 
         var shortcutsPage=Page("快捷键","点击输入框后按组合键，按 Delete 清除。保存后立即生效。");
@@ -118,9 +131,12 @@ internal static class SettingsDialog
         var updatePage=Page("软件更新","从 GitHub 获取最新版本，按你的习惯检查更新。");
         var ownedUpdates=updates==null;updates??=new UpdateManager(preferences,()=>{});updatePage.Children.Add(updates.BuildPanel(dialog));
         if(ownedUpdates)dialog.Closed+=(_,_)=>updates.Dispose();
-        dialog.RegisterName("SettingsUpdatePage",pages[5].View);
+        dialog.RegisterName("SettingsUpdatePage",PageView("软件更新"));
         var hoverPage=Page("鼠标取词","悬停显示释义和助记，离开自动收起。");hoverPage.Children.Add(HoverSettingsPanel.Build(dialog,preferences,out var applyHover));
-        dialog.RegisterName("SettingsHoverPage",pages[6].View);
+        dialog.RegisterName("SettingsHoverPage",PageView("鼠标取词"));
+        var pageOrder=new[]{"常规","墨墨账号","鼠标取词","快捷键","软件更新","反馈","赞助与关于"};
+        pages=pageOrder.Select(title=>pages.Single(page=>page.Title==title)).ToList();
+        foreach(var page in pages)navigation.Items.Add(page.Title);
         navigation.SelectionChanged+=(_,_)=>{if(navigation.SelectedIndex>=0)host.Content=pages[navigation.SelectedIndex].View;};
         navigation.SelectedIndex=Math.Max(0,pages.FindIndex(page=>page.Title==initialPage));
 
@@ -130,18 +146,22 @@ internal static class SettingsDialog
             {
                 if(!ShortcutGestures.Normalize(shortcutInputs.ToDictionary(item=>item.Key,item=>item.Value.Text),out var shortcuts,out var shortcutError)){status.Text=shortcutError;return;}
                 var unavailable=validateShortcuts?.Invoke(shortcuts);if(unavailable!=null){status.Text=unavailable;return;}
-                if(!int.TryParse(((TextBox)dialog.FindName("HoverDelayMs")).Text,out var delay)||delay is <100 or >3000){navigation.SelectedIndex=6;status.Text="取词延迟需为 100–3000 毫秒。";return;}
+                var validExamDate=examDate.TryGetDate(out var selectedExamDate,out var examDateError);
+                if(showCountdown.IsChecked==true&&!validExamDate){navigation.SelectedItem="常规";status.Text=examDateError;return;}
+                if(!int.TryParse(((TextBox)dialog.FindName("HoverDelayMs")).Text,out var delay)||delay is <100 or >3000){navigation.SelectedItem="鼠标取词";status.Text="取词延迟需为 100–3000 毫秒。";return;}
                 if(startupEnabled.HasValue&&(autoStart.IsChecked==true)!=startupEnabled.Value)
                 {
                     try{startupRegistration.SetEnabled(autoStart.IsChecked==true);startupEnabled=autoStart.IsChecked==true;}
-                    catch{navigation.SelectedIndex=0;status.Text="开机自启动设置失败，请检查当前用户权限后重试。";return;}
+                    catch{navigation.SelectedItem="常规";status.Text="开机自启动设置失败，请检查当前用户权限后重试。";return;}
                 }
                 applyHover();preferences.CloseToTray=tray.IsChecked==true;preferences.RememberCloseAction=rememberClose.IsChecked==true;
+                preferences.ShowExamCountdown=showCountdown.IsChecked==true;
+                preferences.ExamName=string.IsNullOrWhiteSpace(examName.Text)?"考试":examName.Text.Trim();if(validExamDate)preferences.ExamDate=selectedExamDate;
                 preferences.DoubleCopyEnabled=doubleCopy.IsChecked==true;preferences.Shortcuts=shortcuts;preferences.Save();dialog.DialogResult=true;
             }
-            catch{status.Text="保存失败，请检查 Token 或本机文件权限。";}
+            catch{status.Text="保存失败，请检查输入内容或本机文件权限。";}
         };
-        foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SaveSettings",save),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",pages[0].View),("SettingsShortcutsPage",pages[1].View),("SettingsAccountPage",pages[2].View),("SettingsFeedbackPage",pages[3].View),("SettingsSupportPage",pages[4].View),("SponsorPaymentTabs",payments)})dialog.RegisterName(name,control);
+        foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SaveSettings",save),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",PageView("常规")),("SettingsShortcutsPage",PageView("快捷键")),("SettingsAccountPage",PageView("墨墨账号")),("SettingsFeedbackPage",PageView("反馈")),("SettingsSupportPage",PageView("赞助与关于")),("SponsorPaymentTabs",payments)})dialog.RegisterName(name,control);
         changed=()=>tokenChanged;return dialog;
     }
 

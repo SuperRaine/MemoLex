@@ -68,7 +68,9 @@ public partial class MainWindow : Window
         AddButton.IsEnabled = false;
         AddTodayButton.IsEnabled = false;
         SpeakButton.IsEnabled = false;
-        Loaded += async (_, _) => {StartTodayStudyClock();StartAccountClock();await InitializeAsync();RefreshHoverLookup();if(_desktopIntegration){_updates=new(_preferences,ExitApplication);_updates.Changed+=()=>{if(_updates.CanInstall)StatusText.Text=_updates.Status+" 设置 → 软件更新";};_updates.Start();if(!_preferences.OnboardingCompleted)StartOnboarding();}};
+        HaiciButton.IsEnabled=false;
+        UpdateExamCountdown();
+        Loaded += async (_, _) => {StartExamCountdownClock();StartTodayStudyClock();StartAccountClock();await InitializeAsync();RefreshHoverLookup();if(_desktopIntegration){_updates=new(_preferences,ExitApplication);_updates.Changed+=()=>{if(_updates.CanInstall)StatusText.Text=_updates.Status+" 设置 → 软件更新";};_updates.Start();if(!_preferences.OnboardingCompleted)StartOnboarding();}};
         SourceInitialized += (_, _) =>
         {
             InstallHotkey();
@@ -83,6 +85,7 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             StopOnboardingOnExit();
+            _examCountdownTimer?.Stop();
             _doubleCopy?.Dispose();_clipboardCts?.Cancel();
             _hover?.Dispose();_accountTimer?.Stop();_accountWatcher?.Dispose();_updates?.Dispose();
             _studyCts?.Cancel();
@@ -212,6 +215,8 @@ public partial class MainWindow : Window
         AddButton.IsEnabled = !_adding;
         PrepareTodayStudyLookup(word,cancellation);
         SpeakButton.IsEnabled = true;
+        HaiciButton.IsEnabled=true;
+        WordText.ContextMenu=HaiciWordMenu(word);
         var entry = _dictionary.Lookup(word);
         WordText.Text = entry?.word ?? word;
         PhoneticText.Text = string.IsNullOrWhiteSpace(entry?.phonetic) ? "" : $"/{entry.phonetic.Trim('/')}/";
@@ -373,6 +378,7 @@ public partial class MainWindow : Window
             var link = new Hyperlink(new Run(part.Text)) { Foreground = Brush(highlighted ? "#087FAF" : "#426B89"), TextDecorations = null,
                 Background=highlighted?Brush("#E1F4FF"):Brushes.Transparent,
                 FontWeight = highlighted ? FontWeights.SemiBold : FontWeights.Normal, ToolTip = "查询 " + word, Cursor = Cursors.Hand };
+            link.ContextMenu=HaiciWordMenu(word);
             link.MouseEnter += (_, _) => link.TextDecorations = TextDecorations.Underline;
             link.MouseLeave += (_, _) => link.TextDecorations = null;
             link.Click += async (_, _) => {if(navigate!=null)await navigate(word);else await NavigateLinkedWordAsync(word, sourceWord);};
@@ -621,15 +627,17 @@ public partial class MainWindow : Window
         catch (Exception ex) { ShowError(ex); }
         finally { _adding = false; SetCloudWriteBusy(false); await UpdateMembershipAsync(); }
     }
-    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)=>EditSettings();
+    private void EditSettings(string? initialPage=null)
     {
         if (_adding || _refreshing) return;
         SettingsResult result;
         _editingSettings=true;ReleaseGlobalShortcut();
-        try{result=SettingsDialog.Edit(this,_tokens,_preferences,ValidateGlobalShortcut,ReloadAccountAsync,_updates?.CanInstall==true?"软件更新":!_tokens.HasToken?"墨墨账号":null,_updates,startOnboarding:StartOnboarding);}
+        try{result=SettingsDialog.Edit(this,_tokens,_preferences,ValidateGlobalShortcut,ReloadAccountAsync,initialPage??(_updates?.CanInstall==true?"软件更新":!_tokens.HasToken?"墨墨账号":null),_updates,startOnboarding:StartOnboarding);}
         finally{_editingSettings=false;RefreshGlobalShortcut();RefreshDoubleCopy();RefreshHoverLookup();}
         if (!result.Saved) return;
         UpdateShortcutHints();
+        UpdateExamCountdown();
         StatusText.Text = _preferences.CloseToTray ? "设置已保存 · 关闭窗口时最小化到托盘。" : "设置已保存 · 关闭窗口时直接退出。";
     }
     private void SetCloudWriteBusy(bool busy)

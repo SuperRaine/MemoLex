@@ -66,6 +66,7 @@ public partial class MainWindow
             var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(145)});body.ColumnDefinitions.Add(new ColumnDefinition());body.ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
             var heading=new TextBlock {FontSize=16,FontFamily=new System.Windows.Media.FontFamily("Segoe UI"),Margin=new Thickness(0,0,12,0),TextTrimming=TextTrimming.CharacterEllipsis,VerticalAlignment=VerticalAlignment.Center,ToolTip=item.Word};
             var link=new Hyperlink(new Run(item.Word)){Foreground=Brush("#087FAF"),TextDecorations=null,FontWeight=FontWeights.SemiBold,ToolTip="查询 "+item.Word};
+            link.ContextMenu=HaiciWordMenu(item.Word);
             link.Click+=async(_,_)=>await LoadWordAsync(item.Word);heading.Inlines.Add(link);body.Children.Add(heading);
             var meaning=new TextBlock {FontSize=13,LineHeight=22,TextTrimming=TextTrimming.CharacterEllipsis,Foreground=Brush("#4F6D85"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0),ToolTip=item.Meaning};Grid.SetColumn(meaning,1);
             foreach(var part in TextHighlights.Split(item.MatchedMeaning,new[]{ChineseReverseSearch.Normalize(_chineseQuery)}))

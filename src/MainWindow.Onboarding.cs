@@ -41,14 +41,22 @@ public partial class MainWindow
             catch(OperationCanceledException){}
         }
         _onboardingTour=new([
-            new("查词与中文反查","在这里输入英文或中文含义，按 Enter 查询。中文反查会优先显示完整匹配的释义。",()=>MainPage(false,SearchBox)),
-            new("释义、助记和例句","这一页可以连续阅读释义、编辑本地助记和查看真题例句。英文单词可点击跳转，再用标题栏后退返回。",()=>MainPage(false,ResultScroll)),
-            new("选择自己的云词本","登录后在这里选择目标词本，再用词条页的加入按钮收藏。查看 / 编辑可以管理词条、释义和分组。",()=>MainPage(false,CloudNotepadCard)),
-            new("段落翻译","在这一页输入段落后翻译。原文可以修改重译，结果中的英文也能点击查词。",()=>MainPage(true,TranslationInput)),
-            new("截图翻译","点击这里或按 "+ShortcutLabel("screenshot")+"，拖动框选英文区域。Esc 取消。图片在本机识别；文字优先发到 DeepL，连接失败改用备用翻译。",()=>MainPage(true,ScreenshotButton)),
-            new("连接自己的墨墨账号","在这个页面使用官方登录。账号列表选择后立即切换；不同账号的云端内容和学习状态分别读取。",()=>SettingsPage("墨墨账号","OfficialLoginButton")),
-            new("调整鼠标取词","在这个页面调整悬停延迟、组合键和浮窗样式。只识别英文，模糊或不确定的结果会跳过。",()=>SettingsPage("鼠标取词","HoverDelayMs")),
-            new("按习惯修改快捷键","在快捷键页面选择对应输入框，再按新的组合键。此处是截图翻译的全局快捷键，平时修改后点击保存设置。",()=>SettingsPage("快捷键","ShortcutInput_screenshot"))
+            new("查词与中文反查","输入英文或中文含义，按 Enter 查询。",()=>MainPage(false,SearchBox)),
+            new("阅读词条","听发音、看释义和例句，点击英文单词继续查词。",()=>MainPage(false,ResultScroll)),
+            new("编辑助记","点击编辑助记，修改后保存到本地或同步到墨墨。",()=>MainPage(false,EditNotesButton)),
+            new("海词词典","点击查看在线词条，海词窗口中也可用浏览器打开。",()=>MainPage(false,HaiciButton)),
+            new("历史与前后退","从历史回查单词，用标题栏前进、后退返回阅读位置。",()=>MainPage(false,HistoryButton)),
+            new("登录与切换账号","在这里登录墨墨，也可切换已保存的账号。",()=>SettingsPage("墨墨账号","OfficialLoginButton")),
+            new("收藏与管理云词本","选择词本收藏单词，点“查看 / 编辑”批量管理词条。",()=>MainPage(false,CloudNotepadCard)),
+            new("今日新学","未学单词可加入今日新学，添加前按提示完成手机同步。",()=>MainPage(false,AddTodayButton)),
+            new("段落翻译","输入一段文字，点击“翻译”。",()=>MainPage(true,TranslationInput)),
+            new("截图翻译","按 "+ShortcutLabel("screenshot")+"，框选要翻译的英文。",()=>MainPage(true,ScreenshotButton)),
+            new("鼠标取词","开启后，将鼠标停在英文单词上即可查看释义。",()=>SettingsPage("鼠标取词","HoverLookupEnabled")),
+            new("剪贴板查词","选中文字连续按两次 Ctrl+C，或按 "+ShortcutLabel("clipboard")+" 查询。",()=>SettingsPage("常规","DoubleCopyEnabled")),
+            new("自定义快捷键","点击输入框，按下新组合键后保存。",()=>SettingsPage("快捷键","ShortcutInput_clipboard")),
+            new("考试倒计时","勾选后设置考试名称和日期，在标题栏查看剩余天数。",()=>SettingsPage("常规","ShowExamCountdown")),
+            new("桌面设置","可设置开机自启和关闭到托盘，标题栏图钉用于置顶。",()=>SettingsPage("常规","StartWithWindows")),
+            new("软件更新","在这里检查新版，也可调整自动更新的频率。",()=>SettingsPage("软件更新","CheckUpdatesButton"))
         ],Finished,_desktopIntegration);
         _onboardingTour.Start();
     }

@@ -127,12 +127,72 @@ try
         var p=Preferences.Load(path);p.RecordLookup("快乐");p.RecordLookup("happy");p.RecordLookup("管理");p.RecordLookup("快乐");p.Save();
         var loaded=Preferences.Load(path);Check(loaded.SearchHistory.Select(item=>item.Word).SequenceEqual(new[]{"快乐","管理","happy"})&&loaded.SearchHistory[0].LookupCount==2,"Chinese query history did not round trip");
     });
+    void MigrationCase(string name,Action<string,string,StoredMnemonic,StoredMnemonic> run)
+    {
+        Test(name,path=>
+        {
+            var folder=path+".data";Directory.CreateDirectory(folder);var bundle=Path.Combine(folder,"mnemonics.json");
+            var old=new StoredMnemonic("personal:old","词根词缀","student：学生。-ent（人）。");
+            var fresh=new StoredMnemonic("builtin:reviewed","词根词缀","stud（学习）＋-ent（人）→学习的人→学生。",Origin:"builtin");
+            File.WriteAllText(bundle,JsonSerializer.Serialize(new Dictionary<string,StoredMnemonic[]>{{"student",[fresh]}}));
+            var hash=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("student\0"+old.Id+"\0"+old.Text))).ToLowerInvariant();
+            var bundleHash=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(bundle))).ToLowerInvariant();
+            File.WriteAllText(Path.Combine(folder,"mnemonics.revisions.json"),JsonSerializer.Serialize(new {Schema=1,BundleSha256=bundleHash,KnownGeneratedNotes=new Dictionary<string,string[]>{{"student",[hash]}}}));
+            run(path,bundle,old,fresh);
+        });
+    }
+    MigrationCase("Unchanged generated notes update durably with an exact original backup",(path,bundle,old,fresh)=>
+    {
+        var content=JsonSerializer.Serialize(new Dictionary<string,StoredMnemonic[]>{{"student",[old]}});File.WriteAllText(path,content);
+        var store=new MnemonicStore(path,bundle);store.LoadAsync().GetAwaiter().GetResult();Check(store.Get("student").SequenceEqual(new[]{fresh}),"Generated note did not migrate");
+        var backups=Directory.GetFiles(root,Path.GetFileName(path)+".before-bundled-update-*.bak");Check(backups.Length==1&&File.ReadAllText(backups[0])==content,"Original backup is not byte-identical");
+        var restarted=new MnemonicStore(path,bundle);restarted.LoadAsync().GetAwaiter().GetResult();Check(restarted.Get("student")[0]==fresh&&Directory.GetFiles(root,Path.GetFileName(path)+".before-bundled-update-*.bak").Length==1,"Migration repeated or failed after restart");
+    });
+    MigrationCase("An edited note with the same generated identifier remains unchanged",(path,bundle,old,fresh)=>
+    {
+        var edited=old with {Text="我自己改写的学生助记"};File.WriteAllText(path,JsonSerializer.Serialize(new Dictionary<string,StoredMnemonic[]>{{"student",[edited]}}));
+        var store=new MnemonicStore(path,bundle);store.LoadAsync().GetAwaiter().GetResult();Check(store.Get("student")[0]==edited,"User edit was replaced");
+    });
+    MigrationCase("Cloud notes from both accounts survive while local generated content updates",(path,bundle,old,fresh)=>
+    {
+        var a=old with {Origin="cloud",CloudId="a",AccountKey="account-a"};var b=old with {Origin="cloud",CloudId="b",AccountKey="account-b"};
+        File.WriteAllText(path,JsonSerializer.Serialize(new Dictionary<string,StoredMnemonic[]>{{"student",[old,a,b]}}));
+        var store=new MnemonicStore(path,bundle);store.LoadAsync().GetAwaiter().GetResult();Check(store.Get("student","account-a").SequenceEqual(new[]{a})&&store.Get("student","account-b").SequenceEqual(new[]{b}),"Cloud priority or account isolation changed");
+        Check(store.Get("student",null).SequenceEqual(new[]{fresh}),"Local note did not update");
+    });
+    MigrationCase("A matching text under a custom identifier is a protected user note",(path,bundle,old,fresh)=>
+    {
+        var custom=old with {Id="local:user-created"};File.WriteAllText(path,JsonSerializer.Serialize(new Dictionary<string,StoredMnemonic[]>{{"student",[custom]}}));
+        var store=new MnemonicStore(path,bundle);store.LoadAsync().GetAwaiter().GetResult();Check(store.Get("student")[0]==custom,"Text-only match overwrote a custom note");
+    });
+    MigrationCase("A stale manifest cannot migrate a different bundled dictionary",(path,bundle,old,fresh)=>
+    {
+        File.WriteAllText(path,JsonSerializer.Serialize(new Dictionary<string,StoredMnemonic[]>{{"student",[old]}}));File.AppendAllText(bundle," ");
+        var store=new MnemonicStore(path,bundle);store.LoadAsync().GetAwaiter().GetResult();Check(store.Get("student")[0]==old,"Bundle checksum mismatch was ignored");
+    });
+    MigrationCase("Broken personal JSON is preserved and blocks saving",(path,bundle,old,fresh)=>
+    {
+        File.WriteAllText(path,"{broken");var store=new MnemonicStore(path,bundle);store.LoadAsync().GetAwaiter().GetResult();Check(File.ReadAllText(path)=="{broken"&&store.LoadWarning!=null,"Broken profile changed");
+        try{store.Save("student",[fresh]);throw new Exception("Save was allowed");}catch(IOException){}
+    });
+    MigrationCase("Mixed edited and unrelated notes are preserved alongside the updated generated note",(path,bundle,old,fresh)=>
+    {
+        var custom=old with {Id="custom",Text="自写内容"};var other=old with {Id="other",Text="其他词"};
+        File.WriteAllText(path,JsonSerializer.Serialize(new Dictionary<string,StoredMnemonic[]>{{"student",[old,custom]},{"other",[other]}}));
+        var store=new MnemonicStore(path,bundle);store.LoadAsync().GetAwaiter().GetResult();Check(store.Get("student").SequenceEqual(new[]{fresh,custom})&&store.Get("other")[0]==other,"Unrelated or custom content was lost");
+    });
+    MigrationCase("Malformed revision metadata leaves saved content untouched",(path,bundle,old,fresh)=>
+    {
+        var content=JsonSerializer.Serialize(new Dictionary<string,StoredMnemonic[]>{{"student",[old]}});File.WriteAllText(path,content);File.WriteAllText(Path.Combine(Path.GetDirectoryName(bundle)!,"mnemonics.revisions.json"),"{broken");
+        var store=new MnemonicStore(path,bundle);store.LoadAsync().GetAwaiter().GetResult();Check(store.Get("student")[0]==old&&File.ReadAllText(path)==content,"Malformed manifest changed user data");
+    });
     Console.WriteLine($"{passed} core behavior checks passed; all data used an isolated temporary profile.");
     return 0;
 }
 finally
 {
-    foreach (var file in Directory.EnumerateFiles(root)) File.Delete(file);
-    Directory.Delete(root);
+    if(Path.GetDirectoryName(Path.GetFullPath(root))!.TrimEnd(Path.DirectorySeparatorChar)!=Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar)
+        ||!Path.GetFileName(root).StartsWith("MemoLex.CoreTests.",StringComparison.Ordinal))throw new Exception("Unsafe test cleanup path");
+    Directory.Delete(root,true);
 }
 sealed record NavState(string Word,int Page=0,string Filter="ALL",double Scroll=0,int Loaded=10);

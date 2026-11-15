@@ -25,7 +25,8 @@ public partial class MainWindow
                 {
                     var block=new TextBlock {TextWrapping=TextWrapping.Wrap,FontSize=13,LineHeight=24,Margin=new Thickness(0,0,0,8),Foreground=Brush("#718EA5")};
                     var link=new Hyperlink(new Run(item.Word)){Foreground=Brush("#087FAF"),TextDecorations=null,FontWeight=FontWeights.SemiBold,ToolTip="查询 "+item.Word};
-                    link.Click+=async(_,_)=>await NavigateLinkedWordAsync(item.Word,word);
+                    link.ContextMenu=HaiciWordMenu(item.Word);
+            link.Click+=async(_,_)=>await NavigateLinkedWordAsync(item.Word,word);
                     block.Inlines.Add(link);block.Inlines.Add(new Run("  "+item.Meaning.Replace('\n',' ')));
                     panel.Children.Add(block);
                 }

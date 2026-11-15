@@ -17,7 +17,7 @@ if(Test-Path -LiteralPath (Join-Path $WebViewDirectory 'msedgewebview2.exe')){
     Copy-Item -Path (Join-Path $WebViewDirectory '*') -Destination $webviewTarget -Recurse -Force
 }else{Write-Warning 'Fixed WebView2 runtime was not supplied. The official login will require an installed Evergreen WebView2 runtime.'}
 foreach($file in Get-ChildItem -LiteralPath (Join-Path $repo 'mnemonics') -File){
-    if($file.Name -in @('mnemonics.json','mnemonics.meta.json','Mnemonics-CC-BY-SA-3.0.txt','README-Mnemonics.txt')){Copy-Item -LiteralPath $file.FullName -Destination $targetData -Force}
+    if($file.Name -in @('mnemonics.json','mnemonics.meta.json','mnemonics.revisions.json','Mnemonics-CC-BY-SA-3.0.txt','README-Mnemonics.txt')){Copy-Item -LiteralPath $file.FullName -Destination $targetData -Force}
 }
 Copy-Item -LiteralPath (Join-Path $repo '使用说明.md') -Destination $destination -Force
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $destination 'LICENSE.txt') -Force

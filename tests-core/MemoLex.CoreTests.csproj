@@ -5,5 +5,5 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-  <ItemGroup><Compile Include="../src/Core/Preferences.cs" Link="Preferences.cs" /><Compile Include="../src/Core/NavigationJournal.cs" Link="NavigationJournal.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../src/Core/Preferences.cs" Link="Preferences.cs" /><Compile Include="../src/Core/NavigationJournal.cs" Link="NavigationJournal.cs" /><Compile Include="../src/Core/MnemonicStore.cs" Link="MnemonicStore.cs" /></ItemGroup>
 </Project>
