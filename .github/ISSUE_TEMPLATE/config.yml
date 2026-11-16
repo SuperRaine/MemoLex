@@ -1,4 +1,4 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: 邮箱与 QQ 交流群
     url: https://github.com/SuperRaine/MemoLex#反馈
