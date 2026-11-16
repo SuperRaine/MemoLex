@@ -81,7 +81,7 @@ public sealed partial class MaiMemoClient : IDisposable
     {
         using var accountScope=BeginAccountOperation();
         var data = await SendAsync(HttpMethod.Get, "notes?voc_id=" + Uri.EscapeDataString(vocId), null, cancellationToken);
-        return Array(data, "notes").Select(note => new MemoNote(Text(note, "id"), Text(note, "note_type", "助记"),
+        return Array(data, "notes").Select(note => new MemoNote(Text(note, "id"), MnemonicTypes.Normalize(Text(note, "note_type")),
             Text(note, "note"), Text(note, "status"))).Where(note => note.Status != "DELETED").ToList();
     }
 
@@ -90,7 +90,7 @@ public sealed partial class MaiMemoClient : IDisposable
         using var accountScope=BeginAccountOperation();
         text=text.Trim();noteType=noteType.Trim();
         noteId=string.IsNullOrWhiteSpace(noteId)?null:noteId;
-        if(text.Length is <1 or >20000||string.IsNullOrWhiteSpace(noteType)||string.IsNullOrWhiteSpace(vocId))throw new ArgumentException("请填写有效的助记分类与内容。");
+        if(text.Length is <1 or >20000||!MnemonicTypes.IsAllowed(noteType)||string.IsNullOrWhiteSpace(vocId))throw new ArgumentException("请选择有效的助记分类并填写内容。");
         await _writeGate.WaitAsync(cancellationToken);
         try
         {
@@ -99,7 +99,7 @@ public sealed partial class MaiMemoClient : IDisposable
             if(!data.TryGetProperty("note",out var note)||Text(note,"id").Length==0||noteId!=null&&Text(note,"id")!=noteId)
                 throw new MaiMemoException("暂时无法确认助记是否保存成功，请重新查词查看。");
             if(Text(note,"status")=="DELETED")throw new MaiMemoException("这条云端助记已删除，请重新查词后操作。");
-            return new(Text(note,"id"),Text(note,"note_type",noteType),Text(note,"note",text),Text(note,"status","PUBLISHED"));
+            return new(Text(note,"id"),MnemonicTypes.Normalize(Text(note,"note_type",noteType)),Text(note,"note",text),Text(note,"status","PUBLISHED"));
         }
         finally{_writeGate.Release();}
     }
@@ -315,6 +315,7 @@ public sealed partial class MaiMemoClient : IDisposable
             throw new ArgumentException("无效接口路径。", nameof(relativePath));
         var studyRequest=relativePath.StartsWith("memo/study/",StringComparison.Ordinal);
         var studyWrite=relativePath=="memo/study/add_words";
+        var retryableRead=method==HttpMethod.Get||relativePath is "memo/study/get_study_progress" or "memo/study/get_today_items" or "memo/study/query_study_records";
         var token = _tokens.GetToken();
         if (string.IsNullOrWhiteSpace(token)) throw new MaiMemoException("请在设置中登录墨墨账号。");
         var credential=TokenStore.Fingerprint(token)!;
@@ -322,6 +323,8 @@ public sealed partial class MaiMemoClient : IDisposable
         await _requestGate.WaitAsync(cancellationToken);
         try
         {
+            for(var attempt=0;;attempt++)
+            {
             // 1.65s between requests stays below the official 40/minute limit.
             if (_lastRequest != 0)
             {
@@ -339,7 +342,11 @@ public sealed partial class MaiMemoClient : IDisposable
             ValidateAccount(credential);
             if (!response.IsSuccessStatusCode)
             {
-                if(response.StatusCode==HttpStatusCode.Unauthorized)ReportAuthentication(token,false);
+                if(response.StatusCode==HttpStatusCode.Unauthorized)
+                {
+                    await RecheckAuthenticationAsync(token,credential,cancellationToken,attempt==0&&retryableRead);
+                    continue;
+                }
                 if(studyWrite&&(int)response.StatusCode>=500)throw new StudyAddUncertainException("墨墨暂未确认添加结果，请核对今日新学。");
                 throw SafeHttpError(response.StatusCode);
             }
@@ -362,7 +369,11 @@ public sealed partial class MaiMemoClient : IDisposable
             if (root.TryGetProperty("success", out var success) && success.ValueKind == JsonValueKind.False)
             {
                 var error=SafeApiError(root);
-                if(error.StatusCode==HttpStatusCode.Unauthorized)ReportAuthentication(token,false);
+                if(error.StatusCode==HttpStatusCode.Unauthorized)
+                {
+                    await RecheckAuthenticationAsync(token,credential,cancellationToken,attempt==0&&retryableRead);
+                    continue;
+                }
                 throw error;
             }
             if (root.TryGetProperty("data", out var data))
@@ -371,6 +382,7 @@ public sealed partial class MaiMemoClient : IDisposable
                 ReportAuthentication(token,true);return data.Clone();
             }
             ReportAuthentication(token,true);return root.Clone();
+            }
         }
         catch (AccountChangedException){throw;}
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -405,8 +417,8 @@ public sealed partial class MaiMemoClient : IDisposable
 
     private static MaiMemoException SafeHttpError(HttpStatusCode status) => status switch
     {
-        HttpStatusCode.Unauthorized => new("Token 无效或已过期，请在设置中更新。", status),
-        HttpStatusCode.Forbidden => new("此 Token 没有访问该接口的权限，请检查墨墨开放 API 设置。", status),
+        HttpStatusCode.Unauthorized => new("墨墨登录已失效，请在设置中重新登录。", status),
+        HttpStatusCode.Forbidden => new("当前账号没有此接口的访问权限，请检查墨墨开放 API 的授权。", status),
         HttpStatusCode.NotFound => new("墨墨中未找到此单词或云词本。", status),
         HttpStatusCode.TooManyRequests => new("请求过于频繁，请稍等一分钟后重试。", status),
         HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => new("墨墨未接受此次操作，请检查单词或云词本内容后重试。", status),
@@ -418,12 +430,13 @@ public sealed partial class MaiMemoClient : IDisposable
     {
         // Inspect classification only. Never expose upstream bodies or supplied credentials in an exception.
         var errors = root.TryGetProperty("errors", out var value) ? value.ToString().ToUpperInvariant() : "";
-        if(errors.Contains("FORBIDDEN")||errors.Contains("PERMISSION")||errors.Contains("SCOPE")||errors.Contains("ACCESS_DENIED"))
-            return new MaiMemoException("此 Token 没有访问该接口的权限，请检查墨墨开放 API 设置。",HttpStatusCode.Forbidden);
-        if (errors.Contains("TOKEN") || errors.Contains("UNAUTHORIZED") || errors.Contains("AUTHENTICATION"))
-            return new MaiMemoException("Token 无效或已过期，请在设置中更新。", HttpStatusCode.Unauthorized);
-        if (errors.Contains("RATE") || errors.Contains("TOO_MANY"))
+        if (errors.Contains("RATE") || errors.Contains("TOO_MANY")||errors.Contains("QUOTA")||errors.Contains("LIMIT_EXCEEDED"))
             return new MaiMemoException("请求过于频繁，请稍等一分钟后重试。", HttpStatusCode.TooManyRequests);
+        if(errors.Contains("FORBIDDEN")||errors.Contains("PERMISSION")||errors.Contains("SCOPE")||errors.Contains("ACCESS_DENIED"))
+            return new MaiMemoException("当前账号没有此接口的访问权限，请检查墨墨开放 API 的授权。",HttpStatusCode.Forbidden);
+        if (Regex.IsMatch(errors,@"(?<![A-Z0-9])(?:UNAUTHORIZED|UNAUTHENTICATED|AUTHENTICATION_FAILED|INVALID_(?:API_)?TOKEN|(?:API_)?TOKEN_(?:INVALID|EXPIRED|REVOKED|MISSING|NOT_FOUND)|EXPIRED_TOKEN|INVALID_CREDENTIALS?)(?![A-Z0-9])",RegexOptions.CultureInvariant)
+            ||Regex.IsMatch(errors,@"\b(?:TOKEN|AUTHENTICATION)\b[^\r\n]{0,40}\b(?:INVALID|EXPIRED|REVOKED)\b",RegexOptions.CultureInvariant))
+            return new MaiMemoException("墨墨登录已失效，请在设置中重新登录。", HttpStatusCode.Unauthorized);
         if (errors.Contains("NOT_FOUND") || errors.Contains("NOT FOUND"))
             return new MaiMemoException("墨墨中未找到此单词或云词本。", HttpStatusCode.NotFound);
         return new MaiMemoException("墨墨未接受此次操作，请检查账户权限后重试。");

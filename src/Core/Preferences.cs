@@ -25,6 +25,7 @@ public sealed class Preferences
     public string HoverFontSize {get;set;}="standard";
     public bool AutomaticUpdates {get;set;}=true;
     public string UpdateFrequency {get;set;}="daily";
+    public string UpdateSource {get;set;}="auto";
     public DateTimeOffset? LastUpdateCheck {get;set;}
     public string? LastPublicVersion {get;set;}
     public DateTimeOffset? LastSuccessfulUpdateCheck {get;set;}

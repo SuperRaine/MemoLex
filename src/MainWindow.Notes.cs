@@ -14,8 +14,8 @@ public partial class MainWindow
     private void RenderNotes(string word,IReadOnlyList<StoredMnemonic> notes,bool cloud=false)
     {
         if(word!=_word)return;
-        _displayedNotes=notes.ToArray();NotesPanel.Children.Clear();EditNotesButton.IsEnabled=ValidWord(word);
-        foreach(var note in notes)
+        _displayedNotes=notes.Select(note=>note with {NoteType=MnemonicTypes.Normalize(note.NoteType)}).ToArray();NotesPanel.Children.Clear();EditNotesButton.IsEnabled=ValidWord(word);
+        foreach(var note in _displayedNotes)
         {
             var stack=new StackPanel();var header=new Grid();header.ColumnDefinitions.Add(new ColumnDefinition());header.ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
             var origin=note.Origin=="cloud"?(cloud?"云端助记":"云端助记（离线）"):"本地助记";
@@ -95,7 +95,7 @@ public partial class MainWindow
         ++_notesVersion;_notesCts?.Cancel();NotesHintText.Text=LocalNotesHint();
         return MnemonicEditor.Build(this,word,note.NoteType,note.Text,_allowCloud&&_tokens.HasToken,async(type,text,sync)=>
         {
-            var edited=note with {NoteType=type,Text=text,Origin="local"};
+            var edited=note with {NoteType=type,Text=text,Origin="user"};
             void Persist(StoredMnemonic value)
             {
                 var current=_mnemonics.Get(word,accountKey).ToList();var index=current.FindIndex(item=>item.Id==note.Id);

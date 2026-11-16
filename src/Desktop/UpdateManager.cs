@@ -83,15 +83,24 @@ internal sealed class UpdateManager:IDisposable
     {
         if(!CanDownload||_disposed)return;_busy=true;_automatic=false;_operation?.Dispose();_operation=new();
         try{await DownloadCoreAsync(_operation.Token);}
-        catch(OperationCanceledException){Notify("下载已取消，可随时重新下载。");}
+        catch(OperationCanceledException){Notify(_operation.IsCancellationRequested?"下载已取消，下次可继续下载。":"下载超时，已保留下载进度，可重试或切换下载源。");}
+        catch(Exception error)when(error is IOException or UnauthorizedAccessException){Notify("无法保存更新包，请确认磁盘空间和文件夹权限。");}
         catch(Exception error){Notify(error is UpdateException?error.Message:"下载失败，请检查网络或磁盘空间后重试。");}
         finally{_busy=false;Changed?.Invoke();}
     }
     private async Task DownloadCoreAsync(CancellationToken token)
     {
         if(_asset==null||_release==null)return;
-        var progress=new Progress<DownloadProgress>(p=>{var percent=(int)(p.Received*100/Math.Max(1,p.Total));if(percent==Progress||_download!=null)return;Progress=percent;Notify($"正在下载 {_release.Version} · {Progress}%（{p.Received/1048576d:F1} / {p.Total/1048576d:F1} MB）");});
-        _download=await _client.DownloadAsync(_asset,Path.Combine(_updateRoot,_release.Version.ToString()),progress,token);
+        Progress=0;Notify("正在连接更新源…");
+        long lastProgress=0;
+        var progress=new Progress<DownloadProgress>(p=>
+        {
+            var percent=(int)(p.Received*100/Math.Max(1,p.Total));
+            if(_download!=null||percent==Progress&&lastProgress!=0&&Stopwatch.GetElapsedTime(lastProgress)<TimeSpan.FromMilliseconds(400))return;
+            lastProgress=Stopwatch.GetTimestamp();Progress=percent;
+            Notify($"正在下载 {_release.Version} · "+(p.Source is {} source?source+" · ":"")+$"{Progress}%（{p.Received/1048576d:F1} / {p.Total/1048576d:F1} MB）");
+        });
+        _download=await _client.DownloadAsync(_asset,Path.Combine(_updateRoot,_release.Version.ToString()),progress,token,_preferences.UpdateSource,new Progress<string>(Notify));
         Notify($"新版 {_release.Version} 已下载完成，点击「更新并重启」即可安装。");
     }
     internal static bool IsMsiInstallation()
@@ -139,7 +148,10 @@ internal sealed class UpdateManager:IDisposable
         var choices=new[]{new Frequency("每次启动","startup"),new Frequency("每 6 小时","6h"),new Frequency("每天","daily"),new Frequency("每周","weekly")};
         var frequencyLabel=InputDialog.Text("检查更新间隔");frequencyLabel.VerticalAlignment=VerticalAlignment.Center;frequencyLabel.Margin=new Thickness(0,0,8,0);policyRow.Children.Add(frequencyLabel);
         var frequency=new ComboBox{ItemsSource=choices,SelectedItem=choices.FirstOrDefault(c=>c.Value==_preferences.UpdateFrequency)??choices[2],MinWidth=150,MinHeight=34,VerticalAlignment=VerticalAlignment.Center};policyRow.Children.Add(frequency);
-        panel.Children.Add(InputDialog.Text("发现新版会弹窗提醒，下载完成后可选择重启安装。"));
+        var sourceRow=new WrapPanel{Margin=new Thickness(0,0,0,8)};panel.Children.Add(sourceRow);
+        var sourceLabel=InputDialog.Text("下载源");sourceLabel.VerticalAlignment=VerticalAlignment.Center;sourceLabel.Margin=new Thickness(0,0,12,0);sourceRow.Children.Add(sourceLabel);
+        var sources=GitHubUpdateClient.DownloadSources;var source=new ComboBox{ItemsSource=sources,SelectedItem=sources.FirstOrDefault(s=>s.Id==_preferences.UpdateSource)??sources[0],MinWidth=180,MinHeight=34};sourceRow.Children.Add(source);
+        panel.Children.Add(InputDialog.Text("自动检测可用下载源，连接失败时切换备用源。下载完成后可选择重启安装。"));
         var state=InputDialog.Text(Status);state.Margin=new Thickness(0,14,0,8);panel.Children.Add(state);
         var bar=new ProgressBar{Minimum=0,Maximum=100,Height=5,Margin=new Thickness(0,0,0,16)};panel.Children.Add(bar);
         var last=InputDialog.Text("");panel.Children.Add(last);
@@ -152,11 +164,12 @@ internal sealed class UpdateManager:IDisposable
         Button("前往下载页面","UpdateReleasePage",()=>{try{Process.Start(new ProcessStartInfo(_release?.Page.AbsoluteUri??GitHubUpdateClient.Repository+"/releases/latest"){UseShellExecute=true});}catch{state.Text="无法打开浏览器。";}});
         var notes=new TextBox{IsReadOnly=true,TextWrapping=TextWrapping.Wrap,MaxHeight=130,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
         var notesSection=new Expander{Header="更新说明",Content=notes,Visibility=Visibility.Collapsed};panel.Children.Add(notesSection);
-        void Render(){state.Text=Status;bar.Value=Progress;bar.Visibility=_busy?Visibility.Visible:Visibility.Collapsed;check.IsEnabled=!Busy;download.IsEnabled=CanDownload;install.IsEnabled=CanInstall;cancel.Visibility=Busy?Visibility.Visible:Visibility.Collapsed;frequency.IsEnabled=enabled.IsChecked==true;last.Text=_preferences.LastUpdateCheck is {} at?"上次检查："+at.ToLocalTime().ToString("yyyy-MM-dd HH:mm"):"还未检查";notes.Text=_release?.Notes??"";notesSection.Visibility=notes.Text.Length>0?Visibility.Visible:Visibility.Collapsed;}
+        void Render(){state.Text=Status;bar.Value=Progress;bar.IsIndeterminate=Busy&&Progress==0;bar.Visibility=_busy?Visibility.Visible:Visibility.Collapsed;check.IsEnabled=!Busy;download.IsEnabled=CanDownload;install.IsEnabled=CanInstall;source.IsEnabled=!Busy;cancel.Visibility=Busy?Visibility.Visible:Visibility.Collapsed;frequency.IsEnabled=enabled.IsChecked==true;last.Text=_preferences.LastUpdateCheck is {} at?"上次检查："+at.ToLocalTime().ToString("yyyy-MM-dd HH:mm"):"还未检查";notes.Text=_release?.Notes??"";notesSection.Visibility=notes.Text.Length>0?Visibility.Visible:Visibility.Collapsed;}
         enabled.Checked+=(_,_)=>{_preferences.AutomaticUpdates=true;PolicyChanged();};enabled.Unchecked+=(_,_)=>{_preferences.AutomaticUpdates=false;PolicyChanged();};
         frequency.SelectionChanged+=(_,_)=>{_preferences.UpdateFrequency=((Frequency)frequency.SelectedItem).Value;PolicyChanged();};
+        source.SelectionChanged+=(_,_)=>{_preferences.UpdateSource=((UpdateDownloadSource)source.SelectedItem).Id;PolicyChanged();};
         panel.Loaded+=(_,_)=>{Changed+=Render;Render();};panel.Unloaded+=(_,_)=>Changed-=Render;
-        owner.RegisterName("AutomaticUpdates",enabled);owner.RegisterName("UpdateFrequency",frequency);owner.RegisterName("UpdateStatus",state);Render();return panel;
+        owner.RegisterName("AutomaticUpdates",enabled);owner.RegisterName("UpdateFrequency",frequency);owner.RegisterName("UpdateDownloadSource",source);owner.RegisterName("UpdateStatus",state);Render();return panel;
     }
     private sealed record Frequency(string Label,string Value){public override string ToString()=>Label;}
     public void Dispose(){_disposed=true;_timer.Stop();_operation?.Cancel();_client.Dispose();}

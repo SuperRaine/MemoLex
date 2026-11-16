@@ -29,6 +29,19 @@
   "personal_profiles_included": false,
   "cloud_content_included": false,
   "license": "CC-BY-SA-3.0",
-  "sha256": "97a3cb1cd8b1c7d228aa5b38c83c855b3e236a517409aa84272852ad56bf3334",
-  "sources_file": "mnemonics.sources.json"
+  "sha256": "11df0d6892a54ea56147ccc51e5a2687cdeb1de2829bc8e45412bb5f0b31c643",
+  "sources_file": "mnemonics.sources.json",
+  "category_revision": "1.5.1",
+  "category_counts": {
+    "语法": 47,
+    "联想": 2235,
+    "派生": 3411,
+    "词根词缀": 3578,
+    "谐音": 548,
+    "词源": 277,
+    "合成": 475,
+    "扩展": 37,
+    "固定搭配": 6,
+    "辨析": 2
+  }
 }

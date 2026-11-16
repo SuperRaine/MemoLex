@@ -4,6 +4,7 @@ obj/
 .vscode/
 dist/
 .tools/
+.wix/
 work/
 data/
 *.user

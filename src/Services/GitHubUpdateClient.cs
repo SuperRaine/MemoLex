@@ -10,11 +10,11 @@ namespace MemoLex.Services;
 
 public sealed record UpdateAsset(string Name,Uri Url,long Size,string Sha256);
 public sealed record UpdateRelease(Version Version,Uri Page,string Notes,UpdateAsset? Installer,UpdateAsset? Portable);
-public sealed record DownloadProgress(long Received,long Total);
+public sealed record DownloadProgress(long Received,long Total,string? Source=null);
 
 public sealed class UpdateException(string message,HttpStatusCode? statusCode=null):Exception(message){public HttpStatusCode? StatusCode {get;}=statusCode;}
 
-public sealed class GitHubUpdateClient:IDisposable
+public sealed partial class GitHubUpdateClient:IDisposable
 {
     public const string Repository="https://github.com/SuperRaine/MemoLex";
     internal const string Latest="https://api.github.com/repos/SuperRaine/MemoLex/releases/latest";
@@ -38,14 +38,16 @@ public sealed class GitHubUpdateClient:IDisposable
         var interval=frequency switch{"6h"=>TimeSpan.FromHours(6),"weekly"=>TimeSpan.FromDays(7),_=>TimeSpan.FromDays(1)};
         return lastCheck==null||lastCheck>now||now-lastCheck>=interval;
     }
-    private async Task<HttpResponseMessage> GetAsync(Uri uri,CancellationToken token,bool head=false)
+    private async Task<HttpResponseMessage> GetAsync(Uri uri,CancellationToken token,bool head=false,System.Net.Http.Headers.RangeHeaderValue? range=null)
     {
         for(var redirects=0;redirects<=5;redirects++)
         {
-            if(uri.Scheme!="https"||!uri.IsDefaultPort||uri.UserInfo.Length>0||!(uri.Host is "api.github.com" or "github.com"||uri.Host.EndsWith(".githubusercontent.com",StringComparison.OrdinalIgnoreCase)))throw new UpdateException("更新下载地址不受支持。");
+            if(!AllowedUpdateUri(uri))throw new UpdateException("更新下载地址不受支持。");
             using var request=new HttpRequestMessage(head?HttpMethod.Head:HttpMethod.Get,uri);
+            request.Headers.Range=range;
             if(uri.Host=="api.github.com")request.Headers.Accept.ParseAdd("application/vnd.github+json");
-            var response=await _http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,token);
+            using var connection=CancellationTokenSource.CreateLinkedTokenSource(token);connection.CancelAfter(ConnectionTimeout);
+            var response=await _http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,connection.Token);
             if((int)response.StatusCode is 301 or 302 or 303 or 307 or 308)
             {
                 var location=response.Headers.Location;response.Dispose();
@@ -89,13 +91,31 @@ public sealed class GitHubUpdateClient:IDisposable
     private async Task<UpdateRelease> GetLatestCoreAsync(Version? current,CancellationToken token)
     {
         using var timeout=CancellationTokenSource.CreateLinkedTokenSource(token);timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        // A version-only redirect avoids release HTML and package CDN round trips when no update is needed.
-        var header=current==null?null:await ReadVersionHeaderAsync(timeout.Token);
-        if(header!=null&&header.Version<=current)return header;
-        string json;
-        try{json=await ReadTextAsync(new(Latest),2*1024*1024,timeout.Token);}
-        catch(UpdateException error)when(error.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests){return await GetLatestFromPageAsync(current,header,timeout.Token);}
-        catch(HttpRequestException)when(header!=null){return await GetLatestFromPageAsync(current,header,timeout.Token);}
+        using var requests=CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+        var headerTask=current==null?Task.FromResult<UpdateRelease?>(null):ReadVersionHeaderAsync(requests.Token);
+        var apiTask=ReadApiReleaseAsync(current,requests.Token);
+        try
+        {
+            await Task.WhenAny((Task)headerTask,apiTask);
+            if(headerTask.IsCompletedSuccessfully&&headerTask.Result is {} latest&&latest.Version<=current)return latest;
+            try{return await apiTask;}
+            catch(Exception error)when(!timeout.IsCancellationRequested&&error is UpdateException or HttpRequestException or OperationCanceledException or JsonException or KeyNotFoundException or InvalidOperationException)
+            {
+                UpdateRelease? header=null;
+                try{header=await headerTask;}catch(Exception failure)when(failure is UpdateException or HttpRequestException or OperationCanceledException){}
+                return await GetLatestFromPageAsync(current,header,timeout.Token);
+            }
+        }
+        finally
+        {
+            requests.Cancel();
+            try{await Task.WhenAll((Task)headerTask,apiTask);}catch(Exception error)when(error is UpdateException or HttpRequestException or OperationCanceledException or JsonException or KeyNotFoundException or InvalidOperationException){}
+        }
+    }
+    private async Task<UpdateRelease> ReadApiReleaseAsync(Version? current,CancellationToken token)
+    {
+        using var timeout=CancellationTokenSource.CreateLinkedTokenSource(token);timeout.CancelAfter(TimeSpan.FromSeconds(12));
+        var json=await ReadTextAsync(new(Latest),2*1024*1024,timeout.Token);
         using var document=JsonDocument.Parse(json);var root=document.RootElement;
         if(root.ValueKind!=JsonValueKind.Object||!root.TryGetProperty("tag_name",out var tag)||!TryVersion(tag.GetString(),out var version)||root.GetProperty("draft").GetBoolean()||root.GetProperty("prerelease").GetBoolean())throw new UpdateException("没有可用的正式更新版本。");
         var page=new Uri(Repository+"/releases/tag/"+tag.GetString());
@@ -152,35 +172,14 @@ public sealed class GitHubUpdateClient:IDisposable
             if(rows.Length!=1)throw new UpdateException("GitHub 发布附件不唯一。");
             var hash=Regex.Match(rows[0],"value=\"sha256:([a-fA-F0-9]{64})\"",RegexOptions.CultureInvariant);
             if(!hash.Success)throw new UpdateException("GitHub 发布附件缺少校验值。");
-            var url=new Uri("https://github.com"+relative);using var response=await GetAsync(url,token,true);
-            if(response.Content.Headers.ContentLength is not {} size||size is <=0 or >MaxPackage)throw new UpdateException("无法确认 GitHub 更新附件大小。");
+            var url=new Uri("https://github.com"+relative);var size=await ReadAssetSizeAsync(url,token);
             return new(name,url,size,hash.Groups[1].Value);
         }
         var stem="MemoLex-"+version+"-Windows-x64";
-        var installer=await Asset(stem+"-Setup.msi");var portable=await Asset(stem+".zip");
+        var installerTask=Asset(stem+"-Setup.msi");var portableTask=Asset(stem+".zip");
+        await Task.WhenAll(installerTask,portableTask);var installer=await installerTask;var portable=await portableTask;
         if(installer==null&&portable==null)throw new UpdateException("此公开版本没有可用的 Windows 更新包。");
         return new(version,uri,"可打开 GitHub 发布页查看此版本的详细说明。",installer,portable);
-    }
-    public async Task<string> DownloadAsync(UpdateAsset asset,string directory,IProgress<DownloadProgress>? progress=null,CancellationToken token=default)
-    {
-        if(!Regex.IsMatch(asset.Sha256,"^[0-9a-fA-F]{64}$")||Path.GetFileName(asset.Name)!=asset.Name||asset.Size is <=0 or >MaxPackage)throw new UpdateException("更新包校验信息不完整。");
-        Directory.CreateDirectory(directory);var target=Path.Combine(directory,asset.Name);var partial=target+"."+Guid.NewGuid().ToString("N")+".part";
-        try
-        {
-            if(File.Exists(target)&&await ValidFileAsync(target,asset,token))return target;
-            using var timeout=CancellationTokenSource.CreateLinkedTokenSource(token);timeout.CancelAfter(TimeSpan.FromMinutes(30));
-            using var response=await GetAsync(asset.Url,timeout.Token);
-            if(response.Content.Headers.ContentLength is {} length&&length!=asset.Size)throw new UpdateException("更新包大小与发布信息不一致。");
-            await using(var output=new FileStream(partial,FileMode.CreateNew,FileAccess.Write,FileShare.None,65536,true))
-            await using(var input=await response.Content.ReadAsStreamAsync(timeout.Token))
-            {
-                var buffer=new byte[65536];long total=0;
-                while(true){var n=await input.ReadAsync(buffer,timeout.Token);if(n==0)break;total+=n;if(total>asset.Size)throw new UpdateException("更新包大小超出发布信息。");await output.WriteAsync(buffer.AsMemory(0,n),timeout.Token);progress?.Report(new(total,asset.Size));}
-            }
-            if(!await ValidFileAsync(partial,asset,token))throw new UpdateException("更新包校验失败，请重新下载。");
-            File.Move(partial,target,true);return target;
-        }
-        finally{if(File.Exists(partial))File.Delete(partial);}
     }
     public static async Task<bool> ValidFileAsync(string path,UpdateAsset asset,CancellationToken token=default)
     {

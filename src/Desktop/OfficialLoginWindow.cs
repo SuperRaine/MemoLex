@@ -23,6 +23,8 @@ internal sealed class OfficialLoginWindow
     private readonly Func<OfficialAuthorization,CancellationToken,Task>? _validate;
     private readonly Func<BrowserRuntimeChoice?> _resolveRuntime;
     private bool _completing,_closed;
+    private OfficialAuthorization? _pendingAuthorization;
+    private readonly Button _retry=new(){Content="重新打开",Margin=new Thickness(10,0,0,0)};
     private string _identity="";
     internal SavedAccount? Result {get;private set;}
     internal Window Window=>_window;
@@ -37,7 +39,7 @@ internal sealed class OfficialLoginWindow
         _address.Margin=new Thickness(18,10,18,10);grid.Children.Add(_address);Grid.SetRow(_browser,1);grid.Children.Add(_browser);
         var footer=new DockPanel {Margin=new Thickness(18,10,18,14)};
         var cancel=new Button {Content="取消",IsCancel=true,Margin=new Thickness(10,0,0,0)};DockPanel.SetDock(cancel,Dock.Right);footer.Children.Add(cancel);
-        var refresh=new Button {Content="重新打开",Margin=new Thickness(10,0,0,0)};refresh.Click+=(_,_)=>Navigate();DockPanel.SetDock(refresh,Dock.Right);footer.Children.Add(refresh);
+        _retry.Click+=async(_,_)=>{if(_pendingAuthorization is {} auth&&auth.ExpiresAt>DateTimeOffset.UtcNow)await CompleteAsync(auth);else Navigate();};DockPanel.SetDock(_retry,Dock.Right);footer.Children.Add(_retry);
         _installBrowser.Click+=async(_,_)=>await InstallBrowserAsync();DockPanel.SetDock(_installBrowser,Dock.Right);footer.Children.Add(_installBrowser);
         _status.TextWrapping=TextWrapping.Wrap;_status.VerticalAlignment=VerticalAlignment.Center;footer.Children.Add(_status);Grid.SetRow(footer,2);grid.Children.Add(footer);
         InputDialog.SetBody(_window,grid);
@@ -48,6 +50,7 @@ internal sealed class OfficialLoginWindow
     internal bool? ShowDialog()=>_window.ShowDialog();
     private void Navigate()
     {
+        _pendingAuthorization=null;_retry.Content="重新打开";
         if(_browser.CoreWebView2==null){_=InitializeAsync();return;}
         _status.Text="请在墨墨官方页面使用密码或验证码登录，完成后会自动返回软件。";
         _browser.CoreWebView2.Navigate(OfficialLoginProtocol.StartUrl);
@@ -151,7 +154,7 @@ internal sealed class OfficialLoginWindow
     }
     private async Task CompleteAsync(OfficialAuthorization authorization)
     {
-        if(_closed||_completing)return;_completing=true;_status.Text="正在确认登录状态…";
+        if(_closed||_completing)return;_completing=true;_pendingAuthorization=authorization;_retry.IsEnabled=false;_status.Text="正在确认登录状态…";
         try
         {
             if(_validate!=null)await _validate(authorization,_cancel.Token);
@@ -165,6 +168,16 @@ internal sealed class OfficialLoginWindow
             _window.DialogResult=true;
         }
         catch(OperationCanceledException){}
-        catch(Exception error){if(!_closed){_completing=false;_status.Text=error is ArgumentException or InvalidOperationException?error.Message:"未能完成登录，请检查网络，并确认已在墨墨页面同意授权，然后点击「重新打开」。";}}
+        catch(Exception error)
+        {
+            if(!_closed)
+            {
+                _completing=false;
+                if(error is MaiMemoException {StatusCode:System.Net.HttpStatusCode.Unauthorized})_pendingAuthorization=null;
+                _retry.Content=_pendingAuthorization!=null?"重试登录":"重新打开";
+                _status.Text=error is ArgumentException or InvalidOperationException or MaiMemoException?error.Message:"暂时无法验证登录，请检查网络后重试，无需重复输入账号密码。";
+            }
+        }
+        finally{if(!_closed)_retry.IsEnabled=true;}
     }
 }

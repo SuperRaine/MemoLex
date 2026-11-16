@@ -12,6 +12,8 @@ public partial class MainWindow
     private CancellationTokenSource _accountCts=new();
     private System.Windows.Threading.DispatcherTimer? _accountTimer;
     private FileSystemWatcher? _accountWatcher;
+    private DateTimeOffset? _accountRetryAt;
+    private bool _checkingAccount;
     internal Action<string>? AccountExpiryNotification {get;set;}
     private void StartAccountClock()
     {
@@ -32,13 +34,22 @@ public partial class MainWindow
     }
     private async void CheckAccountExpiry()
     {
+        if(_checkingAccount)return;_checkingAccount=true;
         try
         {
             if(_tokens.ExpireIfDue())HandleExpiredAccount();
             else if(_accountCredentialKey!=_tokens.CredentialKey)await ReloadAccountAsync();
             else if(_tokens.HasExpiredSession)SetAccountStatus("登录已过期");
+            else if(_allowCloud&&_ready&&_tokens.HasToken&&_accountRetryAt<=DateTimeOffset.UtcNow)
+            {
+                _accountRetryAt=null;
+                await RefreshNotepadsAsync();
+                if(_accountAuthenticated&&_viewTarget==ViewTarget.Word&&ValidWord(_word))
+                    await LoadLocalAndCloudNotesAsync(_word,_accountCts.Token);
+            }
         }
         catch{}
+        finally{_checkingAccount=false;}
     }
     private async void HandleExpiredAccount()
     {
@@ -70,6 +81,11 @@ public partial class MainWindow
         if(!_allowCloud){SetAccountStatus("离线模式");return;}
         if(!_tokens.HasToken){SetAccountStatus("未连接");return;}
         if(_accountRejected){SetAccountStatus("登录失效");return;}
+        if(error is not MaiMemoException {StatusCode:HttpStatusCode.Forbidden or HttpStatusCode.NotFound or HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity})
+        {
+            var due=DateTimeOffset.UtcNow.AddSeconds(error is MaiMemoException {StatusCode:HttpStatusCode.TooManyRequests}?60:30);
+            if(_accountRetryAt==null||error is MaiMemoException {StatusCode:HttpStatusCode.TooManyRequests})_accountRetryAt=due;
+        }
         if(_accountAuthenticated)
         {
             SetAccountStatus("已连接");
@@ -81,7 +97,7 @@ public partial class MainWindow
 
     internal async Task ReloadAccountAsync()
     {
-        ++_accountVersion;_accountCredentialKey=_tokens.CredentialKey;_api.ExpectedCredentialKey=_accountCredentialKey;_accountAuthenticated=_accountRejected=false;
+        ++_accountVersion;_accountCredentialKey=_tokens.CredentialKey;_api.ExpectedCredentialKey=_accountCredentialKey;_accountAuthenticated=_accountRejected=false;_accountRetryAt=null;
         _accountCts.Cancel();_accountCts.Dispose();_accountCts=new CancellationTokenSource();
         _lookupCts?.Cancel();_notesCts?.Cancel();_studyLoadCts?.Cancel();++_studyReadVersion;
         _cloudCache.Clear();_vocabulary=null;_todayStudyStates.Clear();_studyLoadingWord=null;

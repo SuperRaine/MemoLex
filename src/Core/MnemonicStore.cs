@@ -21,11 +21,21 @@ public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null
         lock(_gate)
         {
             if(_loaded)return;
-            if(File.Exists(_bundledPath))_bundled=Read(_bundledPath);
-            try{if(File.Exists(_userPath))_saved=Read(_userPath);}
+            if(File.Exists(_bundledPath))_bundled=Read(_bundledPath,out _);
+            var updatedTypes=false;
+            try{if(File.Exists(_userPath))_saved=Read(_userPath,out updatedTypes);}
             catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
             {LoadWarning="本地个人助记文件读取失败，原文件已保留；暂时无法覆盖保存。";_writeBlocked=true;}
-            if(!_writeBlocked)MigrateGeneratedNotes();
+            if(!_writeBlocked)
+            {
+                if(updatedTypes)
+                {
+                    try{Write(_saved);}
+                    catch(Exception error)when(error is IOException or UnauthorizedAccessException)
+                    {LoadWarning="助记分类已更新，本地文件暂未保存。";}
+                }
+                MigrateGeneratedNotes();
+            }
             _loaded=true;
         }
     });
@@ -42,34 +52,63 @@ public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null
                 if(!Convert.ToHexString(SHA256.HashData(stream)).Equals(manifest.BundleSha256,StringComparison.OrdinalIgnoreCase))return;
             var known=new Dictionary<string,string[]>(manifest.KnownGeneratedNotes,StringComparer.OrdinalIgnoreCase);
             var next=new Dictionary<string,StoredMnemonic[]>(_saved,StringComparer.OrdinalIgnoreCase);
-            var changed=false;
+            var changed=false;var contentChanged=false;
             foreach(var (word,entries) in _saved)
             {
                 if(!known.TryGetValue(word,out var hashes)||!_bundled.TryGetValue(word,out var bundled)||bundled.Length==0)continue;
+                static bool Generated(StoredMnemonic note)=>note.CloudId is null&&note.AccountKey is null&&note.Origin is "local" or "builtin";
+                StoredMnemonic? Current(StoredMnemonic note)=>Generated(note)?bundled.FirstOrDefault(item=>item.Id==note.Id&&item.Text==note.Text):null;
+                bool Replaceable(StoredMnemonic note)=>Generated(note)&&(Current(note)!=null||hashes.Contains(
+                    Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(word.ToLowerInvariant()+"\0"+note.Id+"\0"+note.Text))),StringComparer.OrdinalIgnoreCase));
+                var personalIds=entries.Where(note=>note.Origin!="cloud"&&!Replaceable(note)).Select(note=>note.Id).ToHashSet(StringComparer.Ordinal);
+                var replacements=bundled.Where(note=>!personalIds.Contains(note.Id)).ToArray();
+                // A bundle can retain an older note alongside a new one. Once both
+                // are present, update their labels in place instead of appending
+                // the newer note again at every launch. Preserve personal entries.
+                if(replacements.All(item=>entries.Any(note=>Generated(note)&&note.Id==item.Id&&note.Text==item.Text)))
+                {
+                    var relabeled=entries.Select(note=>Current(note) is {} current?note with {NoteType=current.NoteType}:note).ToArray();
+                    if(!entries.SequenceEqual(relabeled)){next[word]=relabeled;changed=true;}
+                    continue;
+                }
                 var replaced=false;var updated=new List<StoredMnemonic>();
                 foreach(var note in entries)
                 {
-                    var digest=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(word.ToLowerInvariant()+"\0"+note.Id+"\0"+note.Text))).ToLowerInvariant();
-                    if(note.CloudId is null&&note.AccountKey is null&&note.Origin is "local" or "builtin"&&hashes.Contains(digest,StringComparer.OrdinalIgnoreCase))
-                    {if(!replaced)updated.AddRange(bundled);replaced=true;}
+                    if(Replaceable(note))
+                    {if(!replaced)updated.AddRange(replacements);replaced=true;}
                     else updated.Add(note);
                 }
-                if(replaced&&!entries.SequenceEqual(updated)){next[word]=updated.ToArray();changed=true;}
+                if(replaced&&!entries.SequenceEqual(updated))
+                {
+                    next[word]=updated.ToArray();changed=true;
+                    if(!entries.Select(n=>n with {NoteType=""}).SequenceEqual(updated.Select(n=>n with {NoteType=""})))contentChanged=true;
+                }
             }
             if(!changed)return;
-            var backup=_userPath+".before-bundled-update-"+DateTime.UtcNow.ToString("yyyyMMddHHmmssfff")+"-"+Guid.NewGuid().ToString("N")+".bak";
-            File.Copy(_userPath,backup,false);
-            var temporary=_userPath+".revision.tmp";
-            File.WriteAllText(temporary,JsonSerializer.Serialize(next));File.Move(temporary,_userPath,true);_saved=next;
+            if(contentChanged)
+            {
+                var backup=_userPath+".before-bundled-update-"+DateTime.UtcNow.ToString("yyyyMMddHHmmssfff")+"-"+Guid.NewGuid().ToString("N")+".bak";
+                File.Copy(_userPath,backup,false);
+            }
+            Write(next);_saved=next;
         }
         catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
         {LoadWarning="新版助记暂未替换本地旧内容，原助记已保留。";}
     }
-    private static Dictionary<string,StoredMnemonic[]> Read(string path)
+    private static Dictionary<string,StoredMnemonic[]> Read(string path,out bool updatedTypes)
     {
         var entries=JsonSerializer.Deserialize<Dictionary<string,StoredMnemonic[]>>(File.ReadAllText(path))??[];
-        return entries.Where(item=>!string.IsNullOrWhiteSpace(item.Key)&&item.Value!=null)
-            .ToDictionary(item=>item.Key,item=>item.Value.Where(note=>note!=null&&!string.IsNullOrWhiteSpace(note.Text)).ToArray(),StringComparer.OrdinalIgnoreCase);
+        var result=entries.Where(item=>!string.IsNullOrWhiteSpace(item.Key)&&item.Value!=null)
+            .ToDictionary(item=>item.Key,item=>item.Value.Where(note=>note!=null&&!string.IsNullOrWhiteSpace(note.Text)).Select(NormalizeType).ToArray(),StringComparer.OrdinalIgnoreCase);
+        updatedTypes=entries.Any(item=>item.Value?.Any(note=>note!=null&&note.NoteType!=MnemonicTypes.Normalize(note.NoteType))==true);
+        return result;
+    }
+    private static StoredMnemonic NormalizeType(StoredMnemonic note)=>note with {NoteType=MnemonicTypes.Normalize(note.NoteType)};
+    private void Write(Dictionary<string,StoredMnemonic[]> entries)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_userPath))!);
+        var temporary=_userPath+".tmp";
+        File.WriteAllText(temporary,JsonSerializer.Serialize(entries));File.Move(temporary,_userPath,true);
     }
     public IReadOnlyList<StoredMnemonic> Get(string word)
     {
@@ -109,16 +148,14 @@ public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null
     public void Save(string word,IEnumerable<StoredMnemonic> notes)
     {
         word=word.Trim();if(word.Length is <1 or >100)throw new ArgumentException("请输入有效单词。");
-        var records=notes.ToArray();if(records.Any(note=>string.IsNullOrWhiteSpace(note.Text)||note.Text.Length>20000))throw new ArgumentException("助记需为 1–20000 个字符。");
+        var records=notes.Select(NormalizeType).ToArray();if(records.Any(note=>string.IsNullOrWhiteSpace(note.Text)||note.Text.Length>20000))throw new ArgumentException("助记需为 1–20000 个字符。");
         lock(_gate)
         {
             if(!_loaded)throw new InvalidOperationException("请先读取本地助记，再保存修改。");
             if(_writeBlocked)throw new IOException(LoadWarning);
             if(_saved.TryGetValue(word,out var previous)&&previous.SequenceEqual(records))return;
             var next=new Dictionary<string,StoredMnemonic[]>(_saved,StringComparer.OrdinalIgnoreCase){[word]=records};
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_userPath))!);
-            var temporary=_userPath+".tmp";
-            File.WriteAllText(temporary,JsonSerializer.Serialize(next));File.Move(temporary,_userPath,true);_saved=next;
+            Write(next);_saved=next;
         }
     }
 }
