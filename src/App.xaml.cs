@@ -10,6 +10,7 @@ public partial class App : Application
 {
     private Mutex? _instance;
     internal static readonly int ActivateMessage = RegisterWindowMessage("MemoLex.Activate.v1");
+    internal static readonly int MaintenanceExitMessage=RegisterWindowMessage("MemoLex.Maintenance.Exit.v1");
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int RegisterWindowMessage(string message);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr handle, int message, IntPtr wParam, IntPtr lParam);
     protected override async void OnStartup(StartupEventArgs e)
@@ -63,7 +64,7 @@ public partial class App : Application
                 if(e.Args.Contains("--dependencies")){var dependencies=await Desktop.DependencyProbe.RunAsync();result["dependencies"]=dependencies;result["ok"]=result["ok"] is true&&dependencies["ok"] is true;}
             }
             catch (Exception ex) { result["ok"] = false; result["errorType"] = ex.GetType().Name; }
-            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-test.json"), JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(Path.Combine(ApplicationPaths.RuntimeDirectory, "smoke-test.json"), JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
             Shutdown(result.GetValueOrDefault("ok") is true ? 0 : 1);
             return;
         }

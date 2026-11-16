@@ -10,7 +10,7 @@ public sealed record StoredMnemonic(string Id,string NoteType,string Text,string
 public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null)
 {
     private readonly string _userPath=userPath??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MemoLex","mnemonics.user.json");
-    private readonly string _bundledPath=bundledPath??Path.Combine(AppContext.BaseDirectory,"data","mnemonics.json");
+    private readonly string _bundledPath=bundledPath??Path.Combine(ApplicationPaths.RuntimeDirectory,"data","mnemonics.json");
     private Dictionary<string,StoredMnemonic[]> _bundled=new(StringComparer.OrdinalIgnoreCase),_saved=new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate=new();
     private bool _loaded,_writeBlocked;

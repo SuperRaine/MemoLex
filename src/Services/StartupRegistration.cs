@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.Win32;
+using MemoLex.Core;
 
 namespace MemoLex.Services;
 
@@ -17,7 +18,7 @@ internal sealed class StartupRegistration : IStartupRegistration
     private readonly string _keyPath;
     internal StartupRegistration(string? executable=null,string? keyPath=null)
     {
-        _executable=Path.GetFullPath(executable??Path.Combine(AppContext.BaseDirectory,"MemoLex.exe"));
+        _executable=Path.GetFullPath(executable??ApplicationPaths.Launcher);
         _keyPath=keyPath??RunKey;
     }
     public bool Enabled

@@ -15,6 +15,6 @@ $payloadArguments=@((Join-Path $PSScriptRoot 'generate_payload.py'),$payload,$ge
 if($IncludeBrowserRuntime){$payloadArguments+='--include-browser-runtime'}
 python @payloadArguments
 if($LASTEXITCODE -ne 0){throw 'Payload generation failed'}
-& $WixCommand build (Join-Path $PSScriptRoot 'MemoLex.wxs') $generated -arch x64 -culture zh-CN -ext WixToolset.UI.wixext -d "PayloadDir=$payload" -d "SourceDir=$projectRoot" -d "Version=$Version" -pdbtype none -out $output
+& $WixCommand build (Join-Path $PSScriptRoot 'MemoLex.wxs') (Join-Path $PSScriptRoot 'MemoLexUI.wxs') $generated -arch x64 -culture zh-CN -ext WixToolset.UI.wixext -d "PayloadDir=$payload" -d "SourceDir=$projectRoot" -d "Version=$Version" -pdbtype none -out $output
 if($LASTEXITCODE -ne 0){throw 'Installer compilation failed'}
 Get-Item -LiteralPath $output | Select-Object Name,Length

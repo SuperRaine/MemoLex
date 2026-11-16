@@ -7,7 +7,7 @@ public sealed record RelatedWord(string Word, string Meaning);
 public sealed record WordRelations(IReadOnlyList<RelatedWord> Synonyms, IReadOnlyList<RelatedWord> Similar, IReadOnlyList<RelatedWord> Derivatives,IReadOnlyList<RelatedWord> Phrases);
 public sealed class RelatedWords(LocalDictionary dictionary, string? directory = null) : IDisposable
 {
-    private readonly string _directory = directory ?? Path.Combine(AppContext.BaseDirectory,"data");
+    private readonly string _directory = directory ?? Path.Combine(ApplicationPaths.RuntimeDirectory,"data");
     private readonly RelatedPhrases _phrases=new(dictionary);
     private readonly Dictionary<string,(long Offset,int Length)> _index = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(string Word,int Rank)> _spellings = [];

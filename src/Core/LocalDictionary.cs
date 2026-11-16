@@ -55,7 +55,7 @@ public sealed class LocalDictionary : IDisposable
     private readonly LocalBriefDictionary? _preferred;
     public LocalDictionary(string? directory = null,string? preferredPath=null)
     {
-        _directory = directory ?? Path.Combine(AppContext.BaseDirectory, "data");
+        _directory = directory ?? Path.Combine(ApplicationPaths.RuntimeDirectory, "data");
         preferredPath??=directory==null?ReadConfiguredBriefPath():null;
         if(!string.IsNullOrWhiteSpace(preferredPath))_preferred=new(preferredPath);
     }

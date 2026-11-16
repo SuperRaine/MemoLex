@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using Microsoft.Web.WebView2.Core;
+using MemoLex.Core;
 
 namespace MemoLex.Desktop;
 
@@ -13,7 +14,7 @@ internal static class BrowserRuntime
     internal const string InstallerName="browser-setup.exe";
     internal const int MinimumMajorVersion=109;
     private static readonly SemaphoreSlim InstallGate=new(1,1);
-    internal static string InstallerPath=>Path.Combine(AppContext.BaseDirectory,InstallerName);
+    internal static string InstallerPath=>Path.Combine(ApplicationPaths.RuntimeDirectory,InstallerName);
     internal static string? SystemVersion=>VersionAt(null);
     private static string? VersionAt(string? folder)
     {
@@ -35,7 +36,7 @@ internal static class BrowserRuntime
     {
         var system=SystemVersion;
         if(system!=null)return new("system",system,null);
-        var bundled=Path.Combine(AppContext.BaseDirectory,"webview2");
+        var bundled=Path.Combine(ApplicationPaths.RuntimeDirectory,"webview2");
         return Select(null,File.Exists(Path.Combine(bundled,"msedgewebview2.exe"))?VersionAt(bundled):null,bundled);
     }
     internal static Task<CoreWebView2Environment> CreateEnvironmentAsync(string profileDirectory)

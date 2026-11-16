@@ -700,6 +700,10 @@ public partial class MainWindow : Window
     }
     private IntPtr HotkeyHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if(App.MaintenanceExitMessage!=0&&message==App.MaintenanceExitMessage)
+        {
+            handled=true;Dispatcher.BeginInvoke(new Action(ExitApplication));return IntPtr.Zero;
+        }
         if (message == 0x0024 && SetMaximizedBounds(hwnd, lParam)) { handled = true; return IntPtr.Zero; }
         if (App.ActivateMessage != 0 && message == App.ActivateMessage)
         {

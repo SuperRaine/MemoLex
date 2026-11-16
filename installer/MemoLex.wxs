@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="墨墨搜词 MemoLex" Manufacturer="SuperRaine" Version="$(var.Version)"
            UpgradeCode="9A25DBAA-234C-48EA-96DC-1DE36D9872F7" Language="2052"
            Scope="perUser" InstallerVersion="500" Codepage="936">
@@ -8,32 +8,50 @@
     <Property Id="ARPCONTACT" Value="1623255609@qq.com" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/SuperRaine/MemoLex" />
     <Property Id="ARPPRODUCTICON" Value="MemoLexIcon" />
-    <Property Id="MEMOLEX_SHORTCUTS" Value="1" Secure="yes" />
+    <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
+    <Property Id="MEMOLEX_DESKTOP_SHORTCUT" Value="1" Secure="yes" />
+    <Property Id="MEMOLEX_KEEP_USER_DATA" Secure="yes" />
     <Property Id="SAVEDINSTALLDIR">
       <RegistrySearch Id="ReadInstallDirectory" Root="HKCU" Key="Software\SuperRaine\MemoLex\Installer" Name="InstallDirectory" Type="raw" />
     </Property>
     <SetProperty Id="INSTALLFOLDER" Value="[SAVEDINSTALLDIR]" Before="CostInitialize" Sequence="both" Condition="SAVEDINSTALLDIR AND NOT INSTALLFOLDER" />
+    <SetProperty Id="INSTALLPARENT" Value="[SAVEDINSTALLDIR]" Before="CostInitialize" Sequence="both" Condition="SAVEDINSTALLDIR AND NOT INSTALLPARENT" />
     <Icon Id="MemoLexIcon" SourceFile="$(var.SourceDir)/src/app.ico" />
     <StandardDirectory Id="LocalAppDataFolder">
-      <Directory Id="UserPrograms" Name="Programs">
+      <Directory Id="INSTALLPARENT" Name="Programs">
         <Directory Id="INSTALLFOLDER" Name="MemoLex">
           <Component Id="InstallLocation" Guid="8D646912-0849-4F93-9F54-42D01CEB5CD7" Bitness="always64">
             <RegistryValue Root="HKCU" Key="Software\SuperRaine\MemoLex\Installer" Name="InstallDirectory" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+            <RegistryValue Root="HKCU" Key="Software\SuperRaine\MemoLex\Installer" Name="ProductCode" Type="string" Value="[ProductCode]" />
+          </Component>
+          <Component Id="UninstallRegistration" Guid="2F9F7DC7-759C-447D-A19E-393F58C5E878" Bitness="always64">
+            <RegistryKey Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MemoLex">
+              <RegistryValue Name="DisplayName" Value="墨墨搜词 MemoLex" Type="string" KeyPath="yes" />
+              <RegistryValue Name="DisplayVersion" Value="[ProductVersion]" Type="string" />
+              <RegistryValue Name="Publisher" Value="SuperRaine" Type="string" />
+              <RegistryValue Name="InstallLocation" Value="[INSTALLFOLDER]" Type="string" />
+              <RegistryValue Name="DisplayIcon" Value="[INSTALLFOLDER]MemoLex.exe" Type="string" />
+              <RegistryValue Name="UninstallString" Value="&quot;[INSTALLFOLDER]Uninstall.exe&quot;" Type="string" />
+              <RegistryValue Name="NoModify" Value="1" Type="integer" />
+              <RegistryValue Name="NoRepair" Value="1" Type="integer" />
+              <RegistryValue Name="URLInfoAbout" Value="https://github.com/SuperRaine/MemoLex" Type="string" />
+            </RegistryKey>
           </Component>
         </Directory>
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="AppMenuFolder" Name="墨墨搜词">
-        <Component Id="MenuShortcut" Guid="27A416A0-A9DB-4395-B413-CA6D68471EC0" Condition="MEMOLEX_SHORTCUTS = &quot;1&quot;">
+        <Component Id="MenuShortcut" Guid="27A416A0-A9DB-4395-B413-CA6D68471EC0">
           <Shortcut Id="StartMenuShortcut" Name="墨墨搜词" Target="[INSTALLFOLDER]MemoLex.exe" WorkingDirectory="INSTALLFOLDER" Icon="MemoLexIcon" />
+          <Shortcut Id="StartMenuUninstall" Name="卸载墨墨搜词" Target="[INSTALLFOLDER]Uninstall.exe" WorkingDirectory="INSTALLFOLDER" Icon="MemoLexIcon" />
           <RemoveFolder Id="RemoveAppMenuFolder" On="uninstall" />
           <RegistryValue Root="HKCU" Key="Software\SuperRaine\MemoLex\Installer" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
         </Component>
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="DesktopFolder">
-      <Component Id="DesktopShortcut" Guid="C59031A7-94DF-4550-8883-8CD4F10A78D8" Condition="MEMOLEX_SHORTCUTS = &quot;1&quot;">
+      <Component Id="DesktopShortcut" Guid="C59031A7-94DF-4550-8883-8CD4F10A78D8" Condition="MEMOLEX_DESKTOP_SHORTCUT = &quot;1&quot;">
         <Shortcut Id="AppDesktopShortcut" Name="墨墨搜词" Target="[INSTALLFOLDER]MemoLex.exe" WorkingDirectory="INSTALLFOLDER" Icon="MemoLexIcon" />
         <RegistryValue Root="HKCU" Key="Software\SuperRaine\MemoLex\Installer" Name="Desktop" Type="integer" Value="1" KeyPath="yes" />
       </Component>
@@ -43,8 +61,9 @@
       <ComponentRef Id="MenuShortcut" />
       <ComponentRef Id="DesktopShortcut" />
       <ComponentRef Id="InstallLocation" />
+      <ComponentRef Id="UninstallRegistration" />
     </Feature>
-    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <UIRef Id="MemoLexUI" />
     <UIRef Id="WixUI_ErrorProgressText" />
     <WixVariable Id="WixUILicenseRtf" Value="$(var.SourceDir)/installer/License.rtf" />
     <WixVariable Id="WixUIBannerBmp" Value="$(var.SourceDir)/installer/banner.bmp" />
@@ -52,6 +71,14 @@
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="启动墨墨搜词" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
     <CustomAction Id="LaunchMemoLex" FileRef="MemoLexExe" ExeCommand="" Return="asyncNoWait" Impersonate="yes" />
+    <Binary Id="MemoLexMaintenance" SourceFile="$(var.PayloadDir)/app/Maintenance.exe" />
+    <!-- The dot prevents a directory's trailing backslash from escaping the closing quote. -->
+    <CustomAction Id="CloseMemoLex" BinaryRef="MemoLexMaintenance" ExeCommand="--close-running &quot;[INSTALLFOLDER].&quot;" Execute="immediate" Return="check" Impersonate="yes" />
+    <CustomAction Id="RemoveMemoLexUserData" BinaryRef="MemoLexMaintenance" ExeCommand="--uninstall-cleanup &quot;[INSTALLFOLDER].&quot; &quot;[MEMOLEX_KEEP_USER_DATA]&quot;" Execute="commit" Return="check" Impersonate="yes" />
+    <InstallExecuteSequence>
+      <Custom Action="CloseMemoLex" Before="InstallValidate" Condition="REMOVE~=&quot;ALL&quot;" />
+      <Custom Action="RemoveMemoLexUserData" Before="InstallFinalize" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
     <UI>
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchMemoLex" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
     </UI>

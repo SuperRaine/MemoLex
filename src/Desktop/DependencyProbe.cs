@@ -27,7 +27,7 @@ internal static class DependencyProbe
         {
             result["englishImageOcr"]=reader.Recognize(Raster("insight","Arial"),new(70,46),new(0,0),1)?.Word=="insight";
         }
-        var runtime=Path.Combine(AppContext.BaseDirectory,"webview2");
+        var runtime=Path.Combine(ApplicationPaths.RuntimeDirectory,"webview2");
         result["bundledBrowserExists"]=File.Exists(Path.Combine(runtime,"msedgewebview2.exe"));
         var choice=BrowserRuntime.Resolve();
         result["browserRuntimeSource"]=choice?.Kind??"missing";

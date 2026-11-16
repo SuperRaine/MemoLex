@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <CustomAction Id="SetMemoLexDestination" Property="INSTALLFOLDER" Value="[INSTALLPARENT]MemoLex\" />
+    <CustomAction Id="UseMemoLexFolder" Property="INSTALLFOLDER" Value="[INSTALLPARENT]" />
+    <CustomActionRef Id="WixUIValidatePath_X64" />
+    <CustomActionRef Id="WixUIPrintEula_X64" />
+    <UI Id="MemoLexUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Microsoft YaHei UI" Size="9" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Microsoft YaHei UI" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Microsoft YaHei UI" Size="10" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <Property Id="WIXUI_INSTALLDIR" Value="INSTALLPARENT" />
+      <Property Id="ARPNOMODIFY" Value="1" />
+      <DialogRef Id="BrowseDlg" />
+      <DialogRef Id="DiskCostDlg" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="WelcomeDlg" />
+      <DialogRef Id="LicenseAgreementDlg" />
+      <DialogRef Id="VerifyReadyDlg" />
+      <DialogRef Id="MaintenanceWelcomeDlg" />
+      <DialogRef Id="MaintenanceTypeDlg" />
+      <DialogRef Id="ExitDialog" />
+      <DialogRef Id="CancelDlg" />
+      <DialogRef Id="InvalidDirDlg" />
+
+      <Dialog Id="MemoLexInstallDirDlg" Width="370" Height="270" Title="安装墨墨搜词">
+        <Control Id="Banner" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="yes" Text="WixUI_Bmp_Banner" />
+        <Control Id="Title" Type="Text" X="15" Y="9" Width="320" Height="20" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}安装位置与快捷方式" />
+        <Control Id="TopLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="DirectoryLabel" Type="Text" X="20" Y="61" Width="330" Height="25" NoPrefix="yes" Text="选择存放位置，安装时会自动创建 MemoLex 文件夹。" />
+        <Control Id="Path" Type="PathEdit" X="20" Y="91" Width="265" Height="20" Property="INSTALLPARENT" />
+        <Control Id="Browse" Type="PushButton" X="293" Y="91" Width="57" Height="20" Text="浏览…">
+          <Publish Property="WIXUI_INSTALLDIR" Value="INSTALLPARENT" Order="1" />
+          <Publish Property="_BrowseProperty" Value="INSTALLPARENT" Order="2" />
+          <Publish Event="SpawnDialog" Value="BrowseDlg" Order="3" />
+        </Control>
+        <Control Id="FolderHelp" Type="Text" X="20" Y="121" Width="330" Height="28" NoPrefix="yes" Text="若选择的文件夹已叫 MemoLex，将直接安装到该文件夹。" />
+        <Control Id="DesktopShortcut" Type="CheckBox" X="20" Y="166" Width="320" Height="20" Property="MEMOLEX_DESKTOP_SHORTCUT" CheckBoxValue="1" Text="创建桌面快捷方式" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="上一步">
+          <Publish Event="NewDialog" Value="LicenseAgreementDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="下一步">
+          <Publish Event="SetTargetPath" Value="INSTALLPARENT" Order="1" />
+          <Publish Event="DoAction" Value="SetMemoLexDestination" Order="2" />
+          <Publish Event="DoAction" Value="UseMemoLexFolder" Order="3" Condition="INSTALLPARENT ~&gt;&gt; &quot;\MemoLex\&quot;" />
+          <Publish Event="SetTargetPath" Value="INSTALLFOLDER" Order="4" />
+          <Publish Property="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" Order="5" />
+          <Publish Event="DoAction" Value="WixUIValidatePath_X64" Order="6" />
+          <Publish Event="SpawnDialog" Value="InvalidDirDlg" Order="7" Condition="WIXUI_INSTALLDIR_VALID&lt;&gt;&quot;1&quot;" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="8" Condition="WIXUI_INSTALLDIR_VALID=&quot;1&quot;" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="取消">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="MemoLexRemoveOptionsDlg" Width="370" Height="270" Title="卸载墨墨搜词">
+        <Control Id="Banner" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="yes" Text="WixUI_Bmp_Banner" />
+        <Control Id="Title" Type="Text" X="15" Y="9" Width="320" Height="20" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}卸载墨墨搜词" />
+        <Control Id="TopLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="KeepData" Type="CheckBox" X="20" Y="75" Width="330" Height="20" Property="MEMOLEX_KEEP_USER_DATA" CheckBoxValue="1" Text="保留用户资料" />
+        <Control Id="DataHelp" Type="Text" X="20" Y="112" Width="330" Height="60" NoPrefix="yes" Text="未勾选时，将删除本机账号、助记、查词历史和设置。云端数据不受影响。&#13;&#10;&#13;&#10;同一 Windows 账号下的墨墨搜词共用这些资料。" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="上一步">
+          <Publish Event="NewDialog" Value="MaintenanceTypeDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="下一步">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="取消">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg" Condition="NOT Installed" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="Installed AND PATCH" />
+      <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" />
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="MemoLexInstallDirDlg" Condition="LicenseAccepted=&quot;1&quot;" />
+      <Publish Dialog="LicenseAgreementDlg" Control="Print" Event="DoAction" Value="WixUIPrintEula_X64" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath_X64" Order="3" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4" Condition="WIXUI_INSTALLDIR_VALID&lt;&gt;&quot;1&quot;" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MemoLexInstallDirDlg" Order="1" Condition="NOT Installed" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2" Condition="Installed AND NOT PATCH AND WixUI_InstallMode&lt;&gt;&quot;Remove&quot;" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MemoLexRemoveOptionsDlg" Order="3" Condition="Installed AND NOT PATCH AND WixUI_InstallMode=&quot;Remove&quot;" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="4" Condition="Installed AND PATCH" />
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="MemoLexRemoveOptionsDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+    </UI>
+    <UIRef Id="WixUI_Common" />
+  </Fragment>
+</Wix>

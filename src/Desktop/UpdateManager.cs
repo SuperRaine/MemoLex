@@ -105,7 +105,7 @@ internal sealed class UpdateManager:IDisposable
     }
     internal static bool IsMsiInstallation()
     {
-        try{using var key=Registry.CurrentUser.OpenSubKey(@"Software\SuperRaine\MemoLex\Installer");return key?.GetValue("InstallDirectory") is string path&&Path.GetFullPath(path).TrimEnd('\\').Equals(Path.GetFullPath(AppContext.BaseDirectory).TrimEnd('\\'),StringComparison.OrdinalIgnoreCase);}catch{return false;}
+        try{using var key=Registry.CurrentUser.OpenSubKey(@"Software\SuperRaine\MemoLex\Installer");return key?.GetValue("InstallDirectory") is string path&&Path.GetFullPath(path).TrimEnd('\\').Equals(ApplicationPaths.InstallDirectory,StringComparison.OrdinalIgnoreCase);}catch{return false;}
     }
     internal async Task InstallAsync(Window owner)
     {
@@ -118,7 +118,7 @@ internal sealed class UpdateManager:IDisposable
             var job=Path.Combine(_updateRoot,"apply-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(job);
             var portable=_asset.Name.EndsWith(".zip",StringComparison.OrdinalIgnoreCase);string[] files=[];
             if(portable)files=(await Task.Run(()=>GitHubUpdateClient.ExtractPortable(_download,Path.Combine(job,"stage")))).ToArray();
-            var appDir=Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar);
+            var appDir=ApplicationPaths.InstallDirectory;
             if(!File.Exists(Path.Combine(appDir,"MemoLex.exe"))||appDir==Path.GetPathRoot(appDir)?.TrimEnd('\\'))throw new UpdateException("无法确认程序安装目录，请从发布页手动更新。");
             var manifest=new {AppDirectory=appDir,Package=_download,Sha256=_asset.Sha256,Portable=portable,Files=files,ProcessId=Environment.ProcessId,ProcessStart=Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks};
             File.WriteAllText(Path.Combine(job,"job.json"),JsonSerializer.Serialize(manifest));

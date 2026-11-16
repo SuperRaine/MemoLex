@@ -60,7 +60,7 @@ try {
             [IO.File]::Copy($file.Source, $file.Target, $true)
         }
     } else {
-        $msi = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', ('"' + $job.Package + '"'), '/passive', '/norestart', ('INSTALLFOLDER="' + $appRoot + '"')) -Wait -PassThru -WindowStyle Hidden
+        $msi = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', ('"' + $job.Package + '"'), '/passive', '/norestart', 'MEMOLEX_KEEP_USER_DATA=1', ('INSTALLFOLDER="' + $appRoot + '"')) -Wait -PassThru -WindowStyle Hidden
         if ($msi.ExitCode -notin @(0, 3010)) { throw ('Installer exit code ' + $msi.ExitCode) }
     }
     [IO.File]::WriteAllText((Join-Path $jobRoot 'result.txt'), 'success')

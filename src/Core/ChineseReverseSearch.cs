@@ -19,7 +19,7 @@ public sealed record ChineseSearchPage(string Query,IReadOnlyList<ChineseSearchR
 
 public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? directory=null) : IDisposable
 {
-    private readonly string _directory=directory??Path.Combine(AppContext.BaseDirectory,"data");
+    private readonly string _directory=directory??Path.Combine(ApplicationPaths.RuntimeDirectory,"data");
     private readonly Dictionary<string,(long Offset,int Bytes)> _tokens=new(StringComparer.Ordinal);
     private Dictionary<string,SemanticEntry> _semantic=new(StringComparer.Ordinal);
     private FileStream? _postings;

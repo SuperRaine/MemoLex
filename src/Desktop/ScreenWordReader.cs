@@ -218,7 +218,7 @@ internal sealed class ScreenWordReader : IDisposable
     internal HoverWord? Recognize(byte[] png,ScreenPoint point,ScreenPoint origin,double scale,CancellationToken cancellation=default)
     {
         cancellation.ThrowIfCancellationRequested();
-        _engine??=new TesseractEngine(Path.Combine(Environment.GetEnvironmentVariable("MEMOLEX_DATA_DIR")??Path.Combine(AppContext.BaseDirectory,"data"),"ocr"),"eng",EngineMode.LstmOnly);
+        _engine??=new TesseractEngine(Path.Combine(Environment.GetEnvironmentVariable("MEMOLEX_DATA_DIR")??Path.Combine(ApplicationPaths.RuntimeDirectory,"data"),"ocr"),"eng",EngineMode.LstmOnly);
         using var input=new MemoryStream(png);using var original=new Bitmap(input);
         HoverWord? Read(Pix image,double imageScale,PageSegMode mode)
         {
