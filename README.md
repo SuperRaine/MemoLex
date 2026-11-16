@@ -4,7 +4,7 @@
 
 **本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。**
 
-[下载软件](https://github.com/SuperRaine/MemoLex/releases/latest) · [使用说明](使用说明.md) · [问题反馈](https://github.com/SuperRaine/MemoLex/issues/new/choose)
+[下载软件](https://github.com/SuperRaine/MemoLex/releases/latest) · [使用说明](使用说明.md) · [问题反馈](https://github.com/SuperRaine/MemoLex/issues/new?template=bug_report.yml) · [功能建议](https://github.com/SuperRaine/MemoLex/issues/new?template=feature_request.yml)
 
 ## 下载与安装
 
@@ -12,18 +12,19 @@
 
 | 版本 | 使用方法 |
 | --- | --- |
-| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.7.0/MemoLex-1.7.0-Windows-x64-Setup.msi)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.7.0/MemoLex-1.7.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
-| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.7.0/MemoLex-1.7.0-Windows-x64.zip)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.7.0/MemoLex-1.7.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
+| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-Windows-x64-Setup.msi)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
+| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-Windows-x64.zip)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
 
 登录和海词词典需要网页组件，缺少时按提示联网安装即可。
 
-两种版本均可运行 `Uninstall.exe` 卸载。默认删除本机资料，如需保留，请勾选「保留用户资料」；正常更新会保留资料。
+两种版本均可运行 `Uninstall.exe` 卸载。默认删除本机资料，如需保留，请开启「保留用户资料」；正常更新会保留资料。
 
 ## 可以做什么
 
 - **查词与中文反查**：输入英文单词、短语或中文含义，查看释义、近义词、形近词和派生词。
 - **助记与例句**：查看或编辑助记，按考研、四级、六级、高考筛选真题例句。
 - **墨墨云功能**：收藏和管理云词本，添加今日新学，保存并切换多个账号。
+- **顽固单词**：在顶部查看顽固词，按复习时间、字母或随机顺序轮换，也可遮住释义自测。
 - **阅读与翻译**：鼠标取词、截图翻译、段落翻译；点击英文单词可查看释义。
 - **快捷操作**：支持连续两次 Ctrl+C 查词、自定义快捷键、海词词典和考试倒计时。
 
@@ -33,9 +34,11 @@
 
 首次打开可跟随新手引导了解常用功能，也可随时跳过。更多操作见[使用说明](使用说明.md)。
 
+发现新版时默认只提醒，点击「下载更新」后开始下载；也可在设置中开启自动下载。
+
 ## 反馈
 
-[GitHub Issues](https://github.com/SuperRaine/MemoLex/issues/new/choose) · [1623255609@qq.com](mailto:1623255609@qq.com) · QQ 群 **1132371819**
+[问题反馈](https://github.com/SuperRaine/MemoLex/issues/new?template=bug_report.yml) · [功能建议](https://github.com/SuperRaine/MemoLex/issues/new?template=feature_request.yml) · [1623255609@qq.com](mailto:1623255609@qq.com) · QQ 群 **1132371819**
 
 ## 开源许可
 

@@ -59,7 +59,8 @@ internal sealed class HaiciDictionaryWindow
         _back.Click+=(_,_)=>{if(_browser.CoreWebView2 is {CanGoBack:true} core)core.GoBack();};
         _forward.Click+=(_,_)=>{if(_browser.CoreWebView2 is {CanGoForward:true} core)core.GoForward();};
         reload.Click+=async(_,_)=>{if(_browser.CoreWebView2!=null)_browser.Reload();else if(initializeBrowser)await InitializeAsync();};
-        _address.VerticalAlignment=VerticalAlignment.Center;_address.TextWrapping=TextWrapping.NoWrap;_address.TextTrimming=TextTrimming.CharacterEllipsis;_address.Text=_entry.AbsoluteUri;tools.Children.Add(_address);
+        foreach(var button in new[]{_back,_forward,reload,browserButton}){button.Height=36;button.VerticalAlignment=VerticalAlignment.Center;}
+        _address.LineHeight=double.NaN;_address.VerticalAlignment=VerticalAlignment.Center;_address.TextWrapping=TextWrapping.NoWrap;_address.TextTrimming=TextTrimming.CharacterEllipsis;_address.Text=_entry.AbsoluteUri;tools.Children.Add(_address);
         grid.Children.Add(tools);Grid.SetRow(_browser,1);grid.Children.Add(_browser);
         var footer=new DockPanel{Margin=new Thickness(16,10,16,12)};
         DockPanel.SetDock(_installBrowser,Dock.Right);footer.Children.Add(_installBrowser);footer.Children.Add(_status);

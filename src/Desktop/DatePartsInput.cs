@@ -15,7 +15,7 @@ internal sealed class DatePartsInput:Grid
     private int _dayCount=31;
     internal DatePartsInput(DateTime? date=null)
     {
-        Margin=new Thickness(0,6,0,8);MaxWidth=480;HorizontalAlignment=HorizontalAlignment.Left;
+        Margin=new Thickness(0,4,0,4);MaxWidth=480;HorizontalAlignment=HorizontalAlignment.Left;
         foreach(var width in new[]{new GridLength(1.4,GridUnitType.Star),GridLength.Auto,new GridLength(1,GridUnitType.Star),GridLength.Auto,new GridLength(1,GridUnitType.Star),GridLength.Auto})ColumnDefinitions.Add(new(){Width=width});
         Year.MinWidth=100;Month.MinWidth=72;Day.MinWidth=72;
         Year.ItemsSource=Enumerable.Range(Math.Max(1,DateTime.Today.Year-1),22).Concat(date.HasValue?[date.Value.Year]:Array.Empty<int>()).Distinct().Order().ToArray();

@@ -58,6 +58,8 @@ public partial class MainWindow : Window
         _chinese=chinese??new ChineseReverseSearch(_dictionary);
         _mnemonics=mnemonics??new MnemonicStore();
         InitializeComponent();
+        UpdateStubbornCard();
+        Activated+=(_,_)=>{if(_ready)_=RefreshStubbornWordsAsync();};
         RoundedWindow.Attach(this);
         RootFrame.SizeChanged+=(_,e)=>UpdateResponsiveLayout(e.NewSize);
         UpdateShortcutHints();
@@ -96,6 +98,7 @@ public partial class MainWindow : Window
             _doubleCopy?.Dispose();_clipboardCts?.Cancel();
             _hover?.Dispose();_accountTimer?.Stop();_accountWatcher?.Dispose();_updates?.Dispose();
             _studyCts?.Cancel();
+            _stubbornCts?.Cancel();_stubbornDialog?.Close();
             _studyLoadCts?.Cancel();_accountCts.Cancel();_api.AuthenticationResult-=OnApiAuthenticationResult;
             _studyDayTimer?.Stop();
             _lookupCts?.Cancel();
@@ -170,6 +173,7 @@ public partial class MainWindow : Window
             await _related.LoadAsync();
             await _chinese.LoadAsync();
             _ready = true;
+            _ = RefreshStubbornWordsAsync();
             DictionaryCountText.Text = _dictionary.PreferredAvailable?$"本地词库 · {_dictionary.PreferredCount:N0} 词目":$"ECDICT · {_dictionary.Count:N0} 词目";
             DictionaryCountText.ToolTip=_dictionary.PreferredAvailable?$"优先显示本地词库释义，未收录的单词由内置词库补充。":_dictionary.PreferredWarning??"内置离线词典";
             UpdateHistory();

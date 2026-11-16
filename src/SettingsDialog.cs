@@ -16,7 +16,8 @@ internal static class SettingsDialog
     internal const string RepositoryUrl="https://github.com/SuperRaine/MemoLex";
     internal const string FeedbackEmail="1623255609@qq.com";
     internal const string FeedbackQqGroup="1132371819";
-    internal const string IssueUrl=RepositoryUrl+"/issues/new/choose";
+    internal const string BugReportUrl=RepositoryUrl+"/issues/new?template=bug_report.yml";
+    internal const string FeatureRequestUrl=RepositoryUrl+"/issues/new?template=feature_request.yml";
     internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
     internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"1.1.0";
     public static SettingsResult Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null)
@@ -66,7 +67,7 @@ internal static class SettingsDialog
         countdownCard.Children.Add(showCountdown);
         var examFields=new WrapPanel();countdownCard.Children.Add(examFields);
         var nameField=new StackPanel{Width=180,Margin=new Thickness(0,0,12,0)};examFields.Children.Add(nameField);nameField.Children.Add(InputDialog.Text("考试名称"));
-        var examName=new TextBox {Text=preferences.ExamName,MaxLength=40,Margin=new Thickness(0,4,0,4),Padding=new Thickness(9),MinHeight=34};nameField.Children.Add(examName);
+        var examName=new TextBox {Text=preferences.ExamName,MaxLength=40,Margin=new Thickness(0,4,0,4),Padding=new Thickness(9,6,9,6),Height=36};nameField.Children.Add(examName);
         var dateField=new StackPanel{Width=340};examFields.Children.Add(dateField);dateField.Children.Add(InputDialog.Text("考试日期 · 可选择或输入"));
         var examDate=new DatePartsInput(preferences.ExamDate);
         void EnableCountdownFields(){examName.IsEnabled=examDate.IsEnabled=showCountdown.IsChecked==true;}
@@ -131,7 +132,9 @@ internal static class SettingsDialog
         var emailActions=FeedbackCard("反馈邮箱","通过邮件反馈问题与建议。",FeedbackEmail,"写邮件","FeedbackEmailButton",()=>OpenLink("mailto:"+FeedbackEmail+"?subject="+Uri.EscapeDataString("墨墨搜词 "+Version+" 反馈"),"无法打开邮件应用，可复制邮箱后手动发送。"));
         var copyEmail=new Button {Content="复制邮箱",Tag=FeedbackEmail,Margin=new Thickness(8,0,0,0)};copyEmail.Click+=(_,_)=>CopyContact(FeedbackEmail,"反馈邮箱已复制。");emailActions.Children.Add(copyEmail);dialog.RegisterName("CopyFeedbackEmail",copyEmail);
         FeedbackCard("QQ 交流群","复制群号，在 QQ 中搜索加入。",FeedbackQqGroup,"复制群号","CopyFeedbackQq",()=>CopyContact(FeedbackQqGroup,"QQ群号已复制。"));
-        FeedbackCard("GitHub Issues","反馈问题、提出建议，查看处理进度。",RepositoryUrl+"/issues","反馈问题","FeedbackIssueButton",()=>OpenLink(IssueUrl,"无法打开浏览器，可复制上方地址访问 Issues。"));
+        var issueActions=FeedbackCard("GitHub","提交问题或建议，查看处理进度。",RepositoryUrl+"/issues","问题反馈","FeedbackIssueButton",()=>OpenLink(BugReportUrl,"无法打开浏览器，可复制上方地址访问 Issues。"));
+        ((Button)dialog.FindName("FeedbackIssueButton")).Tag=BugReportUrl;
+        var feature=new Button{Content="功能建议",Tag=FeatureRequestUrl,Margin=new Thickness(8,0,0,0)};feature.Click+=(_,_)=>OpenLink(FeatureRequestUrl,"无法打开浏览器，可复制上方地址访问 Issues。");issueActions.Children.Add(feature);dialog.RegisterName("FeedbackFeatureButton",feature);
 
         var support=Page("关于与赞助","墨墨搜词 MemoLex · "+Version);
         var supportView=PageView("关于与赞助");

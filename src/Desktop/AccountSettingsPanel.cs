@@ -17,8 +17,8 @@ internal static class AccountSettingsPanel
         var actions=new WrapPanel();panel.Children.Add(actions);
         Button Add(string text){var b=new Button {Content=text,Margin=new Thickness(0,0,8,10)};actions.Children.Add(b);return b;}
         var use=Add("切换账号");var relogin=Add("重新登录");var logout=Add("退出登录");var remove=Add("移除账号");
-        var nameRow=new DockPanel {Margin=new Thickness(0,2,0,6)};var rename=new Button {Content="保存账号名称",Margin=new Thickness(10,0,0,0)};DockPanel.SetDock(rename,Dock.Right);nameRow.Children.Add(rename);
-        var name=new TextBox {MaxLength=80,Padding=new Thickness(9),ToolTip="给账号起一个方便区分的名称"};nameRow.Children.Add(name);panel.Children.Add(nameRow);
+        var nameRow=new DockPanel {Margin=new Thickness(0,2,0,6)};var rename=new Button {Content="保存账号名称",Margin=new Thickness(10,0,0,0),Height=36,VerticalAlignment=VerticalAlignment.Center};DockPanel.SetDock(rename,Dock.Right);nameRow.Children.Add(rename);
+        var name=new TextBox {MaxLength=80,Padding=new Thickness(9,6,9,6),Height=36,VerticalAlignment=VerticalAlignment.Center,ToolTip="给账号起一个方便区分的名称"};nameRow.Children.Add(name);panel.Children.Add(nameRow);
         var status=InputDialog.Text("");status.Margin=new Thickness(0,4,0,4);panel.Children.Add(status);
         panel.Children.Add(InputDialog.Text("登录信息加密保存在本机，过期后请重新登录。"));
         var importPanel=new StackPanel();var secret=new PasswordBox {MaxLength=512,Padding=new Thickness(9),Margin=new Thickness(0,10,0,10)};importPanel.Children.Add(secret);

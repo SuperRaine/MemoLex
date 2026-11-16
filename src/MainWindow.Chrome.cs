@@ -16,7 +16,18 @@ public partial class MainWindow
         {
             _compactLayout=compact;
             SidebarColumn.Width=new GridLength(compact?220:264);
-            BrandColumn.Width=new GridLength(compact?146:238);
+            BrandColumn.Width=GridLength.Auto;
+            BrandGroup.Margin=new Thickness(0,0,compact?6:12,0);
+            BrandLogo.Width=BrandLogo.Height=compact?34:42;BrandTitleText.FontSize=compact?15:17;
+            BackButton.Width=ForwardButton.Width=compact?27:32;
+            MinimizeWindowButton.Width=MaximizeButton.Width=CloseWindowButton.Width=compact?30:44;
+            SettingsButton.Width=PinButton.Width=compact?28:34;
+            SettingsButton.Margin=new Thickness(0,0,compact?0:5,0);
+            PinButton.Margin=new Thickness(0,0,compact?2:6,0);
+            WindowControlsSeparator.Margin=new Thickness(0,0,compact?3:7,0);
+            AccountButton.Margin=new Thickness(0,0,compact?3:5,0);
+            ExamCountdownText.Margin=new Thickness(0,0,compact?8:14,0);
+            HeaderCenterGrid.Margin=compact?new Thickness(6,0,6,0):new Thickness(9,0,10,0);
             CloudStatusText.MaxWidth=compact?72:100;
             AccountButton.MaxWidth=compact?115:145;
             AccountButton.Padding=compact?new Thickness(8,7,8,7):new Thickness(11,7,11,7);

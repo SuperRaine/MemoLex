@@ -38,7 +38,8 @@ internal sealed class OfficialLoginWindow
         var grid=new Grid();grid.RowDefinitions.Add(new(){Height=GridLength.Auto});grid.RowDefinitions.Add(new());grid.RowDefinitions.Add(new(){Height=GridLength.Auto});
         _address.Margin=new Thickness(18,10,18,10);grid.Children.Add(_address);Grid.SetRow(_browser,1);grid.Children.Add(_browser);
         var footer=new DockPanel {Margin=new Thickness(18,10,18,14)};
-        var cancel=new Button {Content="取消",IsCancel=true,Margin=new Thickness(10,0,0,0)};DockPanel.SetDock(cancel,Dock.Right);footer.Children.Add(cancel);
+        var cancel=new Button {Content="取消",IsCancel=true,Margin=new Thickness(10,0,0,0),Height=36,VerticalAlignment=VerticalAlignment.Center};DockPanel.SetDock(cancel,Dock.Right);footer.Children.Add(cancel);
+        foreach(var button in new[]{_retry,_installBrowser}){button.Height=36;button.VerticalAlignment=VerticalAlignment.Center;}
         _retry.Click+=async(_,_)=>{if(_pendingAuthorization is {} auth&&auth.ExpiresAt>DateTimeOffset.UtcNow)await CompleteAsync(auth);else Navigate();};DockPanel.SetDock(_retry,Dock.Right);footer.Children.Add(_retry);
         _installBrowser.Click+=async(_,_)=>await InstallBrowserAsync();DockPanel.SetDock(_installBrowser,Dock.Right);footer.Children.Add(_installBrowser);
         _status.TextWrapping=TextWrapping.Wrap;_status.VerticalAlignment=VerticalAlignment.Center;footer.Children.Add(_status);Grid.SetRow(footer,2);grid.Children.Add(footer);

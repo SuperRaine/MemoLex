@@ -3,7 +3,14 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 $jobRoot = [IO.Path]::GetFullPath($PSScriptRoot)
 $job = Get-Content -LiteralPath (Join-Path $jobRoot 'job.json') -Raw | ConvertFrom-Json
-$appRoot = [IO.Path]::GetFullPath($job.AppDirectory).TrimEnd('\')
+function NormalDirectory([string]$path) {
+    $full=[IO.Path]::GetFullPath($path)
+    if($full.TrimEnd('\') -eq [IO.Path]::GetPathRoot($full).TrimEnd('\')){return [IO.Path]::GetPathRoot($full)}
+    return $full.TrimEnd('\')
+}
+$appRoot = NormalDirectory $job.AppDirectory
+$sourceRoot = if($job.SourceDirectory){NormalDirectory $job.SourceDirectory}else{$appRoot}
+$sourceExe = Join-Path $sourceRoot 'MemoLex.exe'
 $exe = Join-Path $appRoot 'MemoLex.exe'
 $changed = [Collections.Generic.List[object]]::new()
 $exited = $false
@@ -22,7 +29,15 @@ function CheckedPath([string]$root, [string]$relative) {
     return $target
 }
 try {
-    if ($appRoot -eq [IO.Path]::GetPathRoot($appRoot).TrimEnd('\') -or -not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Invalid application directory' }
+    if ($appRoot.TrimEnd('\') -eq [IO.Path]::GetPathRoot($appRoot).TrimEnd('\') -or -not (Test-Path -LiteralPath $sourceExe -PathType Leaf)) { throw 'Invalid application directory' }
+    if([Diagnostics.FileVersionInfo]::GetVersionInfo($sourceExe).ProductName -ne '墨墨搜词 MemoLex'){throw 'Application identity changed'}
+    $migration=-not $sourceRoot.Equals($appRoot,[StringComparison]::OrdinalIgnoreCase)
+    if($migration){
+        if($job.Portable -or $sourceRoot.TrimEnd('\') -ne [IO.Path]::GetPathRoot($sourceRoot).TrimEnd('\') -or -not $appRoot.Equals((Join-Path $sourceRoot 'MemoLex'),[StringComparison]::OrdinalIgnoreCase)){throw 'Invalid update destination'}
+        $null=CheckedPath $sourceRoot 'MemoLex'
+        $existing=@(Get-ChildItem -LiteralPath $appRoot -Force -ErrorAction SilentlyContinue)
+        if($existing.Count -gt 0 -and (-not(Test-Path -LiteralPath $exe -PathType Leaf) -or [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductName -ne '墨墨搜词 MemoLex')){throw 'Update destination contains unrelated files'}
+    }
     $hashStream=[IO.File]::OpenRead($job.Package)
     $hashAlgorithm=[Security.Cryptography.SHA256]::Create()
     try { $packageHash=[BitConverter]::ToString($hashAlgorithm.ComputeHash($hashStream)).Replace('-','') }
@@ -63,6 +78,12 @@ try {
         $msi = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', ('"' + $job.Package + '"'), '/passive', '/norestart', 'MEMOLEX_KEEP_USER_DATA=1', ('INSTALLFOLDER="' + $appRoot + '"')) -Wait -PassThru -WindowStyle Hidden
         if ($msi.ExitCode -notin @(0, 3010)) { throw ('Installer exit code ' + $msi.ExitCode) }
     }
+    if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Updated application is missing'}
+    if($migration){
+        $runKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+        $run=(Get-ItemProperty -LiteralPath $runKey -Name MemoLex -ErrorAction SilentlyContinue).MemoLex
+        if($run -and $run.Trim('"').Equals($sourceExe,[StringComparison]::OrdinalIgnoreCase)){Set-ItemProperty -LiteralPath $runKey -Name MemoLex -Value ('"'+$exe+'"')}
+    }
     [IO.File]::WriteAllText((Join-Path $jobRoot 'result.txt'), 'success')
     if (-not $TestOnly) { Start-Process -FilePath $exe -WorkingDirectory $appRoot }
 } catch {
@@ -76,6 +97,6 @@ try {
     [IO.File]::WriteAllText((Join-Path $jobRoot 'result.txt'), 'failed: ' + $_.Exception.Message)
     if (-not $TestOnly) {
         [Windows.Forms.MessageBox]::Show('更新未完成，已尝试恢复原程序。请打开 GitHub 发布页重新下载安装。', '墨墨搜词更新') | Out-Null
-        if ($exited -and (Test-Path -LiteralPath $exe)) { Start-Process -FilePath $exe -WorkingDirectory $appRoot }
+        if ($exited -and (Test-Path -LiteralPath $sourceExe)) { Start-Process -FilePath $sourceExe -WorkingDirectory $sourceRoot }
     }
 }

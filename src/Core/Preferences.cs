@@ -15,6 +15,9 @@ public sealed class Preferences
     public bool ShowExamCountdown {get;set;}
     public string ExamName {get;set;}="考试";
     public DateTime? ExamDate {get;set;}
+    public string StubbornSort {get;set;}="review";
+    public bool StubbornAlphabetDescending {get;set;}
+    public bool HideStubbornMeanings {get;set;}
     public Dictionary<string,List<string>> ConfirmedLearnedWords {get;set;}=[];
     public bool HoverLookupEnabled {get;set;}
     public int HoverDelayMs {get;set;}=750;
@@ -24,6 +27,7 @@ public sealed class Preferences
     public bool HoverAutoAdd {get;set;}
     public string HoverFontSize {get;set;}="standard";
     public bool AutomaticUpdates {get;set;}=true;
+    public bool AutomaticUpdateDownloads {get;set;}
     public string UpdateFrequency {get;set;}="daily";
     public string UpdateSource {get;set;}="auto";
     public DateTimeOffset? LastUpdateCheck {get;set;}
@@ -47,6 +51,7 @@ public sealed class Preferences
         result.ExamName=string.IsNullOrWhiteSpace(result.ExamName)?"考试":result.ExamName.Trim();
         if(result.ExamName.Length>40)result.ExamName=result.ExamName[..40];
         result.ExamDate=result.ExamDate?.Date;
+        if(result.StubbornSort is not ("review" or "alphabetical" or "random"))result.StubbornSort="review";
         result.ConfirmedLearnedWords=(result.ConfirmedLearnedWords??[])
             .Where(item=>!string.IsNullOrWhiteSpace(item.Key)&&item.Key.Length<=100&&item.Value!=null)
             .ToDictionary(item=>item.Key,item=>item.Value.Where(UsableWord).Select(word=>word.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),StringComparer.Ordinal);

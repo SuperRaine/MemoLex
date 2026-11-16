@@ -17,6 +17,8 @@ internal static class UpdateNotificationDialog
             panel.Children.Add(new ScrollViewer{Content=InputDialog.Text(release.Notes.Trim()),MaxHeight=170,
                 VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Margin=new Thickness(0,16,0,6)});
         var state=InputDialog.Text(updates.Status);state.Margin=new Thickness(0,14,0,16);panel.Children.Add(state);
+        var automatic=new CheckBox{Content="以后发现新版时自动下载",Style=(Style)Application.Current.FindResource("SwitchCheckBox"),IsChecked=updates.AutomaticallyDownload,Margin=new Thickness(0,0,0,16)};
+        automatic.Checked+=(_,_)=>updates.AutomaticallyDownload=true;automatic.Unchecked+=(_,_)=>updates.AutomaticallyDownload=false;panel.Children.Add(automatic);
         var buttons=new DockPanel();
         var page=new Button{Content="前往下载页面",HorizontalAlignment=HorizontalAlignment.Left};
         page.Click+=(_,_)=>{try{Process.Start(new ProcessStartInfo(release.Page.AbsoluteUri){UseShellExecute=true});}catch{state.Text="无法打开浏览器，请在「设置 → 软件更新」中重试。";}};
@@ -28,12 +30,13 @@ internal static class UpdateNotificationDialog
         actions.Children.Add(later);actions.Children.Add(primary);buttons.Children.Add(actions);panel.Children.Add(buttons);
         void Render()
         {
-            state.Text=updates.Status;primary.Content=updates.CanInstall?"更新并重启":updates.Busy?"正在准备…":"下载更新";
+            state.Text=updates.Status;automatic.IsChecked=updates.AutomaticallyDownload;primary.Content=updates.CanInstall?"更新并重启":updates.Busy?"正在准备…":"下载更新";
             primary.IsEnabled=updates.CanInstall||updates.CanDownload;
         }
         updates.Changed+=Render;dialog.Closed+=(_,_)=>updates.Changed-=Render;Render();
         dialog.RegisterName("UpdateNoticeVersion",heading);dialog.RegisterName("UpdateNoticeStatus",state);
         dialog.RegisterName("UpdateNoticePrimary",primary);dialog.RegisterName("UpdateNoticeLater",later);
+        dialog.RegisterName("UpdateNoticeAutomaticDownload",automatic);
         return dialog;
     }
 }
