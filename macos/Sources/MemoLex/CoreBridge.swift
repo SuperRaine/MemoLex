@@ -98,7 +98,7 @@ struct CoreFailure: LocalizedError {
         guard pending[id] != nil else { return }
         let command = J.object(["id": .string(UUID().uuidString), "method": .string("cancel"), "params": .object(["id": .string(id)])])
         if let data = try? JSONEncoder().encode(command) { try? input.fileHandleForWriting.write(contentsOf: data + Data([10])) }
-        finish(id, .failure(CoreFailure(code: "cancelled", message: message)))
+        finish(id, .failure(CoreFailure(code: message == "操作已取消。" ? "cancelled" : "timeout", message: message)))
     }
     private func ended() {
         started = false; endedUnexpectedly = true

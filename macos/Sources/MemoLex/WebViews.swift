@@ -20,7 +20,7 @@ import WebKit
           if (location.protocol !== 'https:' || location.hostname !== 'accounts.maimemo.com' || !location.pathname.startsWith('/interaction/')) return;
           const report = () => {
             const fields = [...document.querySelectorAll('input')];
-            const field = fields.find(x => x.type !== 'password' && /phone|mobile|email|username|login/i.test(x.name || x.id || x.type));
+            const field = fields.find(x => ['text', 'tel', 'email', 'number'].includes(x.type) && /phone|mobile|email|username|login|identifier|account|tel/i.test((x.name || '') + ' ' + (x.id || '') + ' ' + x.type));
             if (field && field.value && field.value.length < 200) window.webkit.messageHandlers.MemoLexIdentity.postMessage(field.value);
           };
           document.addEventListener('input', report, true);
@@ -45,7 +45,7 @@ import WebKit
         decisionHandler(.allow)
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard webView.url?.absoluteString == startURL.absoluteString, !completing else { status = "请在墨墨官方页面完成登录。"; return }
+        guard let documentURL = webView.url, documentURL.scheme == "https", documentURL.host == "open.maimemo.com", documentURL.path == startURL.path, documentURL.user == nil, documentURL.port == nil || documentURL.port == 443, !completing else { status = "请在墨墨官方页面完成登录。"; return }
         completing = true; busy = true; status = "正在确认墨墨登录信息…"
         webView.evaluateJavaScript("document.documentElement.outerHTML") { [weak self] value, _ in
             Task { @MainActor in
@@ -53,7 +53,7 @@ import WebKit
                 defer { self.busy = false }
                 do {
                     guard let html = value as? String else { throw CoreFailure(code: "login", message: "未能读取登录结果，请重新打开登录页。") }
-                    let authorization = try await self.model.core.request("login.inspect", ["url": .string(self.startURL.absoluteString), "content": .string(html)])
+                    let authorization = try await self.model.core.request("login.inspect", ["url": .string(documentURL.absoluteString), "content": .string(html)])
                     guard authorization != .null else { throw CoreFailure(code: "login", message: "未能确认登录信息，请点击“重新打开”再试。") }
                     try await self.model.finishLogin(authorization, identity: self.identity, target: self.target)
                 } catch { self.status = error.localizedDescription; self.completing = false }
@@ -61,7 +61,7 @@ import WebKit
         }
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { status = "登录页面加载失败，请重新打开。" }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { status = "暂时无法连接墨墨登录页，请检查网络后重试。" }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { if (error as NSError).code != NSURLErrorCancelled { status = "暂时无法连接墨墨登录页，请检查网络后重试。" } }
     func stop() { browser.stopLoading(); browser.configuration.userContentController.removeScriptMessageHandler(forName: "MemoLexIdentity") }
 }
 
