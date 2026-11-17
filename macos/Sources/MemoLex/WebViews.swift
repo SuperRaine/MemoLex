@@ -15,7 +15,7 @@ import WebKit
         self.model = model; target = model.loginTarget; identity = ""
         let configuration = WKWebViewConfiguration(); configuration.websiteDataStore = .nonPersistent()
         let controller = WKUserContentController()
-        controller.addUserScript(WKUserScript(source: """
+        controller.addUserScript(WKUserScript(source: #"""
         (() => {
           if (location.protocol !== 'https:' || location.hostname !== 'accounts.maimemo.com' || !location.pathname.startsWith('/interaction/')) return;
           const report = () => {
@@ -30,7 +30,7 @@ import WebKit
           document.addEventListener('input', report, true);
           document.addEventListener('submit', report, true);
         })();
-        """, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        """#, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         configuration.userContentController = controller
         browser = WKWebView(frame: .zero, configuration: configuration)
         super.init(); controller.add(self, name: "MemoLexIdentity"); browser.navigationDelegate = self
