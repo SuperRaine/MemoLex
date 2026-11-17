@@ -53,8 +53,8 @@ struct DialogHeader: View {
 }
 
 struct OwlImage: View {
-    private var image: NSImage? { NSImage(contentsOf: AppPaths.resources.appendingPathComponent("owl-logo.png")) }
-    var body: some View { if let image { Image(nsImage: image).resizable().scaledToFit() } else { Image(systemName: "book.closed.fill").resizable().scaledToFit().foregroundStyle(Palette.deep) } }
+    private static let image = NSImage(contentsOf: AppPaths.resources.appendingPathComponent("owl-logo.png"))
+    var body: some View { if let image = Self.image { Image(nsImage: image).resizable().scaledToFit() } else { Image(systemName: "book.closed.fill").resizable().scaledToFit().foregroundStyle(Palette.deep) } }
 }
 
 struct LinkedText: View {

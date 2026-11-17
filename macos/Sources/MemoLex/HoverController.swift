@@ -45,7 +45,9 @@ import SwiftUI
                     try await Task.sleep(nanoseconds: 180_000_000)
                     let second = try await ScreenCapture.image(crop)
                     guard ScreenText.stable(initial, ScreenText.fingerprint(second)), version == generation else { return }
-                    candidate = try await ScreenText.recognize(second, crop: crop, pointer: quartz).1; capturedFingerprint = initial
+                    let words = try await ScreenText.recognize(second, crop: crop, pointer: quartz).1
+                    let selection = try await model.core.request("hover.pick", ["point": .object(["x": .number(quartz.x), "y": .number(quartz.y)]), "candidates": .array(words.map { word in .object(["word": .string(word.word), "confidence": .number(Double(word.confidence) * 100), "method": .string("Vision"), "bounds": .object(["x": .number(word.bounds.minX), "y": .number(word.bounds.minY), "width": .number(word.bounds.width), "height": .number(word.bounds.height)])]) })])
+                    if selection != .null { let box = selection["bounds"]; candidate = ScreenWord(word: selection["word"].text, bounds: CGRect(x: box["x"].doubleValue, y: box["y"].doubleValue, width: box["width"].doubleValue, height: box["height"].doubleValue)) }; capturedFingerprint = initial
                 } catch { return }
             }
             guard let candidate, version == generation, !Task.isCancelled, ScreenText.englishWord(candidate.word) else { return }

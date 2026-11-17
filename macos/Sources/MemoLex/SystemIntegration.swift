@@ -130,21 +130,28 @@ private struct ShortcutRecorder: NSViewRepresentable {
 }
 
 @MainActor enum MacUninstaller {
+    private static var running = false
     static func remove(keepData: Bool, model: AppModel) {
+        guard !running else { return }; running = true
+        Task { await perform(keepData: keepData, model: model); running = false }
+    }
+    private static func perform(keepData: Bool, model: AppModel) async {
         do {
             let bundle = Bundle.main.bundleURL.resolvingSymlinksInPath()
             guard bundle.pathExtension == "app", Bundle.main.bundleIdentifier == "com.superraine.MemoLex" else { throw CoreFailure(code: "uninstall", message: "请从完整的墨墨搜词 App 中卸载。") }
+            let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
+            let profile = AppPaths.profile.standardizedFileURL
+            let symbolic = (try? profile.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
+            guard profile.deletingLastPathComponent().resolvingSymlinksInPath() == support, profile.lastPathComponent == "MemoLex", !symbolic else { throw CoreFailure(code: "uninstall", message: "用户资料目录异常，已停止卸载。") }
+            guard FileManager.default.isWritableFile(atPath: bundle.deletingLastPathComponent().path) else { throw CoreFailure(code: "uninstall", message: "无法移除当前位置的软件，请先将 App 移到应用程序文件夹，或手动移到废纸篓。") }
             try LoginService.apply(false)
-            model.core.stop()
+            await model.core.shutDown()
+            try FileManager.default.trashItem(at: bundle, resultingItemURL: nil)
             if !keepData {
-                let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
-                let profile = AppPaths.profile.standardizedFileURL
-                let symbolic = (try? profile.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
-                guard profile.deletingLastPathComponent().resolvingSymlinksInPath() == support, profile.lastPathComponent == "MemoLex", !symbolic else { throw CoreFailure(code: "uninstall", message: "用户资料目录异常，已停止卸载。") }
                 if FileManager.default.fileExists(atPath: profile.path) { try FileManager.default.removeItem(at: profile) }
                 CredentialVault.removeAll(); UserDefaults.standard.removePersistentDomain(forName: "com.superraine.MemoLex")
             }
-            try FileManager.default.trashItem(at: bundle, resultingItemURL: nil)
+            model.removingApplication = true
             NSApp.terminate(nil)
         } catch { model.fail(error) }
     }

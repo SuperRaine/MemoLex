@@ -40,7 +40,7 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { show(); return true }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
-    func applicationWillTerminate(_ notification: Notification) { model.preferences.save(); integration?.stop(); model.updates.stop(); model.core.stop(); updateTimer?.invalidate() }
+    func applicationWillTerminate(_ notification: Notification) { if !model.removingApplication { model.preferences.save() }; integration?.stop(); model.updates.stop(); model.core.stop(); updateTimer?.invalidate() }
     func show() { guard let window else { return }; NSApp.setActivationPolicy(.regular); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     func applyPreferences() {
         window?.level = model.preferences.alwaysOnTop ? .floating : .normal
@@ -67,7 +67,7 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     @objc func translate() { show(); model.enterTranslation() }
     @objc func back() { model.move(-1) }
     @objc func forward() { model.move(1) }
-    @objc func primaryAction() { if model.page == .translation { Task { await model.translate() } } else { Task { await model.toggleMembership() } } }
+    @objc func primaryAction() { guard model.sheet == nil, model.tourIndex == nil else { return }; if model.page == .translation { Task { await model.translate() } } else { Task { await model.toggleMembership() } } }
     private func makeMenu() {
         let menu = NSMenu(); NSApp.mainMenu = menu
         let app = NSMenu(); let appItem = NSMenuItem(); appItem.submenu = app; menu.addItem(appItem)

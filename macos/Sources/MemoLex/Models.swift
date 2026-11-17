@@ -28,6 +28,7 @@ enum J: Codable, Equatable, Sendable {
     var list: [J] { if case .array(let value) = self { return value }; return [] }
     var flag: Bool { if case .bool(let value) = self { return value }; return false }
     var integer: Int { if case .number(let value) = self { return Int(value) }; return 0 }
+    var doubleValue: Double { if case .number(let value) = self { return value }; return 0 }
     var dictionary: [String: J] { if case .object(let value) = self { return value }; return [:] }
     static func strings(_ value: [String]) -> J { .array(value.map(J.string)) }
 }

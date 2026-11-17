@@ -75,6 +75,7 @@ struct Notice: Identifiable {
     var openHaici: ((String) -> Void)?
     var focusSearch: (() -> Void)?
     var presentNotice: (() -> Void)?
+    var removingApplication = false
     var updates: MacUpdates!
     private var navigation: [ViewLocation] = []
     private var navigationIndex = -1

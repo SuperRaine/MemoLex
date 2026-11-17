@@ -134,6 +134,9 @@ internal sealed class CoreService : IDisposable
             case "dictionary.reverse": return await _chinese.SearchAsync(T(p, "query"), Number(p, "limit", 160, 1, 3000), cancellation);
             case "dictionary.batch": return NotepadContent.Describe(T(p, "content"), value => _dictionary.Lookup(value)?.translation, cancellation);
             case "text.classify": return ClipboardLookup.Classify(T(p, "text"), value => _dictionary.Lookup(value) != null);
+            case "hover.pick":
+                var candidates = Program.Decode<HoverWord[]>(p.GetProperty("candidates"));
+                return HoverWords.AtPointer(candidates.Select(value => (Item: value, Word: HoverWords.Normalize(value.Word))).Where(value => value.Word != null).Select(value => value.Item with { Word = value.Word! }), Program.Decode<ScreenPoint>(p.GetProperty("point")));
             case "examples":
                 var page = await _examples.SearchAsync(word, T(p, "paperType", "ALL"), Number(p, "offset", 0, 0, 100000), 10, cancellation);
                 return new { page.Total, page.Offset, page.ReceivedCount, page.HasMore, items = page.Items.Select(item => new { item.Id, item.English, item.Translation, item.Source, item.OptionLabel, item.ContextEnglish, item.ContextTranslation, item.MatchedWords, translationTerms = TextHighlights.TranslationTerms(item.English, item.Translation, word, item.MatchedWords, value => _dictionary.Lookup(value)?.translation, item.MatchedTranslations, item.TranslationAligned) }) };

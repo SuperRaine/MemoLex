@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct CoreFailure: LocalizedError {
     var code: String
@@ -107,5 +108,12 @@ struct CoreFailure: LocalizedError {
         output.fileHandleForReading.readabilityHandler = nil; errors.fileHandleForReading.readabilityHandler = nil
         try? input.fileHandleForWriting.close()
         for id in Array(pending.keys) { cancel(id) }
+    }
+    func shutDown() async {
+        stop()
+        for _ in 0..<30 { if !process.isRunning { return }; try? await Task.sleep(nanoseconds: 100_000_000) }
+        if process.isRunning { process.terminate() }
+        for _ in 0..<10 { if !process.isRunning { return }; try? await Task.sleep(nanoseconds: 100_000_000) }
+        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
     }
 }

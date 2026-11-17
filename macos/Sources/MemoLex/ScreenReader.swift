@@ -7,6 +7,7 @@ import Vision
 struct ScreenWord {
     var word: String
     var bounds: CGRect // Quartz screen coordinates, in points.
+    var confidence: Float = 1
 }
 
 enum ScreenText {
@@ -71,25 +72,26 @@ enum ScreenText {
         AXValueGetValue(unsafeBitCast(a, to: AXValue.self), .cgPoint, &point); AXValueGetValue(unsafeBitCast(b, to: AXValue.self), .cgSize, &size)
         return CGRect(origin: point, size: size)
     }
-    static func recognize(_ image: CGImage, crop: CGRect, pointer: CGPoint? = nil) async throws -> (String, ScreenWord?) {
+    static func recognize(_ image: CGImage, crop: CGRect, pointer: CGPoint? = nil) async throws -> (String, [ScreenWord]) {
         try await Task.detached(priority: .userInitiated) {
             let request = VNRecognizeTextRequest(); request.recognitionLevel = .accurate; request.recognitionLanguages = ["en-US"]; request.usesLanguageCorrection = false
             if #available(macOS 13.0, *) { request.automaticallyDetectsLanguage = false }
             try VNImageRequestHandler(cgImage: image).perform([request])
             let observations = request.results ?? []
             let text = observations.compactMap { observation -> String? in guard let candidate = observation.topCandidates(1).first, candidate.confidence >= 0.55 else { return nil }; return candidate.string }.joined(separator: "\n")
-            guard let pointer else { return (text, nil) }
+            guard pointer != nil else { return (text, []) }
+            var words: [ScreenWord] = []
             for observation in observations {
-                guard let candidate = observation.topCandidates(1).first, candidate.confidence >= 0.86 else { continue }
+                guard let candidate = observation.topCandidates(1).first, candidate.confidence >= 0.82 else { continue }
                 let string = candidate.string; let regex = try NSRegularExpression(pattern: pattern)
                 for match in regex.matches(in: string, range: NSRange(location: 0, length: (string as NSString).length)) {
-                    guard match.range.length >= 3, let range = Range(match.range, in: string), let box = try? candidate.boundingBox(for: range) else { continue }
+                    guard let range = Range(match.range, in: string), let box = try? candidate.boundingBox(for: range) else { continue }
                     let normalized = box.boundingBox
                     let rect = CGRect(x: crop.minX + normalized.minX * crop.width, y: crop.minY + (1 - normalized.maxY) * crop.height, width: normalized.width * crop.width, height: normalized.height * crop.height)
-                    if rect.insetBy(dx: -1, dy: -1).contains(pointer) { return (text, ScreenWord(word: String(string[range]), bounds: rect)) }
+                    words.append(ScreenWord(word: String(string[range]), bounds: rect, confidence: candidate.confidence))
                 }
             }
-            return (text, nil)
+            return (text, words)
         }.value
     }
     static func fingerprint(_ image: CGImage) -> [UInt8] {
