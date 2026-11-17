@@ -99,8 +99,10 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
 }
 private struct UpdatePromptOptions: View { @ObservedObject var preferences: Preferences; var body: some View { Toggle("以后发现新版时自动下载", isOn: $preferences.automaticDownloads).toggleStyle(.switch).controlSize(.small) } }
 
-let application = NSApplication.shared
-let delegate = AppDelegate()
-application.delegate = delegate
-application.setActivationPolicy(.regular)
-application.run()
+MainActor.assumeIsolated {
+    let application = NSApplication.shared
+    let delegate = AppDelegate()
+    application.delegate = delegate
+    application.setActivationPolicy(.regular)
+    application.run()
+}

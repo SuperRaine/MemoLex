@@ -84,7 +84,7 @@ private struct ShortcutRecorder: NSViewRepresentable {
         InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
             guard let event, let context else { return OSStatus(eventNotHandledErr) }
             var identifier = EventHotKeyID()
-            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, UInt32(MemoryLayout<EventHotKeyID>.size), nil, &identifier)
+            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &identifier)
             guard status == noErr else { return status }
             let object = Unmanaged<SystemIntegration>.fromOpaque(context).takeUnretainedValue()
             Task { @MainActor in object.invoke(identifier.id) }
@@ -139,7 +139,8 @@ private struct ShortcutRecorder: NSViewRepresentable {
             if !keepData {
                 let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
                 let profile = AppPaths.profile.standardizedFileURL
-                guard profile.deletingLastPathComponent().resolvingSymlinksInPath() == support, profile.lastPathComponent == "MemoLex", !(try? profile.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink ?? false) else { throw CoreFailure(code: "uninstall", message: "用户资料目录异常，已停止卸载。") }
+                let symbolic = (try? profile.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
+                guard profile.deletingLastPathComponent().resolvingSymlinksInPath() == support, profile.lastPathComponent == "MemoLex", !symbolic else { throw CoreFailure(code: "uninstall", message: "用户资料目录异常，已停止卸载。") }
                 if FileManager.default.fileExists(atPath: profile.path) { try FileManager.default.removeItem(at: profile) }
                 CredentialVault.removeAll(); UserDefaults.standard.removePersistentDomain(forName: "com.superraine.MemoLex")
             }

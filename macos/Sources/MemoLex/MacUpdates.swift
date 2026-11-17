@@ -106,11 +106,13 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
 
 struct UpdatesSettings: View {
     @ObservedObject var updates: MacUpdates
+    @ObservedObject private var preferences: Preferences
+    init(updates: MacUpdates) { self.updates = updates; self.preferences = updates.preferences }
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             Text("当前版本 1.8.0 · macOS").foregroundStyle(Palette.muted)
-            HStack(spacing: 16) { Toggle("自动检查更新", isOn: $updates.preferences.automaticUpdates).toggleStyle(.switch).controlSize(.small); Text("检查更新间隔").foregroundStyle(Palette.muted); Picker("", selection: $updates.preferences.updateFrequency) { Text("每次启动").tag("startup"); Text("每 6 小时").tag("6h"); Text("每天").tag("daily"); Text("每周").tag("weekly") }.labelsHidden().frame(width: 150) }
-            HStack(spacing: 13) { Text("下载源").foregroundStyle(Palette.muted); Picker("", selection: $updates.preferences.updateSource) { ForEach(MacUpdates.sources, id: \.0) { id, name in Text(name).tag(id) } }.labelsHidden().frame(width: 180); Toggle("发现新版后自动下载", isOn: $updates.preferences.automaticDownloads).toggleStyle(.switch).controlSize(.small) }
+            HStack(spacing: 16) { Toggle("自动检查更新", isOn: $preferences.automaticUpdates).toggleStyle(.switch).controlSize(.small); Text("检查更新间隔").foregroundStyle(Palette.muted); Picker("", selection: $preferences.updateFrequency) { Text("每次启动").tag("startup"); Text("每 6 小时").tag("6h"); Text("每天").tag("daily"); Text("每周").tag("weekly") }.labelsHidden().frame(width: 150) }
+            HStack(spacing: 13) { Text("下载源").foregroundStyle(Palette.muted); Picker("", selection: $preferences.updateSource) { ForEach(MacUpdates.sources, id: \.0) { id, name in Text(name).tag(id) } }.labelsHidden().frame(width: 180); Toggle("发现新版后自动下载", isOn: $preferences.automaticDownloads).toggleStyle(.switch).controlSize(.small) }
             Text("默认发现新版时只提醒，点击下载后开始下载。连接失败时会切换备用源。").font(.system(size: 12)).foregroundStyle(Palette.muted)
             Text(updates.status).foregroundStyle(Palette.muted).padding(.top, 5)
             if updates.busy { ProgressView(value: updates.progress).tint(Palette.accent) }

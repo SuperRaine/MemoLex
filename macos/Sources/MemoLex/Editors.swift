@@ -23,6 +23,8 @@ struct HistoryView: View {
 
 struct StubbornView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject private var preferences: Preferences
+    init(model: AppModel) { self.model = model; self.preferences = model.preferences }
     @State private var filter = ""
     @State private var meanings: [String: String] = [:]
     @State private var revealed: Set<String> = []
@@ -35,10 +37,10 @@ struct StubbornView: View {
                 TextField("筛选单词或释义", text: $filter).inputFrame()
                 HStack(spacing: 10) {
                     Text("排序").foregroundStyle(Palette.muted)
-                    Picker("", selection: $model.preferences.stubbornSort) { Text("复习时间").tag("review"); Text("字母顺序").tag("alphabetical"); Text("随机轮换").tag("random") }.labelsHidden().frame(width: 136).onChange(of: model.preferences.stubbornSort) { _ in model.reorderStubborn() }
+                    Picker("", selection: $preferences.stubbornSort) { Text("复习时间").tag("review"); Text("字母顺序").tag("alphabetical"); Text("随机轮换").tag("random") }.labelsHidden().frame(width: 136).onChange(of: preferences.stubbornSort) { _ in model.reorderStubborn() }
                     if model.preferences.stubbornSort == "alphabetical" { Button(model.preferences.alphabetDescending ? "Z–A" : "A–Z") { model.preferences.alphabetDescending.toggle(); model.reorderStubborn() }.buttonStyle(MemoButtonStyle(compact: true)) }
                     Spacer()
-                    Toggle("遮住释义", isOn: $model.preferences.concealMeanings).toggleStyle(.switch).controlSize(.small).onChange(of: model.preferences.concealMeanings) { _ in revealed = []; model.preferences.save() }
+                    Toggle("遮住释义", isOn: $preferences.concealMeanings).toggleStyle(.switch).controlSize(.small).onChange(of: preferences.concealMeanings) { _ in revealed = []; preferences.save() }
                 }
                 HStack { Text("单词").frame(width: 180, alignment: .leading); Text("释义"); Spacer() }.font(.system(size: 11)).foregroundStyle(Palette.muted).padding(10).background(Palette.wash)
                 ScrollView {
