@@ -51,7 +51,7 @@ struct SettingsView: View {
         case "常规": GeneralSettings(model: model, preferences: draft)
         case "墨墨账号": AccountSettings(model: model)
         case "鼠标取词": HoverSettings(preferences: draft)
-        case "系统权限": PermissionsSettings()
+        case "系统权限": PermissionsSettings(model: model)
         case "快捷键": ShortcutSettings(preferences: draft)
         case "软件更新": UpdatesSettings(updates: model.updates)
         case "反馈": FeedbackSettings(status: $status)

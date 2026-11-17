@@ -14,13 +14,14 @@ import SwiftUI
 }
 
 struct PermissionsSettings: View {
+    @ObservedObject var model: AppModel
     @State private var refresh = 0
     var body: some View {
         VStack(alignment: .leading, spacing: 17) {
             permission("辅助功能", enabled: PermissionCenter.accessibility, detail: "用于读取其他软件中的英文文本、监听连续两次 ⌘C。") { PermissionCenter.requestAccessibility(); PermissionCenter.open("Privacy_Accessibility") }
             permission("屏幕录制", enabled: PermissionCenter.screen, detail: "用于图片取词和截图翻译。识别在本机完成。") { PermissionCenter.requestScreen(); PermissionCenter.open("Privacy_ScreenCapture") }
-            Button("刷新权限状态") { refresh += 1 }.buttonStyle(MemoButtonStyle())
-        }.id(refresh).tourTarget("permissions")
+            Button("刷新权限状态") { refresh += 1; model.applySystemPreferences?() }.buttonStyle(MemoButtonStyle())
+        }.id(refresh).tourTarget("permissions").onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh += 1; model.applySystemPreferences?() }
     }
     private func permission(_ title: String, enabled: Bool, detail: String, action: @escaping () -> Void) -> some View { SettingsCard(title: title) { HStack { Text(enabled ? "已允许" : "尚未允许").foregroundStyle(enabled ? Palette.deep : Palette.muted); Spacer(); Button("前往系统设置", action: action).buttonStyle(MemoButtonStyle(compact: true)) }; Text(detail).font(.system(size: 12)).foregroundStyle(Palette.muted) } }
 }
@@ -90,8 +91,7 @@ private struct ShortcutRecorder: NSViewRepresentable {
             Task { @MainActor in object.invoke(identifier.id) }
             return noErr
         }, 1, &event, Unmanaged.passUnretained(self).toOpaque(), &handler)
-        copyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in Task { @MainActor in self?.copyEvent(event) } }
-        expiryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in self?.model.checkExpiry(); await self?.model.refreshStubborn() } }
+        expiryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in self?.ensureCopyMonitor(); self?.model.checkExpiry(); await self?.model.refreshStubborn() } }
     }
     func configure() {
         for key in hotkeys { UnregisterEventHotKey(key) }; hotkeys = []
@@ -105,8 +105,12 @@ private struct ShortcutRecorder: NSViewRepresentable {
             if status == noErr, let reference { hotkeys.append(reference) } else { model.status = "\(shortcut.label) 已被占用，请更换快捷键。" }
         }
         if (model.preferences.doubleCopy || model.preferences.hoverEnabled) && !PermissionCenter.accessibility { PermissionCenter.requestAccessibility() }
+        if model.preferences.hoverEnabled && !PermissionCenter.screen { PermissionCenter.requestScreen() }
+        if !model.preferences.doubleCopy, let copyMonitor { NSEvent.removeMonitor(copyMonitor); self.copyMonitor = nil }
+        ensureCopyMonitor()
         hover.configure()
     }
+    private func ensureCopyMonitor() { if model.preferences.doubleCopy, PermissionCenter.accessibility, copyMonitor == nil { copyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in Task { @MainActor in self?.copyEvent(event) } } } }
     private func invoke(_ id: UInt32) {
         if id == 3, model.sheet == nil { screenshot.start(); return }
         model.showWindow?()
