@@ -5,6 +5,10 @@
 *.md text eol=lf
 *.yml text eol=lf
 *.py text eol=lf
+*.swift text eol=lf
+*.sh text eol=lf
+*.plist text eol=lf
+*.entitlements text eol=lf
 *.png binary
 *.jpg binary
 *.ico binary

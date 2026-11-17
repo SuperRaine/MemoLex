@@ -20,6 +20,9 @@ preferences.json
 mnemonics.user.json
 smoke-test.json
 __pycache__/
+.build/
+macos/output/
+*.dmg
 *.py[cod]
 payload-policy-check-*.json
 /tests*/

@@ -1,0 +1,383 @@
+import AppKit
+import AVFoundation
+import Combine
+import Foundation
+import SwiftUI
+
+enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad; var id: String { rawValue } }
+struct Notice: Identifiable {
+    let id = UUID()
+    var title: String
+    var message: String
+    var confirm: String? = nil
+    var destructive = false
+    var action: (() -> Void)? = nil
+}
+
+@MainActor final class AppModel: ObservableObject {
+    let preferences = Preferences()
+    let core = CoreBridge()
+    @Published var ready = false
+    @Published var status = "正在准备词典…"
+    @Published var wordCount = 0
+    @Published var search = ""
+    @Published var suggestions: [String] = []
+    @Published var entry = J.null
+    @Published var word = ""
+    @Published var notes: [J] = []
+    @Published var relations = J.null
+    @Published var expandedRelations: Set<String> = []
+    @Published var history: [SearchRecord] = []
+    @Published var page: ViewLocation.Page = .word
+    @Published var chineseResults: [J] = []
+    @Published var chineseLimit = 160
+    @Published var chineseTotal = 0
+    @Published var examples: [J] = []
+    @Published var exampleTotal = 0
+    @Published var exampleOffset = 0
+    @Published var examplePaper = "ALL"
+    @Published var examplesLoading = false
+    @Published var examplesError = ""
+    @Published var translationInput = ""
+    @Published var translationOutput = ""
+    @Published var translationSource = ""
+    @Published var translationDirection = "en|zh-CN"
+    @Published var translationProvider = "DeepL"
+    @Published var translating = false
+    @Published var accounts: [SavedAccount] = []
+    @Published var activeAccountID = ""
+    @Published var loggedIn = false
+    @Published var accountStatus = "未登录"
+    @Published var showLogin = false
+    @Published var loginTarget: SavedAccount?
+    @Published var notepads: [J] = []
+    @Published var selectedPad = J.null
+    @Published var notebookRows: [J] = []
+    @Published var notebookLoading = false
+    @Published var todayStatus = ""
+    @Published var membership = false
+    @Published var writing = false
+    @Published var stubbornWords: [J] = []
+    @Published var stubbornOrder: [J] = []
+    @Published var stubbornIndex = 0
+    @Published var stubbornTotal = 0
+    @Published var stubbornLoading = false
+    @Published var stubbornHint = ""
+    @Published var sheet: AppSheet?
+    @Published var settingsPage = "常规"
+    @Published var notice: Notice?
+    @Published var tourIndex: Int? = nil
+    @Published var canGoBack = false
+    @Published var canGoForward = false
+    var showWindow: (() -> Void)?
+    var applySystemPreferences: (() -> Void)?
+    var captureScreen: (() -> Void)?
+    var openHaici: ((String) -> Void)?
+    var focusSearch: (() -> Void)?
+    var updates: MacUpdates!
+    private var navigation: [ViewLocation] = []
+    private var navigationIndex = -1
+    private var wordVersion = 0
+    private var accountVersion = 0
+    private var examplesVersion = 0
+    private var translationVersion = 0
+    private var suggestionTask: Task<Void, Never>?
+    private var lookupTask: Task<Void, Never>?
+    private var accountTask: Task<Void, Never>?
+    private var preferencesObserver: AnyCancellable?
+    private var lastStubbornFetch: Date?
+    private let speaker = AVSpeechSynthesizer()
+
+    init() {
+        accounts = load("accounts.json", as: [SavedAccount].self) ?? []
+        history = load("history.json", as: [SearchRecord].self) ?? []
+        activeAccountID = UserDefaults.standard.string(forKey: "activeAccount") ?? ""
+        core.onUnauthorized = { [weak self] in self?.expireAccount() }
+        preferencesObserver = preferences.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        updates = MacUpdates(preferences: preferences)
+    }
+    var activeAccount: SavedAccount? { accounts.first { $0.id == activeAccountID } }
+    var titleAccount: String { activeAccount?.name ?? accountStatus }
+    var stubbornCurrent: String { stubbornOrder.indices.contains(stubbornIndex) ? stubbornOrder[stubbornIndex]["spelling"].text : "" }
+    var selectedNotepadTitle: String { selectedPad["title"].text }
+    var countdown: String {
+        let days = max(0, Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()), to: Calendar.current.startOfDay(for: preferences.examDate)).day ?? 0)
+        return "距 \(preferences.examName.trimmed.isEmpty ? "考试" : preferences.examName) 还有\(days)天"
+    }
+    func initialize() async {
+        do {
+            let metadata = try await core.request("initialize")
+            wordCount = metadata["wordCount"].integer; translationProvider = metadata["translationProvider"].text
+            ready = true; status = metadata["warning"].text.isEmpty ? "词典与本地助记已就绪。" : metadata["warning"].text
+            if let account = activeAccount, !account.needsLogin {
+                if let expiry = account.expiresAt, expiry <= Date() { expireAccount() }
+                else if let token = try CredentialVault.read(account.id) { await activate(account.id, token: token) }
+            }
+            updates.start()
+            if !preferences.onboardingCompleted { startTour() }
+        } catch { fail(error) }
+    }
+    func suggest() {
+        suggestionTask?.cancel()
+        let query = search.trimmed
+        guard ready, !query.isEmpty else { suggestions = []; return }
+        suggestionTask = Task {
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
+            if let result = try? await core.request("dictionary.suggest", ["word": .string(query)]), query == search.trimmed { suggestions = result.list.map(\.text) }
+        }
+    }
+    func lookup(_ raw: String, navigate: Bool = true) {
+        let query = raw.trimmed
+        guard ready, !query.isEmpty, query.count <= 100 else { return }
+        lookupTask?.cancel(); wordVersion += 1
+        let version = wordVersion; let account = accountVersion
+        search = query; showWindow?()
+        lookupTask = Task {
+            do {
+                let chinese = query.range(of: "[\\p{Han}]", options: .regularExpression) != nil
+                if chinese {
+                    page = .chinese; chineseLimit = 160
+                    let result = try await core.request("dictionary.reverse", ["query": .string(query), "limit": .number(Double(chineseLimit))])
+                    guard version == wordVersion else { return }
+                    chineseResults = result["items"].list; chineseTotal = result["total"].integer
+                    status = "找到 \(chineseTotal) 个相关结果。"
+                } else {
+                    page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = ""; membership = false
+                    let result = try await core.request("dictionary.lookup", ["word": .string(query)])
+                    guard version == wordVersion else { return }
+                    word = result["word"].text; entry = result["entry"]; notes = result["notes"].list; suggestions = result["suggestions"].list.map(\.text)
+                    recordHistory(word); status = entry == .null ? "本地词库未收录这个单词。" : "查词完成。"
+                    Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }
+                    Task { await loadExamples(reset: true) }
+                    if loggedIn { Task { await loadCloudWord(word, version: version, account: account) } }
+                }
+                if navigate { appendLocation(.init(page: page, query: query)) }
+            } catch { if version == wordVersion { fail(error) } }
+        }
+    }
+    func moreChinese() async {
+        chineseLimit += 160
+        if let result = try? await core.request("dictionary.reverse", ["query": .string(search), "limit": .number(Double(chineseLimit))]) { chineseResults = result["items"].list }
+    }
+    private func loadCloudWord(_ query: String, version: Int, account: Int) async {
+        async let cloudNotes = try? core.request("notes.cloud", ["word": .string(query)])
+        async let study = try? core.request("study.status", ["word": .string(query)])
+        let result = await (cloudNotes, study)
+        guard version == wordVersion, account == accountVersion else { return }
+        if let value = result.0 { notes = value.list }
+        todayStatus = result.1?["status"].text ?? ""
+        await refreshMembership()
+    }
+    func loadExamples(reset: Bool) async {
+        if reset { examplesVersion += 1; exampleOffset = 0; examples = [] }
+        let version = examplesVersion; let query = word; let paper = examplePaper
+        guard !query.isEmpty else { return }
+        examplesLoading = true; examplesError = ""
+        do {
+            let result = try await core.request("examples", ["word": .string(query), "paperType": .string(paper), "offset": .number(Double(exampleOffset))])
+            guard version == examplesVersion, query == word, paper == examplePaper else { return }
+            examples += result["items"].list; exampleTotal = result["total"].integer; exampleOffset += result["receivedCount"].integer
+        } catch { if version == examplesVersion { examplesError = error.localizedDescription } }
+        if version == examplesVersion { examplesLoading = false }
+    }
+    func speak(_ value: String? = nil) {
+        let text = value ?? word; guard !text.isEmpty else { return }
+        speaker.stopSpeaking(at: .immediate)
+        let utterance = AVSpeechUtterance(string: text); utterance.voice = AVSpeechSynthesisVoice(language: "en-US"); utterance.rate = 0.42; speaker.speak(utterance)
+    }
+    func enterTranslation() { page = .translation; appendLocation(.init(page: .translation, query: "段落翻译", input: translationInput, translated: translationOutput, direction: translationDirection)) }
+    func translate() async {
+        guard !translationInput.trimmed.isEmpty else { return }
+        translationVersion += 1; let version = translationVersion
+        translating = true; translationSource = translationInput
+        do {
+            let result = try await core.request("translate", ["text": .string(translationInput), "direction": .string(translationDirection)])
+            guard version == translationVersion else { return }
+            translationOutput = result["text"].text; translationProvider = result["provider"].text
+            if navigation.indices.contains(navigationIndex), page == .translation { navigation[navigationIndex] = .init(page: .translation, query: "段落翻译", input: translationInput, translated: translationOutput, direction: translationDirection) }
+        } catch { if version == translationVersion { fail(error) } }
+        if version == translationVersion { translating = false }
+    }
+    func classify(_ text: String, foreground: Bool = true) async {
+        do {
+            let result = try await core.request("text.classify", ["text": .string(text)])
+            if foreground { showWindow?() }
+            switch result["kind"].text {
+            case "Word", "Chinese": lookup(result["text"].text)
+            case "Paragraph": translationInput = result["text"].text; translationDirection = result["direction"].text; enterTranslation(); await translate()
+            default: status = "未识别到可查询的文字。"
+            }
+        } catch { fail(error) }
+    }
+    private func appendLocation(_ location: ViewLocation) {
+        if navigation.indices.contains(navigationIndex), navigation[navigationIndex] == location { return }
+        if navigationIndex + 1 < navigation.count { navigation.removeSubrange((navigationIndex + 1)..<navigation.count) }
+        navigation.append(location); navigationIndex = navigation.count - 1; navigationFlags()
+    }
+    func move(_ direction: Int) {
+        let target = navigationIndex + direction; guard navigation.indices.contains(target) else { return }
+        navigationIndex = target; let location = navigation[target]; page = location.page
+        if page == .translation { translationInput = location.input; translationOutput = location.translated; translationDirection = location.direction }
+        else { lookup(location.query, navigate: false) }
+        navigationFlags()
+    }
+    private func navigationFlags() { canGoBack = navigationIndex > 0; canGoForward = navigationIndex >= 0 && navigationIndex < navigation.count - 1 }
+    private func recordHistory(_ word: String) {
+        let prior = history.first { $0.word.lowercased() == word.lowercased() }; history.removeAll { $0.word.lowercased() == word.lowercased() }
+        history.insert(.init(word: word, date: Date(), count: (prior?.count ?? 0) + 1), at: 0); if history.count > 500 { history.removeLast(history.count - 500) }; save(history, "history.json")
+    }
+    func removeHistory(_ ids: Set<String>) { history.removeAll { ids.contains($0.id) }; save(history, "history.json") }
+    func clearHistory() { history = []; save(history, "history.json") }
+
+    func activate(_ id: String, token: String? = nil, verified: Bool = false) async {
+        accountVersion += 1; let generation = accountVersion; loggedIn = false; clearCloudState()
+        do {
+            let credential = try token ?? CredentialVault.read(id)
+            guard let credential else { throw CoreFailure(code: "login", message: "登录信息已失效，请重新登录。") }
+            try await core.setAccount(token: credential)
+            guard generation == accountVersion else { return }
+            activeAccountID = id; loggedIn = true; accountStatus = "连接中"; UserDefaults.standard.set(id, forKey: "activeAccount")
+            if !verified { _ = try await core.request("account.validate") }
+            guard generation == accountVersion else { return }
+            accountStatus = "已登录"; await refreshNotepads(); await refreshStubborn(force: true)
+            if !word.isEmpty { await loadCloudWord(word, version: wordVersion, account: generation) }
+        } catch { if generation == accountVersion { accountStatus = "暂时离线"; if !loggedIn { fail(error) } } }
+    }
+    func finishLogin(_ authorization: J, identity: String, target: SavedAccount?) async throws {
+        let token = authorization["token"].text
+        guard !token.isEmpty else { throw CoreFailure(code: "login", message: "未能获取登录信息，请重新登录。") }
+        _ = try await core.request("login.validate", ["token": .string(token)])
+        let identity = identity.trimmed.lowercased()
+        let sameIdentity = !identity.isEmpty ? accounts.first { $0.identity == identity } : nil
+        let existing = sameIdentity ?? (target?.identity == identity && !identity.isEmpty ? target : nil)
+        let id = existing?.id ?? UUID().uuidString
+        try CredentialVault.save(token, account: id)
+        let account = SavedAccount(id: id, name: existing?.name ?? (identity.isEmpty ? "墨墨账号 \(accounts.count + 1)" : identity), identity: identity, expiresAt: parseISODate(authorization["expiresAt"].text))
+        accounts.removeAll { $0.id == id }; accounts.append(account); save(accounts, "accounts.json"); showLogin = false
+        await activate(id, token: token, verified: true)
+    }
+    func logout() async {
+        accountVersion += 1; loggedIn = false; activeAccountID = ""; accountStatus = "未登录"; clearCloudState(); UserDefaults.standard.removeObject(forKey: "activeAccount")
+        try? await core.setAccount(token: nil)
+        if !word.isEmpty, let value = try? await core.request("notes.local", ["word": .string(word)]) { notes = value.list }
+    }
+    func expireAccount() {
+        guard loggedIn || !activeAccountID.isEmpty else { return }
+        if let index = accounts.firstIndex(where: { $0.id == activeAccountID }) { accounts[index].needsLogin = true; save(accounts, "accounts.json") }
+        accountVersion += 1; loggedIn = false; accountStatus = "登录已过期"; clearCloudState()
+        Task { try? await core.setAccount(token: nil) }
+        notice = .init(title: "登录已过期", message: "请在墨墨账号设置中重新登录。")
+    }
+    func checkExpiry() { if loggedIn, let expiry = activeAccount?.expiresAt, expiry <= Date() { expireAccount() } }
+    func renameAccount(_ id: String, _ name: String) {
+        guard let index = accounts.firstIndex(where: { $0.id == id }), !name.trimmed.isEmpty else { return }
+        accounts[index].name = String(name.trimmed.prefix(80)); save(accounts, "accounts.json")
+    }
+    func removeAccount(_ id: String) async { if activeAccountID == id { await logout() }; CredentialVault.remove(id); accounts.removeAll { $0.id == id }; save(accounts, "accounts.json") }
+    private func clearCloudState() { notes = []; notepads = []; selectedPad = .null; notebookRows = []; notebookLoading = false; membership = false; todayStatus = ""; writing = false; stubbornWords = []; stubbornOrder = []; stubbornIndex = 0; stubbornTotal = 0; stubbornLoading = false; lastStubbornFetch = nil }
+    func refreshNotepads() async {
+        guard loggedIn else { return }; let generation = accountVersion
+        do {
+            let result = try await core.request("notepads.list"); guard generation == accountVersion else { return }; notepads = result.list
+            let id = notepads.contains { $0["id"].text == preferences.selectedNotepad } ? preferences.selectedNotepad : notepads.first?["id"].text ?? ""
+            preferences.selectedNotepad = id; preferences.save(); await selectNotepad(id)
+        } catch { if generation == accountVersion { status = error.localizedDescription } }
+    }
+    func selectNotepad(_ id: String) async {
+        guard loggedIn, !id.isEmpty else { selectedPad = .null; return }; let generation = accountVersion
+        preferences.selectedNotepad = id; preferences.save()
+        do {
+            let value = try await core.request("notepads.get", ["id": .string(id)])
+            guard generation == accountVersion, preferences.selectedNotepad == id else { return }; selectedPad = value
+            await refreshMembership()
+        } catch { if generation == accountVersion { status = error.localizedDescription } }
+    }
+    func refreshMembership() async { membership = selectedPad["content"].text.components(separatedBy: .newlines).contains { $0.trimmed.caseInsensitiveCompare(word) == .orderedSame && !$0.trimmed.hasPrefix("#") } }
+    func toggleMembership() async {
+        guard loggedIn else { openAccountSettings(); return }; guard !word.isEmpty, !writing else { return }
+        if selectedPad == .null { createNotebook(); return }
+        if membership, selectedPad["words"].list.count <= 1 { notice = .init(title: "删除整个云词本？", message: "这是词本中的最后一个单词。删除后，整个云词本也会被删除。", confirm: "删除词本", destructive: true, action: { [weak self] in Task { await self?.deleteNotebook() } }); return }
+        writing = true; let generation = accountVersion; let id = selectedPad["id"].text
+        do {
+            let result = try await core.request(membership ? "notepads.remove" : "notepads.add", ["id": .string(id), "word": .string(word)])
+            if generation == accountVersion, preferences.selectedNotepad == id { selectedPad = result["notepad"]; await refreshMembership(); status = membership ? "已加入云词本。" : "已从云词本移除。" }
+        } catch { fail(error) }; writing = false
+    }
+    func addToday() {
+        guard loggedIn else { openAccountSettings(); return }
+        notice = .init(title: "添加到今日新学", message: "请在墨墨背单词 → 我的 → 学习数据同步 → 学习数据自动同步中开启同步，便于及时更新学习状态。", confirm: "添加", action: { [weak self] in Task { await self?.performAddToday() } })
+    }
+    private func performAddToday() async {
+        guard !writing, !word.isEmpty else { return }; writing = true; let generation = accountVersion; let query = word
+        do { let result = try await core.request("study.add", ["word": .string(query)]); if generation == accountVersion, query == word { todayStatus = result["status"].text; status = todayStatus == "AlreadyLearned" ? "这个单词已有学习记录。" : "已安排今日新学。" } }
+        catch { fail(error) }; writing = false
+    }
+    func createNotebook() {
+        guard loggedIn else { openAccountSettings(); return }
+        let alert = NSAlert(); alert.messageText = "新建云词本"; alert.addButton(withTitle: "创建"); alert.addButton(withTitle: "取消")
+        let input = NSTextField(string: "我的生词本"); input.frame = NSRect(x: 0, y: 0, width: 320, height: 26); alert.accessoryView = input
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { do { let result = try await core.request("notepads.create", ["title": .string(input.stringValue), "word": .string(word)]); preferences.selectedNotepad = result["id"].text; preferences.save(); await refreshNotepads() } catch { fail(error) } }
+    }
+    func loadNotebookRows() async {
+        notebookLoading = true
+        do { notebookRows = try await core.request("dictionary.batch", ["content": selectedPad["content"]]).list }
+        catch { fail(error) }; notebookLoading = false
+    }
+    func saveNotebook(original: J, title: String, brief: String, content: String) async throws {
+        let generation = accountVersion
+        let result = try await core.request("notepads.update", ["original": original, "title": .string(title), "brief": .string(brief), "content": .string(content)])
+        guard generation == accountVersion else { return }; selectedPad = result; await loadNotebookRows(); await refreshMembership(); await refreshNotepads()
+    }
+    func deleteNotebook() async {
+        guard selectedPad != .null else { return }
+        do { _ = try await core.request("notepads.delete", ["original": selectedPad]); selectedPad = .null; sheet = nil; await refreshNotepads(); status = "云词本已删除。" }
+        catch { fail(error) }
+    }
+    func refreshStubborn(force: Bool = false) async {
+        guard loggedIn, !stubbornLoading else { return }
+        if !force, let fetched = lastStubbornFetch, Date().timeIntervalSince(fetched) < 900 { return }
+        stubbornLoading = true; let generation = accountVersion
+        do {
+            let result = try await core.request("stubborn")
+            guard generation == accountVersion else { return }
+            let previous = stubbornOrder.map { $0["spelling"].text }; let current = stubbornCurrent
+            stubbornWords = result["words"].list; stubbornTotal = result["total"].integer; lastStubbornFetch = Date()
+            stubbornHint = result["complete"].flag ? "" : "已获取 \(stubbornWords.count)/\(stubbornTotal)，部分记录受接口上限影响。"
+            if preferences.stubbornSort == "random", Set(previous) == Set(stubbornWords.map { $0["spelling"].text }) {
+                let updated = Dictionary(stubbornWords.map { ($0["spelling"].text, $0) }, uniquingKeysWith: { first, _ in first })
+                stubbornOrder = previous.compactMap { updated[$0] }; stubbornIndex = stubbornOrder.firstIndex { $0["spelling"].text == current } ?? 0
+            } else { reorderStubborn() }
+        } catch { if generation == accountVersion { stubbornHint = error.localizedDescription } }
+        if generation == accountVersion { stubbornLoading = false }
+    }
+    func reorderStubborn() {
+        stubbornIndex = 0
+        switch preferences.stubbornSort {
+        case "alphabetical": stubbornOrder = stubbornWords.sorted { preferences.alphabetDescending ? $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedDescending : $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedAscending }
+        case "random": stubbornOrder = stubbornWords.shuffled()
+        default: stubbornOrder = stubbornWords.sorted { let left = parseISODate($0["nextStudyDate"].text) ?? .distantFuture; let right = parseISODate($1["nextStudyDate"].text) ?? .distantFuture; return left == right ? $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedAscending : left < right }
+        }; preferences.save()
+    }
+    func nextStubborn() {
+        guard stubbornOrder.count > 1 else { return }
+        let previous = stubbornCurrent; stubbornIndex += 1
+        if stubbornIndex >= stubbornOrder.count {
+            stubbornIndex = 0
+            if preferences.stubbornSort == "random" { stubbornOrder.shuffle(); if stubbornCurrent == previous { stubbornOrder.swapAt(0, Int.random(in: 1..<stubbornOrder.count)) } }
+        }
+    }
+    func saveMnemonic(id: String, type: String, text: String, cloud: Bool, cloudID: String?) async throws {
+        let query = word; let generation = wordVersion
+        let result: J
+        if cloud { result = try await core.request("notes.publish", ["word": .string(query), "id": .string(cloudID ?? ""), "noteType": .string(type), "text": .string(text)]) }
+        else { result = try await core.request("notes.save", ["word": .string(query), "note": .object(["id": .string(id), "noteType": .string(type), "text": .string(text), "origin": .string("local")])]) }
+        if generation == wordVersion { notes = result.list }; status = cloud ? "助记已同步到墨墨。" : "助记已保存到本地。"
+    }
+    func openAccountSettings() { settingsPage = "墨墨账号"; sheet = .settings }
+    func savePreferences() { preferences.save(); applySystemPreferences?(); reorderStubborn() }
+    func fail(_ error: Error) { if let coreError = error as? CoreFailure, coreError.code == "cancelled" { return }; status = error.localizedDescription; notice = .init(title: "操作未完成", message: error.localizedDescription) }
+    private func load<T: Decodable>(_ name: String, as type: T.Type) -> T? { guard let data = try? Data(contentsOf: AppPaths.profile.appendingPathComponent(name)) else { return nil }; return try? JSONDecoder().decode(type, from: data) }
+    private func save<T: Encodable>(_ value: T, _ name: String) { do { try FileManager.default.createDirectory(at: AppPaths.profile, withIntermediateDirectories: true); try JSONEncoder().encode(value).write(to: AppPaths.profile.appendingPathComponent(name), options: .atomic) } catch { status = "本地资料暂时无法保存。" } }
+}

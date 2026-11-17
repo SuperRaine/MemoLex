@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>MemoLex.Core</AssemblyName>
+    <Version>1.8.0</Version>
+    <Product>墨墨搜词 MemoLex</Product>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/Core/*.cs" Exclude="../../src/Core/Preferences.cs;../../src/Core/ApplicationPaths.cs" Link="Shared/Core/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Services/MaiMemoClient*.cs" Link="Shared/Services/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Services/OfficialLoginProtocol.cs" Link="Shared/Services/OfficialLoginProtocol.cs" />
+    <Compile Include="../../src/Services/ExampleSentenceClient.cs" Link="Shared/Services/ExampleSentenceClient.cs" />
+    <Compile Include="../../src/Services/TranslationClient.cs" Link="Shared/Services/TranslationClient.cs" />
+    <Compile Include="../../src/Services/BundledTranslationKey.cs" Link="Shared/Services/BundledTranslationKey.cs" />
+    <EmbeddedResource Include="../../src/Private/DeepL.key" LogicalName="MemoLex.DeepL.key" Condition="Exists('../../src/Private/DeepL.key')" />
+  </ItemGroup>
+</Project>
