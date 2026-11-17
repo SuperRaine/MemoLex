@@ -65,7 +65,7 @@ struct Notice: Identifiable {
     @Published var stubbornHint = ""
     @Published var sheet: AppSheet?
     @Published var settingsPage = "常规"
-    @Published var notice: Notice?
+    @Published var notice: Notice? { didSet { if notice != nil { presentNotice?() } } }
     @Published var tourIndex: Int? = nil
     @Published var canGoBack = false
     @Published var canGoForward = false
@@ -74,6 +74,7 @@ struct Notice: Identifiable {
     var captureScreen: (() -> Void)?
     var openHaici: ((String) -> Void)?
     var focusSearch: (() -> Void)?
+    var presentNotice: (() -> Void)?
     var updates: MacUpdates!
     private var navigation: [ViewLocation] = []
     private var navigationIndex = -1
@@ -218,7 +219,7 @@ struct Notice: Identifiable {
     func move(_ direction: Int) {
         let target = navigationIndex + direction; guard navigation.indices.contains(target) else { return }
         navigationIndex = target; let location = navigation[target]; page = location.page
-        if page == .translation { translationInput = location.input; translationOutput = location.translated; translationDirection = location.direction }
+        if page == .translation { translationInput = location.input; translationSource = location.input; translationOutput = location.translated; translationDirection = location.direction }
         else { lookup(location.query, navigate: false) }
         navigationFlags()
     }
@@ -233,6 +234,8 @@ struct Notice: Identifiable {
     func activate(_ id: String, token: String? = nil, verified: Bool = false) async {
         accountVersion += 1; let generation = accountVersion; loggedIn = false; clearCloudState()
         do {
+            try await core.setAccount(token: nil)
+            guard generation == accountVersion else { return }
             let credential = try token ?? CredentialVault.read(id)
             guard let credential else { throw CoreFailure(code: "login", message: "登录信息已失效，请重新登录。") }
             try await core.setAccount(token: credential)
@@ -302,7 +305,7 @@ struct Notice: Identifiable {
         do {
             let result = try await core.request(membership ? "notepads.remove" : "notepads.add", ["id": .string(id), "word": .string(word)])
             if generation == accountVersion, preferences.selectedNotepad == id { selectedPad = result["notepad"]; await refreshMembership(); status = membership ? "已加入云词本。" : "已从云词本移除。" }
-        } catch { fail(error) }; writing = false
+        } catch { if generation == accountVersion { fail(error) } }; if generation == accountVersion { writing = false }
     }
     func addToday() {
         guard loggedIn else { openAccountSettings(); return }
@@ -311,14 +314,15 @@ struct Notice: Identifiable {
     private func performAddToday() async {
         guard !writing, !word.isEmpty else { return }; writing = true; let generation = accountVersion; let query = word
         do { let result = try await core.request("study.add", ["word": .string(query)]); if generation == accountVersion, query == word { todayStatus = result["status"].text; status = todayStatus == "AlreadyLearned" ? "这个单词已有学习记录。" : "已安排今日新学。" } }
-        catch { fail(error) }; writing = false
+        catch { if generation == accountVersion { fail(error) } }; if generation == accountVersion { writing = false }
     }
     func createNotebook() {
         guard loggedIn else { openAccountSettings(); return }
         let alert = NSAlert(); alert.messageText = "新建云词本"; alert.addButton(withTitle: "创建"); alert.addButton(withTitle: "取消")
         let input = NSTextField(string: "我的生词本"); input.frame = NSRect(x: 0, y: 0, width: 320, height: 26); alert.accessoryView = input
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        Task { do { let result = try await core.request("notepads.create", ["title": .string(input.stringValue), "word": .string(word)]); preferences.selectedNotepad = result["id"].text; preferences.save(); await refreshNotepads() } catch { fail(error) } }
+        let generation = accountVersion
+        Task { do { let result = try await core.request("notepads.create", ["title": .string(input.stringValue), "word": .string(word)]); guard generation == accountVersion else { return }; preferences.selectedNotepad = result["id"].text; preferences.save(); await refreshNotepads() } catch { if generation == accountVersion { fail(error) } } }
     }
     func loadNotebookRows() async {
         notebookLoading = true
@@ -332,8 +336,9 @@ struct Notice: Identifiable {
     }
     func deleteNotebook() async {
         guard selectedPad != .null else { return }
-        do { _ = try await core.request("notepads.delete", ["original": selectedPad]); selectedPad = .null; sheet = nil; await refreshNotepads(); status = "云词本已删除。" }
-        catch { fail(error) }
+        let generation = accountVersion
+        do { _ = try await core.request("notepads.delete", ["original": selectedPad]); guard generation == accountVersion else { return }; selectedPad = .null; sheet = nil; await refreshNotepads(); status = "云词本已删除。" }
+        catch { if generation == accountVersion { fail(error) } }
     }
     func refreshStubborn(force: Bool = false) async {
         guard loggedIn, !stubbornLoading else { return }

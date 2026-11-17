@@ -15,6 +15,7 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     private var haici: HaiciBrowser?
     private var forceQuit = false
     private var updatePending = false
+    private var noticeShowing = false
     private var updateTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -29,6 +30,7 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
         model.showWindow = { [weak self] in self?.show() }
         model.openHaici = { [weak self] word in self?.openHaici(word) }
         model.applySystemPreferences = { [weak self] in self?.applyPreferences() }
+        model.presentNotice = { [weak self] in DispatchQueue.main.async { self?.presentNotice() } }
         integration = SystemIntegration(model: model)
         model.captureScreen = { [weak self] in self?.integration.screenshot.start() }
         makeStatusItem(); applyPreferences()
@@ -95,6 +97,19 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
         alert.addButton(withTitle: model.updates.busy || model.updates.downloaded != nil ? "查看更新" : "下载更新"); alert.addButton(withTitle: "稍后")
         alert.accessoryView = NSHostingView(rootView: UpdatePromptOptions(preferences: model.preferences).frame(width: 290, height: 32))
         alert.beginSheetModal(for: window) { [weak self] response in Task { @MainActor in guard let self else { return }; self.model.preferences.save(); if response == .alertFirstButtonReturn { self.model.settingsPage = "软件更新"; self.model.sheet = .settings; if !self.model.updates.busy && self.model.updates.downloaded == nil { await self.model.updates.download() } } } }
+    }
+    private func presentNotice() {
+        guard !noticeShowing, let notice = model.notice, let parent = NSApp.keyWindow ?? window else { return }
+        noticeShowing = true
+        let alert = NSAlert(); alert.messageText = notice.title; alert.informativeText = notice.message
+        alert.alertStyle = notice.destructive ? .warning : .informational
+        alert.addButton(withTitle: notice.confirm ?? "知道了"); if notice.confirm != nil { alert.addButton(withTitle: "取消") }
+        alert.beginSheetModal(for: parent) { [weak self] response in Task { @MainActor in
+            guard let self else { return }; self.noticeShowing = false
+            if self.model.notice?.id == notice.id { self.model.notice = nil }
+            if response == .alertFirstButtonReturn { notice.action?() }
+            if self.model.notice != nil { self.presentNotice() }
+        } }
     }
 }
 private struct UpdatePromptOptions: View { @ObservedObject var preferences: Preferences; var body: some View { Toggle("以后发现新版时自动下载", isOn: $preferences.automaticDownloads).toggleStyle(.switch).controlSize(.small) } }

@@ -18,9 +18,11 @@ struct CoreFailure: LocalizedError {
     var onUnauthorized: (() -> Void)?
     private(set) var started = false
     private var accountGeneration = 0
+    private var endedUnexpectedly = false
 
     func start() throws {
         guard !started else { return }
+        guard !endedUnexpectedly else { throw CoreFailure(code: "worker_exit", message: "查词服务已退出，请重新打开软件。") }
         try FileManager.default.createDirectory(at: AppPaths.profile, withIntermediateDirectories: true)
         #if arch(arm64)
         let architecture = "arm64"
@@ -98,7 +100,7 @@ struct CoreFailure: LocalizedError {
         finish(id, .failure(CoreFailure(code: "cancelled", message: message)))
     }
     private func ended() {
-        started = false
+        started = false; endedUnexpectedly = true
         for id in Array(pending.keys) { finish(id, .failure(CoreFailure(code: "worker_exit", message: "查词服务已退出，请重新打开软件。"))) }
     }
     func stop() {

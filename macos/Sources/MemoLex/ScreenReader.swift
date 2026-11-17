@@ -19,7 +19,9 @@ enum ScreenText {
     static func accessible(at point: CGPoint) -> ScreenWord? {
         guard AXIsProcessTrusted() else { return nil }
         var element: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &element) == .success, let element else { return nil }
+        let system = AXUIElementCreateSystemWide(); AXUIElementSetMessagingTimeout(system, 0.2)
+        guard AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &element) == .success, let element else { return nil }
+        AXUIElementSetMessagingTimeout(element, 0.2)
         return read(element, point: point, depth: 0)
     }
     private static func read(_ element: AXUIElement, point: CGPoint, depth: Int) -> ScreenWord? {

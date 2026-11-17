@@ -13,7 +13,8 @@ import SwiftUI
     let preferences: Preferences
     var onAvailable: (() -> Void)?
     private var timer: Timer?
-    private var operation: Task<Void, Never>?
+    private var downloadGeneration = 0
+    private var automaticDownloading = false
     private var notified: Set<String> = []
     private let session = URLSession(configuration: .ephemeral)
     private var asset = J.null
@@ -35,12 +36,10 @@ import SwiftUI
         guard !busy, !automatic || due else { return }
         busy = true; status = "正在检查更新…"
         do {
-            var request = URLRequest(url: URL(string: "https://api.github.com/repos/SuperRaine/MemoLex/releases/latest")!); request.timeoutInterval = 15; request.setValue("MemoLex/1.8.0 macOS", forHTTPHeaderField: "User-Agent"); request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-            let (data, response) = try await session.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 2_000_000 else { throw CoreFailure(code: "updates", message: "暂时无法检查更新，请稍后重试。") }
-            let value = try JSONDecoder().decode(J.self, from: data)
+            let value = try await Self.metadata(session)
             guard !value["draft"].flag, !value["prerelease"].flag else { throw CoreFailure(code: "updates", message: "暂未找到正式版本。") }
             UserDefaults.standard.set(Date(), forKey: "lastUpdateCheck")
+            if value["tag_name"] != release["tag_name"] { downloaded = nil }
             release = value
             guard compare(latestVersion, AppPaths.version) == .orderedDescending else { asset = .null; status = "当前版本 1.8.0 已是最新正式版。"; busy = false; return }
             #if arch(arm64)
@@ -53,14 +52,14 @@ import SwiftUI
             status = "发现新版 \(latestVersion)，点击“下载更新”开始下载。"; busy = false
             let automaticallyDownload = automatic && preferences.automaticDownloads
             if automatic, notified.insert(latestVersion).inserted { onAvailable?() }
-            if automaticallyDownload && preferences.automaticUpdates && preferences.automaticDownloads { await download() }
+            if automaticallyDownload && preferences.automaticUpdates && preferences.automaticDownloads { automaticDownloading = true; await download(); automaticDownloading = false }
         } catch { busy = false; status = "暂时无法检查更新，请检查网络后重试。" }
     }
     func download() async {
         guard !busy, asset != .null else { return }
-        busy = true; progress = 0
-        let digest = asset["digest"].text
-        guard digest.hasPrefix("sha256:"), digest.count == 71, let original = URL(string: asset["browser_download_url"].text), original.scheme == "https", original.host == "github.com" else { busy = false; status = "更新信息不完整，请前往下载页面手动安装。"; return }
+        busy = true; progress = 0; downloadGeneration += 1; let generation = downloadGeneration; let snapshot = asset
+        let digest = snapshot["digest"].text; let name = snapshot["name"].text
+        guard digest.hasPrefix("sha256:"), digest.count == 71, snapshot["size"].integer > 0, snapshot["size"].integer < 2_000_000_000, name.hasPrefix("MemoLex-"), name.hasSuffix(".zip"), !name.contains("/"), !name.contains("\\"), let original = URL(string: snapshot["browser_download_url"].text), original.scheme == "https", original.host == "github.com", original.path.hasPrefix("/SuperRaine/MemoLex/releases/download/") else { busy = false; status = "更新信息不完整，请前往下载页面手动安装。"; return }
         let destinations = ["gh-proxy": "https://gh-proxy.com/", "ghfast": "https://ghfast.top/", "official": ""]
         let ids = preferences.updateSource == "auto" ? ["gh-proxy", "ghfast", "official"] : [preferences.updateSource] + ["gh-proxy", "ghfast", "official"].filter { $0 != preferences.updateSource }
         for source in ids {
@@ -68,19 +67,42 @@ import SwiftUI
             do {
                 status = "正在下载更新 · \(Self.sources.first { $0.0 == source }?.1 ?? source)…"
                 var request = URLRequest(url: url); request.timeoutInterval = 180
-                let delegate = DownloadProgressDelegate { [weak self] fraction in Task { @MainActor in self?.progress = fraction } }
+                let delegate = DownloadProgressDelegate { [weak self] fraction in Task { @MainActor in if self?.downloadGeneration == generation { self?.progress = fraction } } }
                 let (temporary, response) = try await session.download(for: request, delegate: delegate)
+                guard generation == downloadGeneration else { return }
                 guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
                 let attributes = try FileManager.default.attributesOfItem(atPath: temporary.path)
-                guard (attributes[.size] as? NSNumber)?.intValue == asset["size"].integer, try Self.hash(temporary) == String(digest.dropFirst(7)) else { throw CoreFailure(code: "updates", message: "下载文件校验失败。") }
+                let hash = try await Task.detached { try Self.hash(temporary) }.value
+                guard generation == downloadGeneration else { return }
+                guard (attributes[.size] as? NSNumber)?.intValue == snapshot["size"].integer, hash == String(digest.dropFirst(7)) else { throw CoreFailure(code: "updates", message: "下载文件校验失败。") }
                 let folder = AppPaths.profile.appendingPathComponent("updates", isDirectory: true); try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                let destination = folder.appendingPathComponent(asset["name"].text)
+                let destination = folder.appendingPathComponent(name)
                 if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
                 try FileManager.default.moveItem(at: temporary, to: destination)
                 downloaded = destination; status = "新版已下载完成，点击“更新并重启”安装。"; progress = 1; busy = false; return
-            } catch { if Task.isCancelled { break } }
+            } catch { if generation != downloadGeneration { return }; if Task.isCancelled { break } }
         }
         busy = false; status = "下载未完成，可更换下载源后重试。"
+    }
+    func cancelDownload() { downloadGeneration += 1; session.getAllTasks { $0.forEach { $0.cancel() } }; busy = false; status = "下载已取消，稍后可重新下载。" }
+    func preferencesChanged() { preferences.save(); if automaticDownloading && (!preferences.automaticUpdates || !preferences.automaticDownloads) { cancelDownload() } }
+    nonisolated private static func metadata(_ session: URLSession) async throws -> J {
+        let original = "https://api.github.com/repos/SuperRaine/MemoLex/releases/latest"
+        let sources = [original, "https://gh-proxy.com/" + original, "https://ghfast.top/" + original]
+        return try await withThrowingTaskGroup(of: J?.self) { group in
+            for (index, source) in sources.enumerated() { group.addTask {
+                do {
+                    if index > 0 { try await Task.sleep(nanoseconds: UInt64(index) * 350_000_000) }
+                    var request = URLRequest(url: URL(string: source)!); request.timeoutInterval = 8; request.setValue("MemoLex/1.8.0 macOS", forHTTPHeaderField: "User-Agent"); request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+                    let (data, response) = try await session.data(for: request)
+                    guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 2_000_000 else { return nil }
+                    let value = try JSONDecoder().decode(J.self, from: data)
+                    return value["tag_name"].text.isEmpty || !value["html_url"].text.hasPrefix(AppPaths.repository + "/releases/tag/") ? nil : value
+                } catch { return nil }
+            } }
+            for try await result in group { if let result { group.cancelAll(); return result } }
+            throw CoreFailure(code: "updates", message: "暂时无法检查更新，请稍后重试。")
+        }
     }
     func install() async {
         guard let downloaded, !busy else { return }; busy = true
@@ -93,7 +115,7 @@ import SwiftUI
         return digest.finalize().map { String(format: "%02x", $0) }.joined()
     }
     private func compare(_ lhs: String, _ rhs: String) -> ComparisonResult { lhs.compare(rhs, options: .numeric) }
-    func stop() { timer?.invalidate(); operation?.cancel(); session.invalidateAndCancel() }
+    func stop() { timer?.invalidate(); session.invalidateAndCancel() }
 }
 
 private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
@@ -122,8 +144,9 @@ struct UpdatesSettings: View {
                 Button("更新并重启") { Task { await updates.install() } }.disabled(updates.busy || updates.downloaded == nil)
                 Button("前往下载页面") { NSWorkspace.shared.open(URL(string: AppPaths.repository + "/releases/latest")!) }
             }.buttonStyle(MemoButtonStyle(compact: true))
+            if updates.busy { Button("取消下载") { updates.cancelDownload() }.buttonStyle(MemoButtonStyle(compact: true)) }
             if !updates.release["body"].text.isEmpty { DisclosureGroup("更新说明") { Text(updates.release["body"].text).font(.system(size: 12)).textSelection(.enabled) } }
-        }.onChange(of: updates.preferences.automaticUpdates) { _ in updates.preferences.save() }.onChange(of: updates.preferences.automaticDownloads) { _ in updates.preferences.save() }.onChange(of: updates.preferences.updateFrequency) { _ in updates.preferences.save() }.onChange(of: updates.preferences.updateSource) { _ in updates.preferences.save() }
+        }.onChange(of: preferences.automaticUpdates) { _ in updates.preferencesChanged() }.onChange(of: preferences.automaticDownloads) { _ in updates.preferencesChanged() }.onChange(of: preferences.updateFrequency) { _ in preferences.save() }.onChange(of: preferences.updateSource) { _ in preferences.save() }
     }
 }
 

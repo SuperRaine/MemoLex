@@ -44,12 +44,6 @@ struct MainView: View {
             case .notepad: NotebookView(model: model)
             }
         }
-        .alert(item: $model.notice) { notice in
-            if let confirm = notice.confirm {
-                return Alert(title: Text(notice.title), message: Text(notice.message), primaryButton: notice.destructive ? .destructive(Text(confirm), action: { notice.action?() }) : .default(Text(confirm), action: { notice.action?() }), secondaryButton: .cancel(Text("取消")))
-            }
-            return Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text("知道了")))
-        }
         .onAppear { model.focusSearch = { searchFocused = true } }
     }
     private func sidebar(compact: Bool) -> some View {
@@ -173,7 +167,7 @@ private struct WordPage: View {
     }
     @ViewBuilder private var actions: some View {
         Button(model.membership ? "✓ 已加入云词本" : "＋ 加入云词本") { Task { await model.toggleMembership() } }.buttonStyle(MemoButtonStyle(accent: true)).disabled(model.word.isEmpty || model.writing)
-        Button(todayLabel) { model.addToday() }.buttonStyle(MemoButtonStyle()).disabled(model.word.isEmpty || model.writing || ["AlreadyLearned", "AlreadyToday", "Planned"].contains(model.todayStatus)).tourTarget("today")
+        Button(todayLabel) { model.addToday() }.buttonStyle(MemoButtonStyle()).disabled(model.word.isEmpty || model.writing || ["AlreadyLearned", "AlreadyToday", "Planned", "Added"].contains(model.todayStatus)).tourTarget("today")
     }
     private var todayLabel: String { switch model.todayStatus { case "AlreadyLearned": return "已学过的单词"; case "AlreadyToday", "Planned", "Added": return "已计划新学"; default: return "＋ 今日新学" } }
     private var rule: some View { Divider().overlay(Palette.border).padding(.vertical, 23) }
