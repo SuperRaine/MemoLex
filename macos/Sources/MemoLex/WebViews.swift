@@ -12,7 +12,7 @@ import WebKit
     private var completing = false
     private let startURL = URL(string: "https://open.maimemo.com/open/api/v1/tokens/openapi")!
     init(model: AppModel) {
-        self.model = model; target = model.loginTarget; identity = model.loginTarget?.identity ?? ""
+        self.model = model; target = model.loginTarget; identity = ""
         let configuration = WKWebViewConfiguration(); configuration.websiteDataStore = .nonPersistent()
         let controller = WKUserContentController()
         controller.addUserScript(WKUserScript(source: """
@@ -20,8 +20,12 @@ import WebKit
           if (location.protocol !== 'https:' || location.hostname !== 'accounts.maimemo.com' || !location.pathname.startsWith('/interaction/')) return;
           const report = () => {
             const fields = [...document.querySelectorAll('input')];
-            const field = fields.find(x => ['text', 'tel', 'email', 'number'].includes(x.type) && /phone|mobile|email|username|login|identifier|account|tel/i.test((x.name || '') + ' ' + (x.id || '') + ' ' + x.type));
-            if (field && field.value && field.value.length < 200) window.webkit.messageHandlers.MemoLexIdentity.postMessage(field.value);
+            const field = fields.find(x => {
+              if (!['text', 'tel', 'email', 'number'].includes(x.type) || !/phone|mobile|email|username|login|identifier|account|tel/i.test((x.name || '') + ' ' + (x.id || '') + ' ' + x.type)) return false;
+              const value = x.value.trim(); const digits = value.replace(/\D/g, '');
+              return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || (/^\+?[\d ()-]+$/.test(value) && digits.length >= 7 && digits.length <= 18);
+            });
+            if (field && field.value.length < 200) window.webkit.messageHandlers.MemoLexIdentity.postMessage(field.value);
           };
           document.addEventListener('input', report, true);
           document.addEventListener('submit', report, true);
@@ -36,7 +40,9 @@ import WebKit
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
         guard origin.protocol == "https", origin.host == "accounts.maimemo.com", message.frameInfo.request.url?.path.hasPrefix("/interaction/") == true, let value = message.body as? String, value.count < 200 else { return }
-        identity = value.trimmed.lowercased()
+        let normalized = value.trimmed.lowercased()
+        if normalized.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) != nil { identity = normalized }
+        else if normalized.range(of: "^\\+?[0-9 ()-]+$", options: .regularExpression) != nil { let digits = normalized.filter(\.isNumber); if (7...18).contains(digits.count) { identity = digits.count == 13 && digits.hasPrefix("86") ? String(digits.dropFirst(2)) : digits } }
     }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
