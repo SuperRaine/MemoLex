@@ -14,8 +14,14 @@ MSI 为当前 Windows 用户安装，默认目录为 `%LOCALAPPDATA%/Programs/Me
 
 默认使用电脑共享的网页运行环境，包内包含小型安装引导程序。若需要可选的完整网页引擎，把运行时放在 `webview2`，并在构建、MSI 验证中都传入 `-IncludeBrowserRuntime`，打包时传入 `--include-browser-runtime`。默认安装包和便携包使用相同的文件筛选规则，不包含整个 `webview2` 目录。
 
-GitHub Releases 只上传安装包（`.msi`）和便携包（`-Windows-x64.zip`）。验证报告和校验清单保留在本地；源码通过仓库及 GitHub 自动生成的源码下载项提供。
+GitHub Releases 只上传软件包。Windows 提供 `.msi` 和 `-Windows-x64.zip`；Mac 提供 `.dmg` 和 `-macOS-universal.zip`。验证报告和校验清单不放入源码或发布附件。
 
 助记正文和升级匹配表在 `mnemonics`，随包复制到 `data`。
 
 本仓库不包含服务私钥。自行构建时，如未在本机 `src/Private/DeepL.key` 提供自己的授权，在线翻译使用 MyMemory；发行二进制包使用维护者配置的服务。该目录受版本控制忽略。
+
+## Mac
+
+在安装了 Xcode Command Line Tools、Swift 5.9 以上及 .NET 8 SDK 的 Mac 上，执行 `bash macos/build.sh`。脚本从固定版本便携包取得并校验离线数据，生成包含 Apple Silicon 和 Intel 组件的 `MemoLex.app`、DMG 和 ZIP。也可用 `MEMOLEX_DATA_ROOT` 指定已有的 `app` 数据目录，用 `MEMOLEX_OUTPUT` 指定空的输出目录。
+
+原生界面在 `macos/Sources`，查词与云端接口复用 `src/Core` 和 `src/Services`，由私有管道通信。GitHub Actions 可在「Build macOS 1.8」工作流中构建；服务授权通过仓库 Secret 注入，不写入源码。默认进行本机签名，公开分发的 Apple 开发者签名与公证需要维护者自己的证书。

@@ -1,6 +1,6 @@
 # 墨墨搜词 MemoLex
 
-适用于 Windows 的英汉查词工具，支持离线查词、中文反查、助记、真题例句和墨墨云词本。
+适用于 Windows 和 Mac 的英汉查词工具，支持离线查词、中文反查、助记、真题例句和墨墨云词本。
 
 **本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。**
 
@@ -8,16 +8,18 @@
 
 ## 下载与安装
 
-支持 **Windows 10 / 11（64 位）**，已包含运行环境、离线词库和本地助记。
+支持 **Windows 10 / 11（64 位）**、**macOS 13 及以上（Apple Silicon / Intel）**。已包含运行环境、离线词库和本地助记。
 
 | 版本 | 使用方法 |
 | --- | --- |
 | [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-Windows-x64-Setup.msi)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
 | [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-Windows-x64.zip)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
+| [Mac 安装包](https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-macOS-universal.dmg)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-macOS-universal.dmg)） | 打开后将 `MemoLex` 拖到「应用程序」。 |
+| [Mac ZIP 包](https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-macOS-universal.zip) | 解压后打开 `MemoLex.app`。 |
 
-登录和海词词典需要网页组件，缺少时按提示联网安装即可。
+Windows 登录和海词词典需要网页组件，缺少时按提示联网安装即可；Mac 使用系统网页组件。
 
-两种版本均可运行 `Uninstall.exe` 卸载。默认删除本机资料，如需保留，请开启「保留用户资料」；正常更新会保留资料。
+Windows 运行 `Uninstall.exe` 卸载，Mac 在「设置 → 关于与赞助」中卸载。默认删除本机资料，如需保留，请开启「保留用户资料」；正常更新会保留资料。
 
 ## 可以做什么
 
@@ -26,13 +28,15 @@
 - **墨墨云功能**：收藏和管理云词本，添加今日新学，保存并切换多个账号。
 - **顽固单词**：在顶部查看顽固词，按复习时间、字母或随机顺序轮换，也可遮住释义自测。
 - **阅读与翻译**：鼠标取词、截图翻译、段落翻译；点击英文单词可查看释义。
-- **快捷操作**：支持连续两次 Ctrl+C 查词、自定义快捷键、海词词典和考试倒计时。
+- **快捷操作**：支持连续两次 Ctrl+C（Mac 为 ⌘C）查词、自定义快捷键、海词词典和考试倒计时。
 
 ## 开始使用
 
 在搜索框输入英文或中文，按 Enter 查词。需要使用云词本或今日新学时，在「设置 → 墨墨账号」中登录。
 
 首次打开可跟随新手引导了解常用功能，也可随时跳过。更多操作见[使用说明](使用说明.md)。
+
+Mac 的首次打开、权限和快捷键说明见 [Mac 使用说明](macos/使用说明.md)。
 
 发现新版时默认只提醒，点击「下载更新」后开始下载；也可在设置中开启自动下载。
 

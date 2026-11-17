@@ -30,6 +30,7 @@ struct MainView: View {
             }.background(Palette.canvas).foregroundStyle(Palette.ink)
                 .overlayPreferenceValue(TourTargets.self) { anchors in TourOverlay(model: model, anchors: anchors, context: "main") }
         }
+        .ignoresSafeArea(.container, edges: .top)
         .font(.system(size: 13)).tint(Palette.deep).toggleStyle(MemoCheckStyle())
         .environment(\.openURL, OpenURLAction { url in
             if url.scheme == "memolex", let query = url.path.removingPercentEncoding { model.lookup(String(query.dropFirst())); return .handled }
@@ -115,7 +116,7 @@ private struct MainTitlebar: View {
                 }.foregroundStyle(Palette.deep).padding(.horizontal, 8).frame(width: min(270, max(80, geometry.size.width)), height: 34).background(Palette.wash, in: RoundedRectangle(cornerRadius: 9)).overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.border)).position(x: min(270, max(80, geometry.size.width)) / 2, y: geometry.size.height / 2)
             }.frame(minWidth: 80).layoutPriority(1).tourTarget("stubborn")
             if model.preferences.showCountdown { TimelineView(.periodic(from: Date(), by: 30)) { _ in Text(model.countdown).foregroundStyle(.red).font(.system(size: 11)).lineLimit(1).frame(maxWidth: compact ? 100 : 210).help(model.countdown) } }
-            Button { model.openAccountSettings() } label: { HStack(spacing: 5) { Image(systemName: "person"); Text(model.titleAccount).lineLimit(1).truncationMode(.tail).frame(maxWidth: compact ? 66 : 100) }.font(.system(size: 11)).padding(.horizontal, 9).frame(height: 34).background(Palette.wash, in: RoundedRectangle(cornerRadius: 9)) }.buttonStyle(.plain).foregroundStyle(Palette.deep).help(model.accountStatus)
+            Button { model.openAccountSettings() } label: { HStack(spacing: 5) { Image(systemName: "person"); Text(model.titleAccount).lineLimit(1).truncationMode(.tail).frame(maxWidth: compact ? 66 : 100) }.font(.system(size: 11)).padding(.horizontal, 9).frame(height: 34).background(Palette.wash, in: RoundedRectangle(cornerRadius: 9)) }.buttonStyle(.plain).foregroundStyle(Palette.deep).fixedSize(horizontal: true, vertical: false).layoutPriority(2).help(model.titleAccount + " · " + model.accountStatus)
             HStack(spacing: compact ? 0 : 5) {
                 titleButton("gearshape", width: compact ? 28 : 34) { model.sheet = .settings }
                 titleButton(model.preferences.alwaysOnTop ? "pin.fill" : "pin", width: compact ? 28 : 34) { model.preferences.alwaysOnTop.toggle(); model.preferences.save(); model.applySystemPreferences?() }
@@ -188,13 +189,17 @@ private struct RelationsView: View {
     private let groups = [("synonyms", "近义词"), ("similar", "形近词"), ("derivatives", "派生词"), ("phrases", "常用短语")]
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 5)], alignment: .leading, spacing: 6) {
-                ForEach(groups, id: \.0) { key, title in Button { if model.expandedRelations.contains(key) { model.expandedRelations.remove(key) } else { model.expandedRelations.insert(key) } } label: { HStack(spacing: 6) { Text("\(title) · \(model.relations[key].list.count)"); Image(systemName: model.expandedRelations.contains(key) ? "chevron.up" : "chevron.down").font(.system(size: 8)) } }.buttonStyle(MemoButtonStyle(compact: true)) }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { ForEach(groups, id: \.0) { key, title in relationButton(key, title) } }
+                LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 6) { ForEach(groups, id: \.0) { key, title in relationButton(key, title) } }
             }
             ForEach(groups, id: \.0) { key, title in if model.expandedRelations.contains(key) {
                 VStack(alignment: .leading, spacing: 10) { Text(title).font(.system(size: 11, weight: .semibold)); if model.relations[key].list.isEmpty { Text("暂无相关词条").foregroundStyle(Palette.muted) }; ForEach(model.relations[key].list, id: \.wordText) { related in LinkedText(text: related["word"].text + "  " + related["meaning"].text.decodedLines, size: 14) } }.padding(13).frame(maxWidth: .infinity, alignment: .leading).background(Palette.wash, in: RoundedRectangle(cornerRadius: 9))
             } }
         }
+    }
+    private func relationButton(_ key: String, _ title: String) -> some View {
+        Button { if model.expandedRelations.contains(key) { model.expandedRelations.remove(key) } else { model.expandedRelations.insert(key) } } label: { HStack(spacing: 6) { Text("\(title) · \(model.relations[key].list.count)"); Image(systemName: model.expandedRelations.contains(key) ? "chevron.up" : "chevron.down").font(.system(size: 8)) } }.buttonStyle(MemoButtonStyle(compact: true)).fixedSize()
     }
 }
 extension J { var wordText: String { self["word"].text } }

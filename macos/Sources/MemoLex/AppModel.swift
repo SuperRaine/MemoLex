@@ -110,11 +110,11 @@ struct Notice: Identifiable {
             let metadata = try await core.request("initialize")
             wordCount = metadata["wordCount"].integer; translationProvider = metadata["translationProvider"].text
             ready = true; status = metadata["warning"].text.isEmpty ? "词典与本地助记已就绪。" : metadata["warning"].text
+            updates.start()
             if let account = activeAccount, !account.needsLogin {
                 if let expiry = account.expiresAt, expiry <= Date() { expireAccount() }
                 else if let token = try CredentialVault.read(account.id) { await activate(account.id, token: token) }
             }
-            updates.start()
             if !preferences.onboardingCompleted { startTour() }
         } catch { fail(error) }
     }
@@ -313,7 +313,7 @@ struct Notice: Identifiable {
     }
     private func performAddToday() async {
         guard !writing, !word.isEmpty else { return }; writing = true; let generation = accountVersion; let query = word
-        do { let result = try await core.request("study.add", ["word": .string(query)]); if generation == accountVersion, query == word { todayStatus = result["status"].text; status = todayStatus == "AlreadyLearned" ? "这个单词已有学习记录。" : "已安排今日新学。" } }
+        do { let result = try await core.request("study.add", ["word": .string(query)]); if generation == accountVersion, query == word { todayStatus = result["status"].text; switch todayStatus { case "AlreadyLearned": status = "这个单词已有学习记录。"; case "Added", "AlreadyToday", "Planned": status = "已安排今日新学。"; case "NotAdded": status = "尚未加入今日新学，请稍后重试。"; default: status = "已提交，学习状态还需等待手机端同步。" } } }
         catch { if generation == accountVersion { fail(error) } }; if generation == accountVersion { writing = false }
     }
     func createNotebook() {

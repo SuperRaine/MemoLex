@@ -48,7 +48,7 @@ struct TourOverlay: View {
                 GeometryReader { geometry in
                     let target = anchors[step.target].map { geometry[$0].insetBy(dx: -5, dy: -5) } ?? CGRect(x: 15, y: 15, width: 150, height: 40)
                     ZStack {
-                        Canvas { drawing, size in var path = Path(CGRect(origin: .zero, size: size)); path.addRoundedRect(in: target, cornerSize: CGSize(width: 8, height: 8)); drawing.fill(path, with: .color(.black.opacity(0.43)), style: FillStyle(eoFill: true)) }.allowsHitTesting(false)
+                        Path { path in path.addRect(CGRect(origin: .zero, size: geometry.size)); path.addRoundedRect(in: target, cornerSize: CGSize(width: 8, height: 8)) }.fill(.black.opacity(0.43), style: FillStyle(eoFill: true)).allowsHitTesting(false)
                         RoundedRectangle(cornerRadius: 8).stroke(Palette.accent, lineWidth: 2.5).frame(width: target.width, height: target.height).position(x: target.midX, y: target.midY).allowsHitTesting(false)
                         VStack(alignment: .leading, spacing: 14) {
                             HStack { Text("\(index + 1) / \(AppModel.tourSteps.count)").font(.system(size: 11)).foregroundStyle(Palette.deep); Picker("", selection: Binding(get: { index }, set: { model.setTourStep($0) })) { ForEach(Array(AppModel.tourSteps.enumerated()), id: \.offset) { position, item in Text(item.title).tag(position) } }.labelsHidden() }
