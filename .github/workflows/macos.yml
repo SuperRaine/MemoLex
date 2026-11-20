@@ -2,7 +2,7 @@ name: Build macOS 1.8
 on:
   workflow_dispatch:
   push:
-    branches: [macos-1.8.0, main]
+    branches: [macos-1.8.0, macos-1.8.1-check, main]
     paths: ['macos/**', 'src/Core/**', 'src/Services/**', '.github/workflows/macos.yml']
 permissions:
   contents: read
@@ -27,6 +27,8 @@ jobs:
             printf '%s' "$PROVIDER_KEY" > src/Private/DeepL.key
           fi
       - name: Build universal app and packages
+        env:
+          MEMOLEX_VERIFY_ONLY: ${{ github.ref_name == 'macos-1.8.1-check' && '1' || '0' }}
         run: bash macos/build.sh
       - name: Upload Mac packages
         uses: actions/upload-artifact@v7
@@ -51,7 +53,7 @@ jobs:
           name: MemoLex-1.8.0-macOS
       - name: Verify native bundle and offline core
         run: |
-          ditto -x -k MemoLex-1.8.0-macOS-universal.zip app
+          ditto -x -k MemoLex-*-macOS-universal.zip app
           APP="$PWD/app/MemoLex.app"
           codesign --verify --deep --strict "$APP"
           lipo "$APP/Contents/MacOS/MemoLex" -verify_arch x86_64 arm64

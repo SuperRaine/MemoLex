@@ -16,6 +16,7 @@ struct TourStep {
 @MainActor extension AppModel {
     static let tourSteps: [TourStep] = [
         .init(title: "查词与阅读", text: "输入英文或中文，按回车查词。点击英文单词可查看释义。", target: "search"),
+        .init(title: "本地词库", text: "选择本机的兼容词库文件。查词和中文反查会优先使用其中的释义。", target: "localDictionary", settings: "本地词库"),
         .init(title: "登录与切换账号", text: "在这里登录墨墨，也可切换已保存的账号。", target: "login", settings: "墨墨账号"),
         .init(title: "顽固单词", text: "点击顶部单词查词。在“全部”中选择排序，或遮住释义自测。", target: "stubborn"),
         .init(title: "收藏与管理云词本", text: "选择云词本后收藏单词，点击“查看 / 编辑”管理词表。", target: "cloud"),
@@ -54,7 +55,7 @@ struct TourOverlay: View {
                             HStack { Text("\(index + 1) / \(AppModel.tourSteps.count)").font(.system(size: 11)).foregroundStyle(Palette.deep); Picker("", selection: Binding(get: { index }, set: { model.setTourStep($0) })) { ForEach(Array(AppModel.tourSteps.enumerated()), id: \.offset) { position, item in Text(item.title).tag(position) } }.labelsHidden() }
                             Text(step.text).font(.system(size: 13)).lineSpacing(5).foregroundStyle(Palette.deep)
                             HStack { Button("跳过") { model.finishTour() }; Spacer(); Button("上一步") { model.setTourStep(index - 1) }.disabled(index == 0); Button(index == AppModel.tourSteps.count - 1 ? "完成" : "下一步") { model.setTourStep(index + 1) }.buttonStyle(MemoButtonStyle(accent: true, compact: true)) }.buttonStyle(MemoButtonStyle(compact: true))
-                        }.padding(17).frame(width: min(340, geometry.size.width - 32)).background(.white, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.accent)).shadow(color: .black.opacity(0.2), radius: 15, y: 4).position(cardPosition(target: target, size: geometry.size))
+                        }.padding(17).frame(width: min(340, geometry.size.width - 32)).background(Palette.paper, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.accent)).shadow(color: .black.opacity(0.2), radius: 15, y: 4).position(cardPosition(target: target, size: geometry.size))
                     }
                 }.transition(.opacity)
             }

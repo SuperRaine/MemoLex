@@ -15,6 +15,7 @@ struct CoreFailure: LocalizedError {
     private var buffer = Data()
     private var pending: [String: CheckedContinuation<J, Error>] = [:]
     private var timers: [String: Task<Void, Never>] = [:]
+    private var accountRequests: [String: Int] = [:]
     var accountKey = ""
     var onUnauthorized: (() -> Void)?
     private(set) var started = false
@@ -54,13 +55,16 @@ struct CoreFailure: LocalizedError {
         if !started { try start() }
         let id = UUID().uuidString
         var parameters = parameters
-        if method.hasPrefix("notepads.") || method.hasPrefix("study.") || ["notes.cloud", "notes.publish", "stubborn", "account.validate"].contains(method) {
+        let needsAccount = method.hasPrefix("notepads.") || method.hasPrefix("study.") || ["notes.cloud", "notes.publish", "stubborn", "account.validate"].contains(method)
+        if needsAccount {
+            guard !accountKey.isEmpty else { throw CoreFailure(code: "cancelled", message: "账号正在切换，请稍后重试。") }
             parameters["accountKey"] = .string(accountKey)
         }
         let data = try JSONEncoder().encode(J.object(["id": .string(id), "method": .string(method), "params": .object(parameters)]))
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 pending[id] = continuation
+                if needsAccount { accountRequests[id] = accountGeneration }
                 timers[id] = Task { [weak self] in
                     try? await Task.sleep(nanoseconds: timeout * 1_000_000_000)
                     if !Task.isCancelled { self?.cancel(id, message: "操作超时，请重试。") }
@@ -73,6 +77,7 @@ struct CoreFailure: LocalizedError {
 
     func setAccount(token: String?) async throws {
         accountGeneration += 1; let generation = accountGeneration
+        accountKey = ""
         let result = try await request("account.set", ["token": token.map(J.string) ?? .null])
         if generation == accountGeneration { accountKey = result["accountKey"].text }
     }
@@ -85,13 +90,17 @@ struct CoreFailure: LocalizedError {
             let id = response["id"].text
             if response["error"] != .null {
                 let error = CoreFailure(code: response["error"]["code"].text, message: response["error"]["message"].text)
-                if error.code == "unauthorized", !accountKey.isEmpty, response["error"]["accountKey"].text == accountKey { onUnauthorized?() }
+                if error.code == "unauthorized", accountRequests[id] == accountGeneration, !accountKey.isEmpty, response["error"]["accountKey"].text == accountKey {
+                    accountKey = ""
+                    onUnauthorized?()
+                }
                 finish(id, .failure(error))
             } else { finish(id, .success(response["result"])) }
         }
     }
     private func finish(_ id: String, _ result: Result<J, Error>) {
         timers.removeValue(forKey: id)?.cancel()
+        accountRequests.removeValue(forKey: id)
         pending.removeValue(forKey: id)?.resume(with: result)
     }
     private func cancel(_ id: String, message: String = "操作已取消。") {

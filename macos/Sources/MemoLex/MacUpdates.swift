@@ -41,7 +41,7 @@ import SwiftUI
             UserDefaults.standard.set(Date(), forKey: "lastUpdateCheck")
             if value["tag_name"] != release["tag_name"] { downloaded = nil }
             release = value
-            guard compare(latestVersion, AppPaths.version) == .orderedDescending else { asset = .null; status = "当前版本 1.8.0 已是最新正式版。"; busy = false; return }
+            guard compare(latestVersion, AppPaths.version) == .orderedDescending else { asset = .null; status = "当前版本 \(AppPaths.version) 无需更新。"; busy = false; return }
             #if arch(arm64)
             let architecture = "arm64"
             #else
@@ -93,7 +93,7 @@ import SwiftUI
             for (index, source) in sources.enumerated() { group.addTask {
                 do {
                     if index > 0 { try await Task.sleep(nanoseconds: UInt64(index) * 350_000_000) }
-                    var request = URLRequest(url: URL(string: source)!); request.timeoutInterval = 8; request.setValue("MemoLex/1.8.0 macOS", forHTTPHeaderField: "User-Agent"); request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+                    var request = URLRequest(url: URL(string: source)!); request.timeoutInterval = 8; request.setValue("MemoLex/\(AppPaths.version) macOS", forHTTPHeaderField: "User-Agent"); request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
                     let (data, response) = try await session.data(for: request)
                     guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 2_000_000 else { return nil }
                     let value = try JSONDecoder().decode(J.self, from: data)
@@ -132,7 +132,7 @@ struct UpdatesSettings: View {
     init(updates: MacUpdates) { self.updates = updates; self.preferences = updates.preferences }
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
-            Text("当前版本 1.8.0 · macOS").foregroundStyle(Palette.muted)
+            Text("当前版本 \(AppPaths.version) · macOS").foregroundStyle(Palette.muted)
             HStack(spacing: 16) { Toggle("自动检查更新", isOn: $preferences.automaticUpdates).toggleStyle(.switch).controlSize(.small); Text("检查更新间隔").foregroundStyle(Palette.muted); Picker("", selection: $preferences.updateFrequency) { Text("每次启动").tag("startup"); Text("每 6 小时").tag("6h"); Text("每天").tag("daily"); Text("每周").tag("weekly") }.labelsHidden().frame(width: 150) }
             HStack(spacing: 13) { Text("下载源").foregroundStyle(Palette.muted); Picker("", selection: $preferences.updateSource) { ForEach(MacUpdates.sources, id: \.0) { id, name in Text(name).tag(id) } }.labelsHidden().frame(width: 180); Toggle("发现新版后自动下载", isOn: $preferences.automaticDownloads).toggleStyle(.switch).controlSize(.small) }
             Text("默认发现新版时只提醒，点击下载后开始下载。连接失败时会切换备用源。").font(.system(size: 12)).foregroundStyle(Palette.muted)

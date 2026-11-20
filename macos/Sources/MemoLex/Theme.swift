@@ -7,36 +7,21 @@ struct MemoButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: compact ? 11 : 13, weight: accent ? .semibold : .regular))
-            .padding(.horizontal, compact ? 9 : 13).padding(.vertical, compact ? 6 : 9)
-            .foregroundStyle(accent ? Palette.ink : Palette.deep)
-            .background(accent ? Palette.accent.opacity(configuration.isPressed ? 0.72 : 1) : (configuration.isPressed ? Palette.wash : Color.white), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(accent ? Palette.accent : Palette.border, lineWidth: 1))
+            .font(compact ? .callout : .body)
+            .padding(.horizontal, compact ? 8 : 12).padding(.vertical, compact ? 4 : 6)
+            .foregroundStyle(accent ? Color.white : Palette.ink)
+            .background(accent ? Palette.accent.opacity(configuration.isPressed ? 0.78 : 1) :
+                Color(nsColor: .controlBackgroundColor).opacity(configuration.isPressed ? 0.5 : 1),
+                in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(accent ? Color.clear : Palette.border, lineWidth: 0.6))
             .opacity(enabled ? 1 : 0.38)
-    }
-}
-
-struct MemoCheckStyle: ToggleStyle {
-    @Environment(\.isEnabled) private var enabled
-    func makeBody(configuration: Configuration) -> some View {
-        Button { configuration.isOn.toggle() } label: {
-            HStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 5).fill(configuration.isOn ? Color(red: 0.18, green: 0.55, blue: 1) : Color.white)
-                    RoundedRectangle(cornerRadius: 5).stroke(configuration.isOn ? Color.clear : Palette.border, lineWidth: 1)
-                    if configuration.isOn { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white) }
-                }.frame(width: 18, height: 18)
-                configuration.label
-            }.frame(minHeight: 26, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(.plain).opacity(enabled ? 1 : 0.4)
-            .accessibilityValue(Text(configuration.isOn ? "已选择" : "未选择"))
     }
 }
 
 struct Card<Content: View>: View {
     var padding: CGFloat = 20
     @ViewBuilder var content: Content
-    var body: some View { content.padding(padding).frame(maxWidth: .infinity, alignment: .leading).background(Color.white, in: RoundedRectangle(cornerRadius: 13)).overlay(RoundedRectangle(cornerRadius: 13).stroke(Palette.border)) }
+    var body: some View { content.padding(padding).frame(maxWidth: .infinity, alignment: .leading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.border, lineWidth: 0.5)) }
 }
 
 struct DialogHeader: View {
@@ -45,10 +30,11 @@ struct DialogHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             OwlImage().frame(width: 27, height: 27)
-            Text(title).font(.system(size: 13)).foregroundStyle(Palette.deep)
+            Text(title).font(.headline)
             Spacer()
-            Button(action: close) { Image(systemName: "xmark").frame(width: 28, height: 28) }.buttonStyle(.plain).foregroundStyle(Palette.muted)
-        }.padding(.horizontal, 13).frame(height: 44).background(.white).overlay(alignment: .bottom) { Divider().overlay(Palette.border) }
+            Button(action: close) { Image(systemName: "xmark.circle.fill").font(.system(size: 17)).frame(width: 28, height: 28) }
+                .buttonStyle(.borderless).foregroundStyle(.tertiary).help("关闭").accessibilityLabel("关闭")
+        }.padding(.horizontal, 13).frame(height: 45).background(.bar).overlay(alignment: .bottom) { Divider() }
     }
 }
 
@@ -93,6 +79,6 @@ struct LinkedText: View {
 }
 
 extension View {
-    func inputFrame(height: CGFloat = 36) -> some View { self.textFieldStyle(.plain).padding(.horizontal, 10).frame(height: height).background(.white, in: RoundedRectangle(cornerRadius: 9)).overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.border)) }
+    func inputFrame(height: CGFloat = 36) -> some View { self.textFieldStyle(.plain).padding(.horizontal, 10).frame(height: height).background(Palette.paper, in: RoundedRectangle(cornerRadius: 7)).overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Palette.border, lineWidth: 0.6)) }
     func sectionLabel() -> some View { self.font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.muted) }
 }

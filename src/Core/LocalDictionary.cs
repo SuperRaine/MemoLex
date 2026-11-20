@@ -37,37 +37,72 @@ public sealed class LocalDictionary : IDisposable
     private FileStream? _data;
     private readonly object _gate = new();
     private readonly string _directory;
+    private readonly SemaphoreSlim _preferredChanges = new(1, 1);
+    internal static string BriefSettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MemoLex","dictionary.path");
     internal static string? ReadConfiguredBriefPath(string? settingsPath=null)
     {
-        if(settingsPath==null)
-        {
-            var environmentPath=Environment.GetEnvironmentVariable("MEMOLEX_LOCAL_DICTIONARY");
-            if(!string.IsNullOrWhiteSpace(environmentPath))return environmentPath.Trim();
-            settingsPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MemoLex","dictionary.path");
-        }
+        settingsPath ??= BriefSettingsPath;
         try
         {
-            var path=File.Exists(settingsPath)?File.ReadAllText(settingsPath).Trim():null;
+            var path=File.Exists(settingsPath)
+                ? File.ReadAllText(settingsPath).Trim()
+                : Environment.GetEnvironmentVariable("MEMOLEX_LOCAL_DICTIONARY")?.Trim();
             return string.IsNullOrWhiteSpace(path)?null:path;
         }
         catch(Exception error)when(error is IOException or UnauthorizedAccessException){return null;}
     }
-    private readonly LocalBriefDictionary? _preferred;
+    private LocalBriefDictionary? _preferred;
+    private string? _preferredPath;
     public LocalDictionary(string? directory = null,string? preferredPath=null)
     {
         _directory = directory ?? Path.Combine(ApplicationPaths.RuntimeDirectory, "data");
         preferredPath??=directory==null?ReadConfiguredBriefPath():null;
-        if(!string.IsNullOrWhiteSpace(preferredPath))_preferred=new(preferredPath);
+        if(!string.IsNullOrWhiteSpace(preferredPath))
+        {
+            _preferredPath=preferredPath;
+            _preferred=new(preferredPath);
+        }
     }
     internal LocalDictionary(string directory,LocalBriefDictionary preferred) : this(directory)
     {
         _preferred=preferred;
     }
     public int Count => _entries.Count;
-    public int PreferredCount=>_preferred?.Count??0;
-    public bool PreferredAvailable=>_preferred?.Available==true;
-    public string? PreferredWarning=>_preferred?.LoadWarning;
-    public Task LoadAsync()=>Task.WhenAll(LoadBaseAsync(),_preferred?.LoadAsync()??Task.CompletedTask);
+    internal LocalBriefDictionary? PreferredDictionary => Volatile.Read(ref _preferred);
+    internal string? PreferredPath => Volatile.Read(ref _preferredPath);
+    public int PreferredCount=>PreferredDictionary?.Count??0;
+    public bool PreferredAvailable=>PreferredDictionary?.Available==true;
+    public string? PreferredWarning=>PreferredDictionary?.LoadWarning;
+    public Task LoadAsync()=>Task.WhenAll(LoadBaseAsync(),PreferredDictionary?.LoadAsync()??Task.CompletedTask);
+
+    internal async Task ConfigurePreferredAsync(string? path, string settingsPath, CancellationToken cancellationToken=default)
+    {
+        path = string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path.Trim());
+        await _preferredChanges.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var next = path == null ? null : new LocalBriefDictionary(path);
+            if (next != null)
+            {
+                await next.LoadAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+                if (!next.Available) throw new ArgumentException(next.LoadWarning ?? "无法载入所选词库。");
+            }
+
+            var directory = Path.GetDirectoryName(settingsPath)!;
+            Directory.CreateDirectory(directory);
+            var temporary = Path.Combine(directory, "dictionary-" + Guid.NewGuid().ToString("N") + ".tmp");
+            try
+            {
+                await File.WriteAllTextAsync(temporary, path ?? "", cancellationToken).ConfigureAwait(false);
+                File.Move(temporary, settingsPath, overwrite: true);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+
+            Volatile.Write(ref _preferredPath, path);
+            Volatile.Write(ref _preferred, next);
+        }
+        finally { _preferredChanges.Release(); }
+    }
     private Task LoadBaseAsync() => Task.Run(() =>
     {
         if(_data!=null)return;
@@ -86,9 +121,11 @@ public sealed class LocalDictionary : IDisposable
         _data = new FileStream(Path.Combine(directory, "dictionary.data"), FileMode.Open, FileAccess.Read, FileShare.Read);
     });
 
-    public DictionaryEntry? Lookup(string word)
+    public DictionaryEntry? Lookup(string word) => Lookup(word, PreferredDictionary);
+
+    internal DictionaryEntry? Lookup(string word, LocalBriefDictionary? preferred)
     {
-        var entry=LookupBase(word);var local=_preferred?.Lookup(word);
+        var entry=LookupBase(word);var local=preferred?.Lookup(word);
         if(!string.IsNullOrWhiteSpace(local?.translation))
         {
             entry??=local;entry.translation=local.translation;entry.source="local-brief";
@@ -109,7 +146,6 @@ public sealed class LocalDictionary : IDisposable
     internal int SourceRowCount=>_sourceWords.Count;
     internal string SourceWord(int id)=>_sourceWords[id];
     internal string IndexPath=>Path.Combine(_directory,"dictionary.index.tsv");
-    internal IEnumerable<DictionaryEntry> EnumeratePreferredEntries()=>_preferred?.EnumerateEntries()??[];
     // Legacy postings and WordNet IDs identify ECDICT rows. Resolve their words
     // through Lookup when showing preferred definitions; do not reinterpret IDs.
     internal DictionaryEntry? LookupBySourceId(int id)=>id>=0&&id<_sourceWords.Count?LookupBase(_sourceWords[id]):null;
