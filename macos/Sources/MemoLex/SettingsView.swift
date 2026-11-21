@@ -211,7 +211,7 @@ private struct AccountSettings: View {
             Text(model.accountStatus).font(.system(size: 12)).foregroundStyle(Palette.muted)
             Text("登录信息保存在 Mac 钥匙串中，过期后请重新登录。").font(.system(size: 12)).foregroundStyle(Palette.muted)
             DisclosureGroup("导入已有的 API 授权") {
-                Text("如需在另一台自己的设备上使用，可以导入同一份仍有效的墨墨 API 授权。").font(.footnote).foregroundStyle(.secondary)
+                Text("可从墨墨 App 的「开放 API」复制授权，在你自己的电脑上分别导入同一份有效授权。").font(.footnote).foregroundStyle(.secondary)
                 SecureField("墨墨 API 授权", text: $token).inputFrame().padding(.vertical, 8)
                 Button(importing ? "正在验证…" : "验证并导入") {
                     Task {

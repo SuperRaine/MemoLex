@@ -33,7 +33,17 @@ struct StubbornView: View {
         VStack(spacing: 0) {
             DialogHeader(title: "顽固单词") { model.sheet = nil }
             VStack(alignment: .leading, spacing: 13) {
-                HStack(alignment: .center) { VStack(alignment: .leading, spacing: 5) { Text("顽固单词").font(.system(size: 24, weight: .semibold)); Text("\(model.activeAccount?.name ?? "当前账号") · \(visible.count) 个单词").font(.system(size: 12)).foregroundStyle(Palette.muted) }; Spacer(); Button("刷新") { Task { await model.refreshStubborn(force: true) } }.buttonStyle(MemoButtonStyle()).disabled(model.stubbornLoading) }
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("顽固单词").font(.system(size: 24, weight: .semibold))
+                        Text("\(model.titleAccount) · \(visible.count) 个单词").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(model.loggedIn ? "刷新" : "账号设置") {
+                        if model.loggedIn { Task { await model.refreshStubborn(force: true) } }
+                        else { model.openAccountSettings() }
+                    }.disabled(model.stubbornLoading)
+                }
                 TextField("筛选单词或释义", text: $filter).inputFrame()
                 HStack(spacing: 10) {
                     Text("排序").foregroundStyle(Palette.muted)
@@ -56,13 +66,18 @@ struct StubbornView: View {
                     } }
                 }.overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border))
                 if model.stubbornLoading { ProgressView().controlSize(.small) }
-                Text(model.stubbornHint.isEmpty ? "点击单词查词；手机端同步学习数据后刷新。" : model.stubbornHint).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                Text(stubbornStatus).font(.footnote).foregroundStyle(.secondary)
             }.padding(23)
         }.frame(width: 730, height: min(650, (NSScreen.main?.visibleFrame.height ?? 760) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep)
             .task { await model.refreshStubborn() }
             .task(id: model.stubbornWords.map { $0["spelling"].text }.joined(separator: "\n")) {
                 if let rows = try? await model.core.request("dictionary.batch", ["content": .string(model.stubbornWords.map { $0["spelling"].text }.joined(separator: "\n"))]) { meanings = Dictionary(rows.list.map { ($0["word"].text, $0["meaning"].text) }, uniquingKeysWith: { first, _ in first }) }
             }
+    }
+    private var stubbornStatus: String {
+        if !model.loggedIn { return "登录墨墨账号后可查看顽固单词。" }
+        if !model.stubbornHint.isEmpty { return model.stubbornHint }
+        return "点击单词查词。手机端同步学习数据后可刷新。"
     }
 }
 extension J { var spellingText: String { self["spelling"].text } }

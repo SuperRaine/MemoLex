@@ -163,11 +163,17 @@ struct Notice: Identifiable {
                     page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = ""; membership = false
                     let result = try await core.request("dictionary.lookup", ["word": .string(query)])
                     guard version == wordVersion else { return }
-                    word = result["word"].text; entry = result["entry"]; notes = result["notes"].list; suggestions = result["suggestions"].list.map(\.text)
+                    word = result["word"].text
+                    entry = result["entry"]
+                    if account == accountVersion { notes = result["notes"].list }
+                    suggestions = result["suggestions"].list.map(\.text)
                     recordHistory(word); status = entry == .null ? "本地词库未收录这个单词。" : "查词完成。"
                     Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }
                     Task { await loadExamples(reset: true) }
-                    if loggedIn { Task { await loadCloudWord(word, version: version, account: account) } }
+                    if loggedIn {
+                        let currentAccount = accountVersion
+                        Task { await loadCloudWord(word, version: version, account: currentAccount) }
+                    }
                 }
                 if navigate { appendLocation(.init(page: page, query: query)) }
             } catch { if version == wordVersion { fail(error) } }
@@ -268,6 +274,13 @@ struct Notice: Identifiable {
             try await core.setAccount(token: credential)
             guard generation == accountVersion else { return }
             loggedIn = true
+            let query = word
+            if !query.isEmpty {
+                Task {
+                    if let result = try? await core.request("notes.local", ["word": .string(query)]),
+                       generation == accountVersion, query == word { notes = result.list }
+                }
+            }
             checkAccountConnection(generation, verified: verified)
         } catch {
             guard generation == accountVersion else { return }
@@ -467,7 +480,12 @@ struct Notice: Identifiable {
         switch preferences.stubbornSort {
         case "alphabetical": stubbornOrder = stubbornWords.sorted { preferences.alphabetDescending ? $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedDescending : $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedAscending }
         case "random": stubbornOrder = stubbornWords.shuffled()
-        default: stubbornOrder = stubbornWords.sorted { let left = parseISODate($0["nextStudyDate"].text) ?? .distantFuture; let right = parseISODate($1["nextStudyDate"].text) ?? .distantFuture; return left == right ? $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedAscending : left < right }
+        default:
+            let scheduled = stubbornWords.map { (word: $0, date: parseISODate($0["nextStudyDate"].text) ?? .distantFuture) }
+            stubbornOrder = scheduled.sorted { left, right in
+                if left.date != right.date { return left.date < right.date }
+                return left.word["spelling"].text.localizedCaseInsensitiveCompare(right.word["spelling"].text) == .orderedAscending
+            }.map(\.word)
         }
     }
     func nextStubborn() {

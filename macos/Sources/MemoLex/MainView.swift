@@ -144,7 +144,7 @@ private struct MainTitlebar: View {
             }
             Button { model.openAccountSettings() } label: {
                 Label { Text(model.titleAccount).lineLimit(1).frame(maxWidth: compact ? 95 : 135) }
-                    icon: { Image(systemName: "person.crop.circle") }
+                    icon: { Image(systemName: model.activeAccount?.needsLogin == true ? "person.crop.circle.badge.exclamationmark" : "person.crop.circle") }
             }.buttonStyle(.borderless).fixedSize(horizontal: true, vertical: false).layoutPriority(2)
                 .help(model.titleAccount + " · " + model.accountStatus)
             HStack(spacing: compact ? 0 : 4) {

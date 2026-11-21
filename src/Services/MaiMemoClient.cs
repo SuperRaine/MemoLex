@@ -347,6 +347,8 @@ public sealed partial class MaiMemoClient : IDisposable
                     await RecheckAuthenticationAsync(token,credential,cancellationToken,attempt==0&&retryableRead);
                     continue;
                 }
+                if(studyRequest&&!studyWrite&&response.StatusCode==HttpStatusCode.Forbidden)
+                    await RecheckCredentialAsync(token,credential,cancellationToken);
                 if(studyWrite&&(int)response.StatusCode>=500)throw new StudyAddUncertainException("墨墨暂未确认添加结果，请核对今日新学。");
                 throw SafeHttpError(response.StatusCode);
             }
@@ -374,6 +376,8 @@ public sealed partial class MaiMemoClient : IDisposable
                     await RecheckAuthenticationAsync(token,credential,cancellationToken,attempt==0&&retryableRead);
                     continue;
                 }
+                if(studyRequest&&!studyWrite&&error.StatusCode==HttpStatusCode.Forbidden)
+                    await RecheckCredentialAsync(token,credential,cancellationToken);
                 throw error;
             }
             if (root.TryGetProperty("data", out var data))
@@ -429,14 +433,16 @@ public sealed partial class MaiMemoClient : IDisposable
     private static MaiMemoException SafeApiError(JsonElement root)
     {
         // Inspect classification only. Never expose upstream bodies or supplied credentials in an exception.
-        var errors = root.TryGetProperty("errors", out var value) ? value.ToString().ToUpperInvariant() : "";
-        if (errors.Contains("RATE") || errors.Contains("TOO_MANY")||errors.Contains("QUOTA")||errors.Contains("LIMIT_EXCEEDED"))
+        var errors=string.Join(" ",new[]{"errors","error","code","message"}
+            .Where(key=>root.TryGetProperty(key,out _))
+            .Select(key=>root.GetProperty(key).ToString())).ToUpperInvariant();
+        if (Regex.IsMatch(errors,@"(?<![A-Z0-9])(?:RATE(?:[ _-]LIMIT)?|TOO_MANY(?:_REQUESTS)?|QUOTA(?:_EXCEEDED)?|LIMIT_EXCEEDED)(?![A-Z0-9])",RegexOptions.CultureInvariant))
             return new MaiMemoException("请求过于频繁，请稍等一分钟后重试。", HttpStatusCode.TooManyRequests);
-        if(errors.Contains("FORBIDDEN")||errors.Contains("PERMISSION")||errors.Contains("SCOPE")||errors.Contains("ACCESS_DENIED"))
-            return new MaiMemoException("当前账号没有此接口的访问权限，请检查墨墨开放 API 的授权。",HttpStatusCode.Forbidden);
-        if (Regex.IsMatch(errors,@"(?<![A-Z0-9])(?:UNAUTHORIZED|UNAUTHENTICATED|AUTHENTICATION_FAILED|INVALID_(?:API_)?TOKEN|(?:API_)?TOKEN_(?:INVALID|EXPIRED|REVOKED|MISSING|NOT_FOUND)|EXPIRED_TOKEN|INVALID_CREDENTIALS?)(?![A-Z0-9])",RegexOptions.CultureInvariant)
+        if (Regex.IsMatch(errors,@"(?<![A-Z0-9])(?:UNAUTHORIZED|UNAUTHENTICATED|AUTHENTICATION_FAILED|INVALID_(?:API_)?TOKEN|(?:API_)?TOKEN_(?:INVALID|EXPIRED|REVOKED|MISSING|NOT_FOUND)|EXPIRED_TOKEN|INVALID_CREDENTIALS?|INVALID_SESSION|SESSION_(?:EXPIRED|REVOKED|REPLACED)|LOGIN_EXPIRED)(?![A-Z0-9])",RegexOptions.CultureInvariant)
             ||Regex.IsMatch(errors,@"\b(?:TOKEN|AUTHENTICATION)\b[^\r\n]{0,40}\b(?:INVALID|EXPIRED|REVOKED)\b",RegexOptions.CultureInvariant))
             return new MaiMemoException("墨墨登录已失效，请在设置中重新登录。", HttpStatusCode.Unauthorized);
+        if(errors.Contains("FORBIDDEN")||errors.Contains("PERMISSION")||errors.Contains("SCOPE")||errors.Contains("ACCESS_DENIED"))
+            return new MaiMemoException("当前账号没有此接口的访问权限，请检查墨墨开放 API 的授权。",HttpStatusCode.Forbidden);
         if (errors.Contains("NOT_FOUND") || errors.Contains("NOT FOUND"))
             return new MaiMemoException("墨墨中未找到此单词或云词本。", HttpStatusCode.NotFound);
         return new MaiMemoException("墨墨未接受此次操作，请检查账户权限后重试。");
