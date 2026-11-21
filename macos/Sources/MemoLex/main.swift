@@ -25,6 +25,7 @@ private final class MemoLexWindow: NSWindow {
     private var noticeShowing = false
     private var updateTimer: Timer?
     private var appliedStartAtLogin: Bool?
+    private let windowedToolbar = NSToolbar(identifier: "MemoLex.Titlebar")
     private let loginRegistration = DispatchQueue(label: "MemoLex.LoginRegistration", qos: .utility)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -37,7 +38,7 @@ private final class MemoLexWindow: NSWindow {
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unifiedCompact
         window.titlebarSeparatorStyle = .none
-        window.toolbar = NSToolbar(identifier: "MemoLex.Titlebar")
+        window.toolbar = windowedToolbar
         window.isMovableByWindowBackground = true; window.isReleasedWhenClosed = false; window.delegate = self
         installContent(MainView(model: model), in: window)
         if !window.setFrameUsingName("MemoLex.Main") { window.center() }
@@ -82,10 +83,13 @@ private final class MemoLexWindow: NSWindow {
                       height: max(frameSize.height, sender.minSize.height, MainView.minimumSize.height))
     }
     func windowDidResize(_ notification: Notification) { alignTitlebar() }
-    func windowWillEnterFullScreen(_ notification: Notification) { window.level = .normal }
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        window.level = .normal
+        window.toolbar = nil
+    }
     func windowDidEnterFullScreen(_ notification: Notification) { alignTitlebar(); applyWindowLevel() }
-    func windowDidExitFullScreen(_ notification: Notification) { alignTitlebar(); applyWindowLevel() }
-    func windowDidFailToEnterFullScreen(_ window: NSWindow) { applyWindowLevel() }
+    func windowDidExitFullScreen(_ notification: Notification) { restoreWindowedTitlebar() }
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) { restoreWindowedTitlebar() }
     func windowDidChangeScreen(_ notification: Notification) { alignTitlebar() }
 
     private func installContent<Content: View>(_ view: Content, in window: NSWindow) {
@@ -117,6 +121,12 @@ private final class MemoLexWindow: NSWindow {
             next = TitlebarMetrics(leading: right - contentRect.minX + 10, center: center)
         }
         if model.titlebar != next { model.titlebar = next }
+    }
+
+    private func restoreWindowedTitlebar() {
+        window.toolbar = windowedToolbar
+        applyWindowLevel()
+        DispatchQueue.main.async { [weak self] in self?.alignTitlebar() }
     }
     private func applyWindowLevel() {
         guard let window else { return }
