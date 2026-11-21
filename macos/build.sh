@@ -3,6 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUTPUT="${MEMOLEX_OUTPUT:-$ROOT/macos/output}"
 APP="$OUTPUT/MemoLex.app"
+VERSION="$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$ROOT/macos/Info.plist")"
 WORK="$(mktemp -d -t memolex-build)"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$OUTPUT"
@@ -14,8 +15,8 @@ fi
 # The release archive is a pinned data source; the Windows program is not included.
 DATA_ROOT="${MEMOLEX_DATA_ROOT:-}"
 if [ -z "$DATA_ROOT" ]; then
-  curl --fail --location --retry 3 --output "$WORK/windows.zip" 'https://github.com/SuperRaine/MemoLex/releases/download/v1.8.0/MemoLex-1.8.0-Windows-x64.zip'
-  printf '%s  %s\n' 'c78bbce1d850e99ab5dae7b83d6d359d0ed0e401677c648dfe719c987c1e4522' "$WORK/windows.zip" | shasum -a 256 -c -
+  curl --fail --location --retry 3 --output "$WORK/windows.zip" 'https://github.com/SuperRaine/MemoLex/releases/download/v1.9.0/MemoLex-1.9.0-Windows-x64.zip'
+  printf '%s  %s\n' '0d11962fcdfc1ca12e4e0e26e34350161461c17505edfec83513b7d78345222e' "$WORK/windows.zip" | shasum -a 256 -c -
   unzip -q "$WORK/windows.zip" 'MemoLex/app/data/*' 'MemoLex/app/ThirdParty/*' -d "$WORK/data-source"
   DATA_ROOT="$WORK/data-source/MemoLex/app"
 fi
@@ -56,10 +57,14 @@ plutil -lint "$APP/Contents/Info.plist"
 ARCH="$(uname -m)"; [ "$ARCH" != x86_64 ] || ARCH=x64
 MEMOLEX_RESOURCES="$APP/Contents/Resources" MEMOLEX_PROFILE="$WORK/profile" "$APP/Contents/Resources/Core-$ARCH/MemoLex.Core" --smoke-test
 
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUTPUT/MemoLex-1.8.0-macOS-universal.zip"
+# This archive transfers the app to the native verification job.
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUTPUT/MemoLex-$VERSION-macOS-universal.zip"
+if [ "${MEMOLEX_VERIFY_ONLY:-0}" = "1" ]; then
+  exit 0
+fi
 mkdir "$WORK/dmg"
 ditto "$APP" "$WORK/dmg/MemoLex.app"
 ln -s /Applications "$WORK/dmg/Applications"
 cp "$ROOT/macos/使用说明.md" "$WORK/dmg/使用说明.md"
-hdiutil create -volname '墨墨搜词 1.8' -srcfolder "$WORK/dmg" -format UDZO -imagekey zlib-level=9 "$OUTPUT/MemoLex-1.8.0-macOS-universal.dmg"
-echo 'Built MemoLex 1.8.0 for Apple Silicon and Intel.'
+hdiutil create -volname "墨墨搜词 $VERSION" -srcfolder "$WORK/dmg" -format UDZO -imagekey zlib-level=9 "$OUTPUT/MemoLex-$VERSION-macOS-universal.dmg"
+echo "Built MemoLex $VERSION for Apple Silicon and Intel."

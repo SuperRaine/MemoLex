@@ -3,27 +3,47 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
-    @StateObject private var draft: Preferences
     @State private var status = ""
-    private let pages = ["常规", "墨墨账号", "鼠标取词", "系统权限", "快捷键", "软件更新", "反馈", "关于与赞助"]
-    init(model: AppModel) { self.model = model; _draft = StateObject(wrappedValue: Preferences(copying: model.preferences)) }
+    private let pages = [
+        ("常规", "gearshape"), ("墨墨账号", "person.crop.circle"),
+        ("鼠标取词", "cursorarrow"), ("系统权限", "lock.shield"), ("快捷键", "keyboard"),
+        ("软件更新", "arrow.down.circle"), ("反馈", "bubble.left"), ("关于与赞助", "info.circle")
+    ]
     var body: some View {
         VStack(spacing: 0) {
             DialogHeader(title: "设置") { model.sheet = nil }
             HStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 4) { ForEach(pages, id: \.self) { page in Button { model.settingsPage = page } label: { Text(page).font(.system(size: 13, weight: model.settingsPage == page ? .semibold : .regular)).foregroundStyle(model.settingsPage == page ? Palette.deep : Palette.ink).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 11).padding(.horizontal, 12).background(model.settingsPage == page ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 8)) }.buttonStyle(.plain) }; Spacer() }.padding(.horizontal, 10).padding(.top, 18).frame(width: 146).background(Palette.canvas)
+                ScrollView {
+                    VStack(spacing: 3) {
+                        ForEach(pages, id: \.0) { page, icon in
+                            Button { model.settingsPage = page } label: {
+                                Label(page, systemImage: icon)
+                                    .font(.system(size: 13, weight: page == model.settingsPage ? .semibold : .regular))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 10).padding(.vertical, 8)
+                                    .background(page == model.settingsPage ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                            }.buttonStyle(.plain)
+                              .foregroundStyle(page == model.settingsPage ? Palette.deep : Palette.ink)
+                        }
+                    }.padding(10)
+                }.frame(width: 174).background(.regularMaterial)
                 Divider()
                 VStack(spacing: 0) {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 17) {
                             settingsHeading
                             pageContent
-                        }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                        }.padding(23).frame(maxWidth: .infinity, alignment: .leading)
                     }.frame(maxHeight: .infinity)
-                    HStack { Text(status).font(.system(size: 11)).foregroundStyle(Palette.muted); Spacer(); Button("保存设置") { model.preferences.copyEditable(from: draft); model.savePreferences(); model.sheet = nil }.buttonStyle(MemoButtonStyle(accent: true)) }.padding(.horizontal, 20).padding(.bottom, 13)
+                    if !status.isEmpty {
+                        Text(status).font(.footnote).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding([.horizontal, .bottom], 18)
+                    }
                 }
             }.frame(maxHeight: .infinity)
-        }.frame(width: min(960, (NSScreen.main?.visibleFrame.width ?? 1100) - 70), height: min(710, (NSScreen.main?.visibleFrame.height ?? 820) - 70)).background(.white).foregroundStyle(Palette.ink).font(.system(size: 13)).toggleStyle(MemoCheckStyle()).tint(Palette.deep)
+        }.frame(width: min(900, (NSScreen.main?.visibleFrame.width ?? 1100) - 65), height: min(650, (NSScreen.main?.visibleFrame.height ?? 820) - 65))
+            .background(Palette.canvas).foregroundStyle(Palette.ink).toggleStyle(.checkbox)
+            .onChange(of: model.settingsPage) { _ in status = "" }
             .overlayPreferenceValue(TourTargets.self) { anchors in TourOverlay(model: model, anchors: anchors, context: "settings") }
             .sheet(isPresented: $model.showLogin) { LoginView(model: model) }
     }
@@ -43,16 +63,16 @@ struct SettingsView: View {
         case "快捷键": return "点击输入框，按下想用的组合键。"
         case "软件更新": return "检查新版本，设置自动更新。"
         case "反馈": return "遇到问题或有改进建议，欢迎联系我们。"
-        default: return "墨墨搜词 MemoLex · 1.8.0"
+        default: return "墨墨搜词 MemoLex · \(AppPaths.version)"
         }
     }
     @ViewBuilder private var pageContent: some View {
         switch model.settingsPage {
-        case "常规": GeneralSettings(model: model, preferences: draft)
+        case "常规": GeneralSettings(model: model, preferences: model.preferences)
         case "墨墨账号": AccountSettings(model: model)
-        case "鼠标取词": HoverSettings(preferences: draft)
+        case "鼠标取词": HoverSettings(preferences: model.preferences)
         case "系统权限": PermissionsSettings(model: model)
-        case "快捷键": ShortcutSettings(preferences: draft)
+        case "快捷键": ShortcutSettings(preferences: model.preferences)
         case "软件更新": UpdatesSettings(updates: model.updates)
         case "反馈": FeedbackSettings(status: $status)
         default: AboutSettings(model: model)
@@ -92,7 +112,14 @@ private struct GeneralSettings: View {
 struct SettingsCard<Content: View>: View {
     var title: String
     @ViewBuilder var content: Content
-    var body: some View { VStack(alignment: .leading, spacing: 11) { Text(title).font(.system(size: 14, weight: .semibold)); content }.padding(13).frame(maxWidth: .infinity, alignment: .leading).background(Palette.canvas.opacity(0.55), in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.border)) }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Text(title).font(.headline)
+            content
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Palette.paper, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Palette.border, lineWidth: 0.5))
+    }
 }
 
 private struct HoverSettings: View {
@@ -120,13 +147,22 @@ private struct AccountSettings: View {
     @State private var selected = ""
     @State private var name = ""
     @State private var token = ""
+    @State private var importing = false
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。").font(.system(size: 12)).foregroundStyle(Palette.muted)
-            Text(model.activeAccount.map { "当前账号：\($0.name)" } ?? "还未登录墨墨账号").font(.system(size: 15, weight: .semibold))
+            Text(model.activeAccount.map { "当前账号：\($0.displayName)" } ?? "还未登录墨墨账号").font(.headline)
             Button("登录或添加账号") { model.loginTarget = nil; model.showLogin = true }.buttonStyle(MemoButtonStyle(accent: true)).tourTarget("login")
             Text("选择账号即可切换").font(.system(size: 12, weight: .semibold))
-            Picker("", selection: $selected) { Text("请选择账号").tag(""); ForEach(model.accounts) { account in Text(account.name + (account.needsLogin ? " · 需要登录" : "")).tag(account.id) } }.labelsHidden().onChange(of: selected) { id in name = model.accounts.first { $0.id == id }?.name ?? ""; if id != model.activeAccountID, model.accounts.contains(where: { $0.id == id && !$0.needsLogin }) { Task { await model.activate(id) } } }
+            Picker("", selection: $selected) {
+                Text("请选择账号").tag("")
+                ForEach(model.accounts) { account in
+                    Text(account.displayName + (account.needsLogin ? " · 需要登录" : "")).tag(account.id)
+                }
+            }.labelsHidden().onChange(of: selected) { id in
+                name = model.accounts.first { $0.id == id }?.displayName ?? ""
+                if id != model.activeAccountID, model.accounts.contains(where: { $0.id == id && !$0.needsLogin }) { Task { await model.activate(id) } }
+            }
             HStack {
                 Button("切换账号") { Task { await model.activate(selected) } }.disabled(selected.isEmpty)
                 Button("重新登录") { model.loginTarget = model.accounts.first { $0.id == selected }; model.showLogin = true }.disabled(selected.isEmpty)
@@ -136,11 +172,22 @@ private struct AccountSettings: View {
             HStack { TextField("账号名称", text: $name).inputFrame(); Button("保存账号名称") { model.renameAccount(selected, name) }.buttonStyle(MemoButtonStyle()).disabled(selected.isEmpty) }
             Text(model.accountStatus).font(.system(size: 12)).foregroundStyle(Palette.muted)
             Text("登录信息保存在 Mac 钥匙串中，过期后请重新登录。").font(.system(size: 12)).foregroundStyle(Palette.muted)
-            DisclosureGroup("手动导入 Token（高级）") {
-                SecureField("Token", text: $token).inputFrame().padding(.vertical, 10)
-                Button("验证并导入") { Task { do { let value = token.trimmed; try await model.finishLogin(.object(["token": .string(value)]), identity: "", target: nil); token = "" } catch { model.fail(error) } } }.buttonStyle(MemoButtonStyle()).disabled(token.trimmed.isEmpty)
+            DisclosureGroup("导入已有的 API 授权") {
+                Text("可从墨墨 App 的「开放 API」复制授权，在你自己的电脑上分别导入同一份有效授权。").font(.footnote).foregroundStyle(.secondary)
+                SecureField("墨墨 API 授权", text: $token).inputFrame().padding(.vertical, 8)
+                Button(importing ? "正在验证…" : "验证并导入") {
+                    Task {
+                        importing = true
+                        defer { importing = false }
+                        do {
+                            try await model.finishLogin(.object(["token": .string(token.trimmed)]), identity: "")
+                            token = ""
+                        } catch { model.fail(error) }
+                    }
+                }.disabled(importing || token.trimmed.isEmpty)
             }
-        }.onAppear { selected = model.activeAccountID; name = model.activeAccount?.name ?? "" }
+        }.onAppear { selected = model.activeAccountID; name = model.activeAccount?.displayName ?? "" }
+          .onChange(of: model.activeAccountID) { selected = $0 }
     }
 }
 
@@ -148,7 +195,7 @@ private struct FeedbackSettings: View {
     @Binding var status: String
     var body: some View {
         VStack(spacing: 12) {
-            contact("反馈邮箱", value: "1623255609@qq.com") { Button("写邮件") { open("mailto:1623255609@qq.com?subject=MemoLex%201.8.0%20macOS%20反馈") }; Button("复制邮箱") { copy("1623255609@qq.com") } }
+            contact("反馈邮箱", value: "1623255609@qq.com") { Button("写邮件") { open("mailto:1623255609@qq.com?subject=MemoLex%20\(AppPaths.version)%20macOS%20反馈") }; Button("复制邮箱") { copy("1623255609@qq.com") } }
             contact("QQ 交流群", value: "1132371819") { Button("复制群号") { copy("1132371819") } }
             contact("GitHub", value: "SuperRaine / MemoLex") { Button("问题反馈") { open(AppPaths.repository + "/issues/new?template=bug_report.yml") }; Button("功能建议") { open(AppPaths.repository + "/issues/new?template=feature_request.yml") } }
         }.buttonStyle(MemoButtonStyle(compact: true))
@@ -184,7 +231,11 @@ private struct AboutSettings: View {
 private struct DateEntry: NSViewRepresentable {
     @Binding var date: Date
     func makeNSView(context: Context) -> NSDatePicker { let picker = NSDatePicker(); picker.datePickerStyle = .textFieldAndStepper; picker.datePickerElements = [.yearMonthDay]; picker.datePickerMode = .single; picker.locale = Locale(identifier: "zh_CN"); picker.target = context.coordinator; picker.action = #selector(Coordinator.changed(_:)); picker.dateValue = date; return picker }
-    func updateNSView(_ picker: NSDatePicker, context: Context) { picker.dateValue = date; picker.isEnabled = context.environment.isEnabled }
+    func updateNSView(_ picker: NSDatePicker, context: Context) {
+        context.coordinator.parent = self
+        if picker.dateValue != date { picker.dateValue = date }
+        picker.isEnabled = context.environment.isEnabled
+    }
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     final class Coordinator: NSObject { var parent: DateEntry; init(_ parent: DateEntry) { self.parent = parent }; @objc func changed(_ sender: NSDatePicker) { parent.date = sender.dateValue } }
 }

@@ -17,7 +17,7 @@ struct HistoryView: View {
                     ForEach(records) { record in HStack { Button(record.word) { model.sheet = nil; model.lookup(record.word) }.buttonStyle(.plain).foregroundStyle(Palette.deep); Spacer(); Text(record.date, format: .dateTime.year().month().day().hour().minute()).font(.system(size: 11)).foregroundStyle(Palette.muted); Text("\(record.count) 次").font(.system(size: 11)).foregroundStyle(Palette.muted).frame(width: 55, alignment: .trailing) }.padding(.vertical, 6).tag(record.id) }
                 }.listStyle(.inset).overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.border))
             }.padding(23)
-        }.frame(width: 700, height: 570).background(.white).font(.system(size: 13)).foregroundStyle(Palette.ink)
+        }.frame(width: 700, height: 570).background(Palette.paper).font(.system(size: 13)).foregroundStyle(Palette.ink)
     }
 }
 
@@ -33,7 +33,17 @@ struct StubbornView: View {
         VStack(spacing: 0) {
             DialogHeader(title: "顽固单词") { model.sheet = nil }
             VStack(alignment: .leading, spacing: 13) {
-                HStack(alignment: .center) { VStack(alignment: .leading, spacing: 5) { Text("顽固单词").font(.system(size: 24, weight: .semibold)); Text("\(model.activeAccount?.name ?? "当前账号") · \(visible.count) 个单词").font(.system(size: 12)).foregroundStyle(Palette.muted) }; Spacer(); Button("刷新") { Task { await model.refreshStubborn(force: true) } }.buttonStyle(MemoButtonStyle()).disabled(model.stubbornLoading) }
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("顽固单词").font(.system(size: 24, weight: .semibold))
+                        Text("\(model.titleAccount) · \(visible.count) 个单词").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(model.loggedIn ? "刷新" : "账号设置") {
+                        if model.loggedIn { Task { await model.refreshStubborn(force: true) } }
+                        else { model.openAccountSettings() }
+                    }.disabled(model.stubbornLoading)
+                }
                 TextField("筛选单词或释义", text: $filter).inputFrame()
                 HStack(spacing: 10) {
                     Text("排序").foregroundStyle(Palette.muted)
@@ -56,13 +66,18 @@ struct StubbornView: View {
                     } }
                 }.overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border))
                 if model.stubbornLoading { ProgressView().controlSize(.small) }
-                Text(model.stubbornHint.isEmpty ? "点击单词查词；手机端同步学习数据后刷新。" : model.stubbornHint).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                Text(stubbornStatus).font(.footnote).foregroundStyle(.secondary)
             }.padding(23)
-        }.frame(width: 730, height: min(650, (NSScreen.main?.visibleFrame.height ?? 760) - 60)).background(.white).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep)
+        }.frame(width: 730, height: min(650, (NSScreen.main?.visibleFrame.height ?? 760) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep)
             .task { await model.refreshStubborn() }
             .task(id: model.stubbornWords.map { $0["spelling"].text }.joined(separator: "\n")) {
                 if let rows = try? await model.core.request("dictionary.batch", ["content": .string(model.stubbornWords.map { $0["spelling"].text }.joined(separator: "\n"))]) { meanings = Dictionary(rows.list.map { ($0["word"].text, $0["meaning"].text) }, uniquingKeysWith: { first, _ in first }) }
             }
+    }
+    private var stubbornStatus: String {
+        if !model.loggedIn { return "登录墨墨账号后可查看顽固单词。" }
+        if !model.stubbornHint.isEmpty { return model.stubbornHint }
+        return "点击单词查词。手机端同步学习数据后可刷新。"
     }
 }
 extension J { var spellingText: String { self["spelling"].text } }
@@ -88,7 +103,7 @@ struct MnemonicView: View {
                 Text(error.isEmpty ? "本地保存后离线也能查看；登录后可同步到墨墨。" : error).font(.system(size: 12)).foregroundStyle(error.isEmpty ? Palette.muted : .red)
                 HStack { Spacer(); Button("保存到本地") { Task { await save(cloud: false) } }; Button("同步到墨墨") { Task { await save(cloud: true) } }.disabled(!model.loggedIn) }.buttonStyle(MemoButtonStyle()).disabled(saving || text.trimmed.isEmpty || text.count > 20000)
             }.padding(23)
-        }.frame(width: 700, height: 560).background(.white).foregroundStyle(Palette.ink).font(.system(size: 13))
+        }.frame(width: 700, height: 560).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13))
             .onAppear { if let first = model.notes.first { selected = first["id"].text; load(selected) } }
     }
     private func load(_ value: String) {
@@ -121,7 +136,7 @@ struct NotebookView: View {
                 if tab == 0 { wordsPage } else { infoPage }
                 Text(error).font(.system(size: 12)).foregroundStyle(.red)
             }.padding(23).disabled(busy)
-        }.frame(width: 820, height: min(700, (NSScreen.main?.visibleFrame.height ?? 800) - 60)).background(.white).foregroundStyle(Palette.ink).font(.system(size: 13)).toggleStyle(MemoCheckStyle())
+        }.frame(width: 820, height: min(700, (NSScreen.main?.visibleFrame.height ?? 800) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).toggleStyle(.checkbox)
             .task { original = model.selectedPad; applyOriginal(); await describe() }
     }
     private var wordsPage: some View {

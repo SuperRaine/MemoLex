@@ -33,9 +33,11 @@ internal static class HoverSettingsPanel
         dialog.RegisterName("HoverDelayMs",delay);dialog.RegisterName("HoverFontSize",font);dialog.RegisterName("HoverCtrl",ctrl);dialog.RegisterName("HoverAlt",alt);dialog.RegisterName("HoverShift",shift);
         apply=()=>
         {
-            if(!int.TryParse(delay.Text,out var milliseconds)||milliseconds is <100 or >3000)return "取词延迟需为 100–3000 毫秒。";
             preferences.HoverLookupEnabled=enabled.IsChecked==true;preferences.HoverTranslucent=translucent.IsChecked==true;preferences.HoverAutoAdd=autoAdd.IsChecked==true;preferences.HoverNearest=nearest.IsChecked==true;
-            preferences.HoverDelayMs=milliseconds;preferences.HoverFontSize=((FontChoice)font.SelectedItem).Value;preferences.HoverModifiers=(ctrl.IsChecked==true?1:0)|(alt.IsChecked==true?2:0)|(shift.IsChecked==true?4:0);return null;
+            preferences.HoverFontSize=((FontChoice)font.SelectedItem).Value;preferences.HoverModifiers=(ctrl.IsChecked==true?1:0)|(alt.IsChecked==true?2:0)|(shift.IsChecked==true?4:0);
+            if(!int.TryParse(delay.Text,out var milliseconds)||milliseconds is <100 or >3000)return "取词延迟需为 100–3000 毫秒。";
+            preferences.HoverDelayMs=milliseconds;
+            return null;
         };
         return panel;
     }

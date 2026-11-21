@@ -22,7 +22,9 @@ public partial class MainWindow
         {
             if(_tourSettings==null)
             {
-                _tourSettings=SettingsDialog.Build(this,_tokens,_preferences,out _,ValidateGlobalShortcut,accountChanged:ReloadAccountAsync,updates:_updates,startOnboarding:StartOnboarding);
+                _tourSettings=SettingsDialog.Build(this,_tokens,_preferences,ValidateGlobalShortcut,
+                    accountChanged:ReloadAccountAsync,updates:_updates,startOnboarding:StartOnboarding,
+                    settingsChanged:ApplySettingsUI);
                 _tourSettings.Closed+=(_,_)=>{if(_onboardingTour is {ChangingStep:false})_onboardingTour.Skip();};
             }
             ((ListBox)_tourSettings.FindName("SettingsNav")).SelectedItem=page;

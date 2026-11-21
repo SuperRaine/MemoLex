@@ -57,4 +57,3 @@ internal static class InputDialog
     internal static void SetBody(Window dialog, UIElement content) => ((ContentControl)((Border)dialog.Content).Tag).Content = content;
     internal static TextBlock Text(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, LineHeight = 23, Foreground = new SolidColorBrush(Color.FromRgb(100,126,147)) };
 }
-internal readonly record struct SettingsResult(bool Saved, bool TokenChanged);

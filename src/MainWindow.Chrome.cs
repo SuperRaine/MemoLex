@@ -63,11 +63,11 @@ public partial class MainWindow
     private void SetAccountStatus(string status)
     {
         var hasToken=_tokens.HasToken;
-        if(!hasToken&&_tokens.HasExpiredSession)status="登录已过期";
+        if(!hasToken&&_tokens.HasExpiredSession)status=InactiveAccountStatus;
         if(status=="已连接")status=_accountRejected?"登录失效":_accountAuthenticated?"已连接":"连接中";
         var accountName=_tokens.ActiveAccount?.Name;
         CloudStatusText.Text = hasToken&&!string.IsNullOrWhiteSpace(accountName)?accountName:status=="未连接"?"未登录":status;
-        CloudStatusText.Foreground = Brush(status == "已连接" ? "#087FAF" : status is "登录失效" or "连接受限" ? "#B58236" : "#8399AA");
+        CloudStatusText.Foreground = Brush(status == "已连接" ? "#087FAF" : status is "登录已失效" or "登录失效" or "连接受限" ? "#B58236" : "#8399AA");
         AccountButton.ToolTip = $"墨墨账号：{accountName??"未选择账号"} · {status}\n点击登录或切换账号";
         System.Windows.Automation.AutomationProperties.SetName(AccountButton,$"墨墨账号：{accountName??"未登录"}，{status}");
     }

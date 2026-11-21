@@ -17,16 +17,18 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     private var updatePending = false
     private var noticeShowing = false
     private var updateTimer: Timer?
+    private var appliedStartAtLogin: Bool?
+    private let loginRegistration = DispatchQueue(label: "MemoLex.LoginRegistration", qos: .utility)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.appearance = NSAppearance(named: .aqua)
         makeMenu()
         let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1400, height: 900)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1160, visible.width - 40), height: min(800, visible.height - 45)), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "墨墨搜词"; window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true; window.toolbar = nil
-        window.standardWindowButton(.closeButton)?.isHidden = true; window.standardWindowButton(.miniaturizeButton)?.isHidden = true; window.standardWindowButton(.zoomButton)?.isHidden = true
         window.minSize = NSSize(width: 760, height: 520); window.isMovableByWindowBackground = true; window.isReleasedWhenClosed = false; window.delegate = self
-        window.contentView = NSHostingView(rootView: MainView(model: model).preferredColorScheme(.light)); window.setFrameAutosaveName("MemoLex.Main"); window.center()
+        window.contentView = NSHostingView(rootView: MainView(model: model))
+        if !window.setFrameUsingName("MemoLex.Main") { window.center() }
+        window.setFrameAutosaveName("MemoLex.Main")
         model.showWindow = { [weak self] in self?.show() }
         model.openHaici = { [weak self] word in self?.openHaici(word) }
         model.applySystemPreferences = { [weak self] in self?.applyPreferences() }
@@ -43,9 +45,21 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     func applicationWillTerminate(_ notification: Notification) { if !model.removingApplication { model.preferences.save() }; integration?.stop(); model.updates.stop(); model.core.stop(); updateTimer?.invalidate() }
     func show() { guard let window else { return }; NSApp.setActivationPolicy(.regular); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     func applyPreferences() {
-        window?.level = model.preferences.alwaysOnTop ? .floating : .normal
-        do { try LoginService.apply(model.preferences.startAtLogin) } catch { model.status = "开机启动设置未完成，请在系统设置 → 通用 → 登录项中检查。" }
+        let level: NSWindow.Level = model.preferences.alwaysOnTop ? .floating : .normal
+        if window?.level != level { window?.level = level }
         integration?.configure()
+        let startAtLogin = model.preferences.startAtLogin
+        guard appliedStartAtLogin != startAtLogin else { return }
+        appliedStartAtLogin = startAtLogin
+        loginRegistration.async { [weak self] in
+            do { try LoginService.apply(startAtLogin) }
+            catch {
+                DispatchQueue.main.async {
+                    guard let self, self.model.preferences.startAtLogin == startAtLogin else { return }
+                    self.model.status = "开机启动设置未完成，请在系统设置 → 通用 → 登录项中检查。"
+                }
+            }
+        }
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender === window else { return true }
@@ -88,7 +102,7 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     private func openHaici(_ word: String) {
         if let haiciWindow, let haici { haici.navigate(word: word); haiciWindow.makeKeyAndOrderFront(nil); return }
         let browser = HaiciBrowser(word: word); let browserWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        browserWindow.title = "海词词典"; browserWindow.minSize = NSSize(width: 600, height: 450); browserWindow.isReleasedWhenClosed = false; browserWindow.contentView = NSHostingView(rootView: HaiciView(browser: browser, close: { [weak browserWindow] in browserWindow?.close() }).preferredColorScheme(.light)); browserWindow.center(); browserWindow.makeKeyAndOrderFront(nil); haici = browser; haiciWindow = browserWindow
+        browserWindow.title = "海词词典"; browserWindow.minSize = NSSize(width: 600, height: 450); browserWindow.isReleasedWhenClosed = false; browserWindow.contentView = NSHostingView(rootView: HaiciView(browser: browser, close: { [weak browserWindow] in browserWindow?.close() })); browserWindow.center(); browserWindow.makeKeyAndOrderFront(nil); haici = browser; haiciWindow = browserWindow
     }
     private func promptUpdate() {
         guard updatePending, window?.isVisible == true, model.sheet == nil, model.tourIndex == nil, model.notice == nil, NSApp.modalWindow == nil else { return }

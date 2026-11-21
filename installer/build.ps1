@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputFile,
     [string]$Version,
     [string]$WixCommand='wix',
-    [switch]$IncludeBrowserRuntime
+    [switch]$IncludeBrowserRuntime,
+    [string]$SigningThumbprint,
+    [string]$SignToolCommand='signtool.exe'
 )
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path -Parent $PSScriptRoot
@@ -17,4 +19,8 @@ python @payloadArguments
 if($LASTEXITCODE -ne 0){throw 'Payload generation failed'}
 & $WixCommand build (Join-Path $PSScriptRoot 'MemoLex.wxs') (Join-Path $PSScriptRoot 'MemoLexUI.wxs') $generated -arch x64 -culture zh-CN -ext WixToolset.UI.wixext -d "PayloadDir=$payload" -d "SourceDir=$projectRoot" -d "Version=$Version" -pdbtype none -out $output
 if($LASTEXITCODE -ne 0){throw 'Installer compilation failed'}
+if($SigningThumbprint)
+{
+    & (Join-Path $projectRoot 'tools/sign_windows.ps1') -Files $output -CertificateThumbprint $SigningThumbprint -SignToolCommand $SignToolCommand
+}
 Get-Item -LiteralPath $output | Select-Object Name,Length

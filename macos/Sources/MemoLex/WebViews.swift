@@ -6,40 +6,64 @@ import WebKit
     let browser: WKWebView
     @Published var status = "正在打开墨墨官方登录页…"
     @Published var busy = false
+    @Published var showsLoginForm = false
     private unowned let model: AppModel
-    private var identity: String
-    private let target: SavedAccount?
-    private var completing = false
+    private var identity = ""
+    private var completion: Task<Void, Never>?
+    private var finishedCapture: (String, URL)?
     private let startURL = URL(string: "https://open.maimemo.com/open/api/v1/tokens/openapi")!
     init(model: AppModel) {
-        self.model = model; target = model.loginTarget; identity = ""
-        let configuration = WKWebViewConfiguration(); configuration.websiteDataStore = .nonPersistent()
+        self.model = model
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
         let controller = WKUserContentController()
         controller.addUserScript(WKUserScript(source: #"""
         (() => {
           if (location.protocol !== 'https:' || location.hostname !== 'accounts.maimemo.com' || !location.pathname.startsWith('/interaction/')) return;
-          const report = () => {
-            const fields = [...document.querySelectorAll('input')];
-            const field = fields.find(x => {
-              if (!['text', 'tel', 'email', 'number'].includes(x.type) || !/phone|mobile|email|username|login|identifier|account|tel/i.test((x.name || '') + ' ' + (x.id || '') + ' ' + x.type)) return false;
-              const value = x.value.trim(); const digits = value.replace(/\D/g, '');
-              return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || (/^\+?[\d ()-]+$/.test(value) && digits.length >= 7 && digits.length <= 18);
-            });
-            if (field && field.value.length < 200) window.webkit.messageHandlers.MemoLexIdentity.postMessage(field.value);
+          const selector = 'input[name="identity"][autocomplete="username"]';
+          const report = (field) => {
+            if (!field?.matches(selector)) return;
+            const value = field.value.trim();
+            if (value.length > 0 && value.length < 200) window.webkit.messageHandlers.MemoLexIdentity.postMessage(value);
           };
-          document.addEventListener('input', report, true);
-          document.addEventListener('submit', report, true);
+          document.addEventListener('change', (event) => report(event.target), true);
+          document.addEventListener('submit', (event) => report(event.target.querySelector(selector)), true);
         })();
-        """#, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        """#, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        controller.addUserScript(WKUserScript(source: #"""
+        (() => {
+          if (location.protocol !== 'https:' || location.hostname !== 'open.maimemo.com' || location.pathname !== '/open/api/v1/tokens/openapi') return;
+          const content = document.querySelector('body > pre')?.textContent || document.documentElement.outerHTML;
+          if (content.length <= 65536) window.webkit.messageHandlers.MemoLexAuthorization.postMessage(content);
+        })();
+        """#, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         configuration.userContentController = controller
         browser = WKWebView(frame: .zero, configuration: configuration)
-        super.init(); controller.add(self, name: "MemoLexIdentity"); browser.navigationDelegate = self
+        super.init()
+        controller.add(self, name: "MemoLexIdentity")
+        controller.add(self, name: "MemoLexAuthorization")
+        browser.navigationDelegate = self
         browser.load(URLRequest(url: startURL))
     }
-    func retry() { completing = false; browser.load(URLRequest(url: startURL)); status = "请使用墨墨官方密码或验证码登录，完成后会自动返回。" }
+    func retry() {
+        guard completion == nil else { return }
+        identity = ""
+        showsLoginForm = false
+        status = "正在打开墨墨官方登录页…"
+        browser.load(URLRequest(url: startURL))
+    }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
-        guard origin.protocol == "https", origin.host == "accounts.maimemo.com", message.frameInfo.request.url?.path.hasPrefix("/interaction/") == true, let value = message.body as? String, value.count < 200 else { return }
+        guard message.frameInfo.isMainFrame, origin.protocol == "https",
+              let url = message.frameInfo.request.url, origin.host == url.host,
+              url.user == nil, url.port == nil || url.port == 443,
+              let value = message.body as? String else { return }
+        if message.name == "MemoLexAuthorization", isTokenDocument(url), value.count <= 65536 {
+            acceptAuthorization(value, from: url, finished: false)
+            return
+        }
+        guard message.name == "MemoLexIdentity", origin.host == "accounts.maimemo.com",
+              url.path.hasPrefix("/interaction/"), value.count < 200 else { return }
         let normalized = value.trimmed.lowercased()
         if normalized.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) != nil { identity = normalized }
         else if normalized.range(of: "^\\+?[0-9 ()-]+$", options: .regularExpression) != nil { let digits = normalized.filter(\.isNumber); if (7...18).contains(digits.count) { identity = digits.count == 13 && digits.hasPrefix("86") ? String(digits.dropFirst(2)) : digits } }
@@ -48,33 +72,74 @@ import WebKit
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
         if url.absoluteString == "about:blank" { decisionHandler(.allow); return }
         guard url.scheme == "https", url.user == nil, url.port == nil || url.port == 443, ["accounts.maimemo.com", "open.maimemo.com", "www.maimemo.com"].contains(url.host ?? "") else { status = "此链接不属于墨墨官方登录页面。"; decisionHandler(.cancel); return }
+        if navigationAction.targetFrame?.isMainFrame == true, isTokenDocument(url) { showsLoginForm = false }
         decisionHandler(.allow)
     }
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        guard let url = webView.url else { return }
+        showsLoginForm = !isTokenDocument(url) && url.scheme == "https"
+        status = showsLoginForm ? "请在墨墨官方页面完成登录。" : "正在完成登录…"
+    }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard let documentURL = webView.url, documentURL.scheme == "https", documentURL.host == "open.maimemo.com", documentURL.path == startURL.path, documentURL.user == nil, documentURL.port == nil || documentURL.port == 443, !completing else { status = "请在墨墨官方页面完成登录。"; return }
-        completing = true; busy = true; status = "正在确认墨墨登录信息…"
-        webView.evaluateJavaScript("document.documentElement.outerHTML") { [weak self] value, _ in
+        guard let url = webView.url, isTokenDocument(url) else { return }
+        webView.evaluateJavaScript("document.querySelector('body > pre')?.textContent || document.documentElement.outerHTML") { [weak self] value, _ in
             Task { @MainActor in
-                guard let self else { return }
-                defer { self.busy = false }
-                do {
-                    guard let html = value as? String else { throw CoreFailure(code: "login", message: "未能读取登录结果，请重新打开登录页。") }
-                    let authorization = try await self.model.core.request("login.inspect", ["url": .string(documentURL.absoluteString), "content": .string(html)])
-                    guard authorization != .null else { throw CoreFailure(code: "login", message: "未能确认登录信息，请点击“重新打开”再试。") }
-                    try await self.model.finishLogin(authorization, identity: self.identity, target: self.target)
-                } catch { self.status = error.localizedDescription; self.completing = false }
+                self?.acceptAuthorization(value as? String ?? "", from: url, finished: true)
+            }
+        }
+    }
+    private func isTokenDocument(_ url: URL) -> Bool {
+        url.scheme == "https" && url.host == startURL.host && url.path == startURL.path
+            && url.user == nil && (url.port == nil || url.port == 443)
+    }
+    private func acceptAuthorization(_ content: String, from url: URL, finished: Bool) {
+        guard model.showLogin, browser.url.map(isTokenDocument) == true else { return }
+        if completion != nil {
+            if finished { finishedCapture = (content, url) }
+            return
+        }
+        showsLoginForm = false
+        busy = true
+        status = "正在完成登录…"
+        completion = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                completion = nil; busy = false
+                if let (body, url) = finishedCapture {
+                    finishedCapture = nil
+                    if !Task.isCancelled { acceptAuthorization(body, from: url, finished: true) }
+                }
+            }
+            do {
+                let authorization = try await model.core.request("login.inspect", ["url": .string(url.absoluteString), "content": .string(content)], timeout: 8)
+                guard !Task.isCancelled, model.showLogin else { return }
+                if authorization == .null {
+                    if finished || !browser.isLoading { status = "未能读取登录结果，请点击“重新打开”再试。" }
+                    return
+                }
+                try await model.finishLogin(authorization, identity: identity, fromOfficialPage: true)
+            } catch {
+                if !Task.isCancelled { status = error.localizedDescription }
             }
         }
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { status = "登录页面加载失败，请重新打开。" }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { if (error as NSError).code != NSURLErrorCancelled { status = "暂时无法连接墨墨登录页，请检查网络后重试。" } }
-    func stop() { browser.stopLoading(); browser.configuration.userContentController.removeScriptMessageHandler(forName: "MemoLexIdentity") }
+    func stop() {
+        finishedCapture = nil
+        completion?.cancel()
+        browser.stopLoading()
+        let controller = browser.configuration.userContentController
+        controller.removeScriptMessageHandler(forName: "MemoLexIdentity")
+        controller.removeScriptMessageHandler(forName: "MemoLexAuthorization")
+    }
 }
 
 struct BrowserHost: NSViewRepresentable {
     let browser: WKWebView
-    func makeNSView(context: Context) -> WKWebView { browser }
-    func updateNSView(_ browser: WKWebView, context: Context) {}
+    var hidden = false
+    func makeNSView(context: Context) -> WKWebView { browser.isHidden = hidden; return browser }
+    func updateNSView(_ browser: WKWebView, context: Context) { browser.isHidden = hidden }
 }
 
 struct LoginView: View {
@@ -85,9 +150,12 @@ struct LoginView: View {
         VStack(spacing: 0) {
             DialogHeader(title: "登录墨墨官方账号") { model.showLogin = false }
             Text("墨墨官方登录 · https://accounts.maimemo.com").font(.system(size: 12)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading).padding(14)
-            BrowserHost(browser: login.browser).frame(maxWidth: .infinity, maxHeight: .infinity)
-            HStack { Text(login.status).font(.system(size: 12)).foregroundStyle(Palette.muted); Spacer(); if login.busy { ProgressView().controlSize(.small) }; Button("重新打开") { login.retry() }.buttonStyle(MemoButtonStyle()); Button("取消") { model.showLogin = false }.buttonStyle(MemoButtonStyle()) }.padding(15)
-        }.frame(width: min(740, (NSScreen.main?.visibleFrame.width ?? 900) - 60), height: min(760, (NSScreen.main?.visibleFrame.height ?? 860) - 65)).background(.white).onDisappear { login.stop() }
+            ZStack {
+                BrowserHost(browser: login.browser, hidden: !login.showsLoginForm)
+                if !login.showsLoginForm { Text(login.status).foregroundStyle(.secondary) }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            HStack { Spacer(); if login.busy { ProgressView().controlSize(.small) }; Button("重新打开") { login.retry() }.disabled(login.busy); Button("取消") { model.showLogin = false }.keyboardShortcut(.cancelAction) }.padding(15)
+        }.frame(width: min(740, (NSScreen.main?.visibleFrame.width ?? 900) - 60), height: min(760, (NSScreen.main?.visibleFrame.height ?? 860) - 65)).background(Palette.canvas).onDisappear { login.stop() }
     }
 }
 
@@ -121,6 +189,6 @@ struct HaiciView: View {
             HStack(spacing: 8) { Button("←") { browser.browser.goBack() }.disabled(!browser.canGoBack); Button("→") { browser.browser.goForward() }.disabled(!browser.canGoForward); Button("刷新") { browser.browser.reload() }; Text(browser.url.absoluteString).lineLimit(1).truncationMode(.middle).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading); Button("用默认浏览器打开") { if HaiciBrowser.allowed(browser.url) { NSWorkspace.shared.open(browser.url) } } }.buttonStyle(MemoButtonStyle(compact: true)).padding(12)
             BrowserHost(browser: browser.browser)
             Text(browser.status).font(.system(size: 11)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading).padding(12)
-        }.background(.white)
+        }.background(Palette.paper)
     }
 }

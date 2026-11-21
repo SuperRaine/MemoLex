@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Automation;
 using System.ComponentModel;
+using System.Net;
 using MemoLex.Core;
 using MemoLex.Services;
 
@@ -14,6 +15,7 @@ public partial class MainWindow
 {
     private StubbornWordList? _stubbornWords;
     private DateTimeOffset? _stubbornFetched;
+    private DateTimeOffset? _stubbornRetryAt;
     private CancellationTokenSource? _stubbornCts;
     private Task? _stubbornTask;
     private readonly StubbornWordRotation _stubbornRotation=new();
@@ -27,7 +29,7 @@ public partial class MainWindow
     private void ResetStubbornWords()
     {
         ++_stubbornVersion;_stubbornCts?.Cancel();_stubbornCts?.Dispose();_stubbornCts=null;_stubbornTask=null;
-        _stubbornWords=null;_stubbornFetched=null;_stubbornError=null;_stubbornLoading=false;_stubbornLoaded=_stubbornTotal=0;
+        _stubbornWords=null;_stubbornFetched=null;_stubbornRetryAt=null;_stubbornError=null;_stubbornLoading=false;_stubbornLoaded=_stubbornTotal=0;
         _stubbornRotation.Reset([],StubbornMode);
         UpdateStubbornCard();StubbornChanged?.Invoke();_stubbornDialog?.Close();
     }
@@ -73,6 +75,7 @@ public partial class MainWindow
     {
         if(!_ready||!_allowCloud||!_tokens.HasToken){UpdateStubbornCard();return Task.CompletedTask;}
         if(!force&&_stubbornTask is {IsCompleted:false})return _stubbornTask;
+        if(!force&&_stubbornRetryAt is {} retry&&DateTimeOffset.UtcNow<retry)return Task.CompletedTask;
         if(!force&&_stubbornFetched!=null&&DateTimeOffset.UtcNow-_stubbornFetched<TimeSpan.FromMinutes(15))return Task.CompletedTask;
         _stubbornCts?.Cancel();_stubbornCts?.Dispose();_stubbornCts=CancellationTokenSource.CreateLinkedTokenSource(_accountCts.Token);
         var token=_stubbornCts.Token;var version=++_stubbornVersion;var account=_accountVersion;var key=_accountCredentialKey;
@@ -86,10 +89,19 @@ public partial class MainWindow
                 var progress=new Progress<StubbornLoadProgress>(value=>{if(!Current()||!_stubbornLoading)return;_stubbornLoaded=value.Loaded;_stubbornTotal=value.Total;UpdateStubbornCard();StubbornChanged?.Invoke();});
                 var words=await _api.GetStubbornWordsAsync(progress,token);
                 if(!Current())return;
-                _stubbornWords=words;_stubbornFetched=DateTimeOffset.UtcNow;ApplyStubbornOrder(true);
+                _stubbornWords=words;_stubbornFetched=DateTimeOffset.UtcNow;_stubbornRetryAt=null;ApplyStubbornOrder(true);
             }
             catch(OperationCanceledException){}
-            catch(Exception error){if(Current()){_stubbornError=UserError(error);SetAccountError(error);}}
+            catch(Exception error)
+            {
+                if(Current())
+                {
+                    _stubbornFetched=null;
+                    _stubbornRetryAt=DateTimeOffset.UtcNow.AddSeconds(error is MaiMemoException {StatusCode:HttpStatusCode.TooManyRequests}?65:45);
+                    _stubbornError=UserError(error);
+                    SetAccountError(error);
+                }
+            }
             finally{if(Current()){_stubbornLoading=false;UpdateStubbornCard();StubbornChanged?.Invoke();}}
         }
     }

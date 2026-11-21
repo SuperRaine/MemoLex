@@ -26,11 +26,12 @@ struct PermissionsSettings: View {
     private func permission(_ title: String, enabled: Bool, detail: String, action: @escaping () -> Void) -> some View { SettingsCard(title: title) { HStack { Text(enabled ? "已允许" : "尚未允许").foregroundStyle(enabled ? Palette.deep : Palette.muted); Spacer(); Button("前往系统设置", action: action).buttonStyle(MemoButtonStyle(compact: true)) }; Text(detail).font(.system(size: 12)).foregroundStyle(Palette.muted) } }
 }
 
-@MainActor enum LoginService {
-    static var enabled: Bool { SMAppService.mainApp.status == .enabled }
+enum LoginService {
     static func apply(_ enabled: Bool) throws {
-        if enabled && SMAppService.mainApp.status != .enabled { try SMAppService.mainApp.register() }
-        else if !enabled && SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
+        let app = SMAppService.mainApp
+        let status = app.status
+        if enabled && status != .enabled && status != .requiresApproval { try app.register() }
+        if !enabled && (status == .enabled || status == .requiresApproval) { try app.unregister() }
     }
 }
 
@@ -77,6 +78,9 @@ private struct ShortcutRecorder: NSViewRepresentable {
     private var copyMonitor: Any?
     private var lastCopy = -Double.infinity
     private var expiryTimer: Timer?
+    private var installedShortcuts: [String: NativeShortcut]?
+    private var hoverEnabled: Bool?
+    private var doubleCopyEnabled: Bool?
     let hover: HoverController
     let screenshot: ScreenshotCapture
     init(model: AppModel) {
@@ -94,21 +98,35 @@ private struct ShortcutRecorder: NSViewRepresentable {
         expiryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in self?.ensureCopyMonitor(); self?.model.checkExpiry(); await self?.model.refreshStubborn() } }
     }
     func configure() {
-        for key in hotkeys { UnregisterEventHotKey(key) }; hotkeys = []
+        let preferences = model.preferences
+        if installedShortcuts != preferences.shortcuts {
+            installShortcuts(preferences.shortcuts)
+            installedShortcuts = preferences.shortcuts
+        }
+        let enabledHover = preferences.hoverEnabled
+        let enabledCopy = preferences.doubleCopy
+        if ((hoverEnabled == false && enabledHover) || (doubleCopyEnabled == false && enabledCopy)) && !PermissionCenter.accessibility {
+            PermissionCenter.requestAccessibility()
+        }
+        if hoverEnabled == false && enabledHover && !PermissionCenter.screen { PermissionCenter.requestScreen() }
+        if !enabledCopy, let copyMonitor { NSEvent.removeMonitor(copyMonitor); self.copyMonitor = nil }
+        if enabledHover != hoverEnabled { hover.configure() }
+        hoverEnabled = enabledHover
+        doubleCopyEnabled = enabledCopy
+        ensureCopyMonitor()
+    }
+    private func installShortcuts(_ shortcuts: [String: NativeShortcut]) {
+        for key in hotkeys { UnregisterEventHotKey(key) }
+        hotkeys = []
         var used: Set<String> = []
         for (index, name) in ["search", "clipboard", "screenshot"].enumerated() {
-            guard let shortcut = model.preferences.shortcuts[name] else { continue }
+            guard let shortcut = shortcuts[name] else { continue }
             let identifier = "\(shortcut.keyCode)-\(shortcut.modifiers)"
             guard used.insert(identifier).inserted else { model.status = "快捷键存在重复，请在设置中修改。"; continue }
             var reference: EventHotKeyRef?
             let status = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, EventHotKeyID(signature: 0x4D4C4558, id: UInt32(index + 1)), GetApplicationEventTarget(), 0, &reference)
             if status == noErr, let reference { hotkeys.append(reference) } else { model.status = "\(shortcut.label) 已被占用，请更换快捷键。" }
         }
-        if (model.preferences.doubleCopy || model.preferences.hoverEnabled) && !PermissionCenter.accessibility { PermissionCenter.requestAccessibility() }
-        if model.preferences.hoverEnabled && !PermissionCenter.screen { PermissionCenter.requestScreen() }
-        if !model.preferences.doubleCopy, let copyMonitor { NSEvent.removeMonitor(copyMonitor); self.copyMonitor = nil }
-        ensureCopyMonitor()
-        hover.configure()
     }
     private func ensureCopyMonitor() { if model.preferences.doubleCopy, PermissionCenter.accessibility, copyMonitor == nil { copyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in Task { @MainActor in self?.copyEvent(event) } } } }
     private func invoke(_ id: UInt32) {

@@ -1,9 +1,13 @@
-name: Build macOS 1.8
+name: Build macOS
 on:
   workflow_dispatch:
-  push:
-    branches: [macos-1.8.0, main]
-    paths: ['macos/**', 'src/Core/**', 'src/Services/**', '.github/workflows/macos.yml']
+    inputs:
+      portable_asset_id:
+        description: Windows portable release asset ID (optional for the pinned public data)
+        type: string
+      portable_sha256:
+        description: SHA-256 of the specified portable archive
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -13,25 +17,33 @@ jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 35
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.416
-      - name: Prepare bundled translation provider
+      - name: Prepare offline dictionary from the release asset
+        if: inputs.portable_asset_id != ''
         env:
-          PROVIDER_KEY: ${{ secrets.MEMOLEX_DEEPL_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          PORTABLE_ASSET_ID: ${{ inputs.portable_asset_id }}
+          PORTABLE_SHA256: ${{ inputs.portable_sha256 }}
         run: |
-          if [ -n "$PROVIDER_KEY" ]; then
-            mkdir -p src/Private
-            printf '%s' "$PROVIDER_KEY" > src/Private/DeepL.key
-          fi
+          [[ "$PORTABLE_ASSET_ID" =~ ^[0-9]+$ && "$PORTABLE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          DATA_DIR="$RUNNER_TEMP/memolex-release-data"
+          mkdir -p "$DATA_DIR"
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$PORTABLE_ASSET_ID" > "$DATA_DIR/windows.zip"
+          printf '%s  %s\n' "$PORTABLE_SHA256" "$DATA_DIR/windows.zip" | shasum -a 256 -c -
+          unzip -q "$DATA_DIR/windows.zip" 'MemoLex/app/data/*' 'MemoLex/app/ThirdParty/*' -d "$DATA_DIR"
+          printf 'MEMOLEX_DATA_ROOT=%s\n' "$DATA_DIR/MemoLex/app" >> "$GITHUB_ENV"
       - name: Build universal app and packages
         run: bash macos/build.sh
       - name: Upload Mac packages
         uses: actions/upload-artifact@v7
         with:
-          name: MemoLex-1.8.0-macOS
+          name: MemoLex-macOS
           path: |
             macos/output/*.zip
             macos/output/*.dmg
@@ -48,10 +60,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: MemoLex-1.8.0-macOS
+          name: MemoLex-macOS
       - name: Verify native bundle and offline core
         run: |
-          ditto -x -k MemoLex-1.8.0-macOS-universal.zip app
+          ditto -x -k MemoLex-*-macOS-universal.zip app
           APP="$PWD/app/MemoLex.app"
           codesign --verify --deep --strict "$APP"
           lipo "$APP/Contents/MacOS/MemoLex" -verify_arch x86_64 arm64
@@ -61,12 +73,4 @@ jobs:
           PID=$!
           sleep 20
           kill -0 "$PID"
-          screencapture -x "$RUNNER_TEMP/MemoLex-preview.png" || true
           kill "$PID"
-      - name: Preserve native window preview
-        uses: actions/upload-artifact@v7
-        with:
-          name: Native-preview-${{ matrix.os }}
-          path: ${{ runner.temp }}/MemoLex-preview.png
-          if-no-files-found: ignore
-          retention-days: 2

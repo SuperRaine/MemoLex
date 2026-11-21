@@ -1,4 +1,12 @@
-param([string]$DataDirectory,[string]$WebViewDirectory,[string]$DotnetCommand='dotnet',[switch]$IncludeBrowserRuntime,[string]$OutputDirectory)
+param(
+    [string]$DataDirectory,
+    [string]$WebViewDirectory,
+    [string]$DotnetCommand='dotnet',
+    [switch]$IncludeBrowserRuntime,
+    [string]$OutputDirectory,
+    [string]$SigningThumbprint,
+    [string]$SignToolCommand='signtool.exe'
+)
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 if(-not $DataDirectory){$DataDirectory=Join-Path $repo 'data'}
@@ -26,6 +34,12 @@ Copy-Item -LiteralPath (Join-Path $repo '使用说明.md') -Destination $runtime
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $runtime 'LICENSE.txt') -Force
 [xml]$project=Get-Content -LiteralPath (Join-Path $repo 'src/MemoLex.csproj') -Raw
 & (Join-Path $PSScriptRoot 'build_launcher.ps1') -PayloadDirectory $destination -Version $project.Project.PropertyGroup.Version
+if($SigningThumbprint)
+{
+    $executables=@('MemoLex.exe','MemoLex.dll','Uninstall.exe','app\MemoLex.exe','app\Maintenance.exe') |
+        ForEach-Object { Join-Path $destination $_ }
+    & (Join-Path $PSScriptRoot 'sign_windows.ps1') -Files $executables -CertificateThumbprint $SigningThumbprint -SignToolCommand $SignToolCommand
+}
 $manifestArguments=@((Join-Path $PSScriptRoot 'write_package_manifest.py'),$destination,$project.Project.PropertyGroup.Version)
 if($IncludeBrowserRuntime){$manifestArguments+='--include-browser-runtime'}
 python @manifestArguments

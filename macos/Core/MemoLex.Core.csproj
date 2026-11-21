@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>MemoLex.Core</AssemblyName>
-    <Version>1.8.0</Version>
+    <Version>1.9.0</Version>
     <Product>墨墨搜词 MemoLex</Product>
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>

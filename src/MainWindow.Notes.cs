@@ -39,7 +39,7 @@ public partial class MainWindow
         RenderNotes(word,_mnemonics.Get(word,accountKey));NotesHintText.Text=LocalNotesHint();
         if(!_allowCloud||!_tokens.HasToken)
         {
-            SetAccountStatus(!_allowCloud?"离线模式":"未连接");
+            SetAccountStatus(!_allowCloud?"离线模式":InactiveAccountStatus);
             StatusText.Text="已显示离线释义和本地助记。";
             if(_mnemonics.LoadWarning!=null)NotesHintText.Text+=" · "+_mnemonics.LoadWarning;
             return;

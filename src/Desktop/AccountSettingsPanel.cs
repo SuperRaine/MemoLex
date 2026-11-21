@@ -21,9 +21,11 @@ internal static class AccountSettingsPanel
         var name=new TextBox {MaxLength=80,Padding=new Thickness(9,6,9,6),Height=36,VerticalAlignment=VerticalAlignment.Center,ToolTip="给账号起一个方便区分的名称"};nameRow.Children.Add(name);panel.Children.Add(nameRow);
         var status=InputDialog.Text("");status.Margin=new Thickness(0,4,0,4);panel.Children.Add(status);
         panel.Children.Add(InputDialog.Text("登录信息加密保存在本机，过期后请重新登录。"));
-        var importPanel=new StackPanel();var secret=new PasswordBox {MaxLength=512,Padding=new Thickness(9),Margin=new Thickness(0,10,0,10)};importPanel.Children.Add(secret);
-        var import=new Button {Content="验证并导入 Token",HorizontalAlignment=HorizontalAlignment.Left};importPanel.Children.Add(import);
-        panel.Children.Add(new Expander {Header="手动导入 Token（高级）",Content=importPanel,Margin=new Thickness(0,10,0,0)});
+        var importPanel=new StackPanel();
+        importPanel.Children.Add(InputDialog.Text("可从墨墨 App 的「开放 API」复制授权，在你自己的电脑上分别导入同一份有效授权。"));
+        var secret=new PasswordBox {MaxLength=512,Padding=new Thickness(9),Margin=new Thickness(0,10,0,10)};importPanel.Children.Add(secret);
+        var import=new Button {Content="验证并导入",HorizontalAlignment=HorizontalAlignment.Left};importPanel.Children.Add(import);
+        panel.Children.Add(new Expander {Header="导入已有的 API 授权",Content=importPanel,Margin=new Thickness(0,10,0,0)});
         var busy=false;var refreshing=false;string state="";
         SavedAccount? Selected()=>accounts.SelectedItem as SavedAccount;
         void Enable()
@@ -44,7 +46,7 @@ internal static class AccountSettingsPanel
                     finally{refreshing=false;}
                 }
                 var active=saved.FirstOrDefault(a=>a.Active);
-                headline.Text=active!=null?"当前账号："+active.Name:store.HasExpiredSession?"登录已过期，请重新登录":"还未登录墨墨账号";
+                headline.Text=active!=null?"当前账号："+active.Name:store.HasExpiredSession?"登录已失效，请重新登录":"还未登录墨墨账号";
                 Enable();
             }
             catch{status.Text="无法加载已保存的账号，请稍后重试。";use.IsEnabled=relogin.IsEnabled=remove.IsEnabled=rename.IsEnabled=false;}

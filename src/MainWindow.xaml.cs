@@ -174,8 +174,7 @@ public partial class MainWindow : Window
             await _chinese.LoadAsync();
             _ready = true;
             _ = RefreshStubbornWordsAsync();
-            DictionaryCountText.Text = _dictionary.PreferredAvailable?$"本地词库 · {_dictionary.PreferredCount:N0} 词目":$"ECDICT · {_dictionary.Count:N0} 词目";
-            DictionaryCountText.ToolTip=_dictionary.PreferredAvailable?$"优先显示本地词库释义，未收录的单词由内置词库补充。":_dictionary.PreferredWarning??"内置离线词典";
+            DictionaryCountText.Text=$"内置词库 · {_dictionary.Count:N0} 词目";
             UpdateHistory();
             SearchBox.Text = _preferences.History.FirstOrDefault() ?? "serendipity";
             SearchBox.Focus();
@@ -236,7 +235,7 @@ public partial class MainWindow : Window
         var exchange = FormatExchange(entry?.exchange);
         FillWordLinks(ExchangeText, exchange, EmptyMatches, word);
         ExchangeCard.Visibility = exchange.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        WordMetaText.Text = entry == null ? "本地未收录，正在查询墨墨词库…" : entry.source=="local-brief"?LocalBriefDictionary.SourceLabel+" · 离线可用":"ECDICT 英汉双解 · 离线可用";
+        WordMetaText.Text = entry == null ? "本地未收录，正在查询墨墨词库…" : "内置词库 · 离线可用";
         if (int.TryParse(entry?.bnc, out var frequency) && frequency > 0) WordMetaText.Text += $"  /  BNC 词频 #{frequency:N0}";
         RenderTags(entry);
         ResultScroll.ScrollToTop();
@@ -531,7 +530,7 @@ public partial class MainWindow : Window
     {
         if (!_allowCloud) { CloudDetailText.Text = "离线模式"; EditNotepadButton.IsEnabled=RefreshNotepadsButton.IsEnabled = CreateNotepadButton.IsEnabled = NotepadCombo.IsEnabled = false; return; }
         if (_refreshing) return;
-        if (!_tokens.HasToken) { SetAccountStatus("未连接"); CloudDetailText.Text = "点击标题栏的账号按钮登录墨墨"; return; }
+        if (!_tokens.HasToken) { SetAccountStatus(InactiveAccountStatus); CloudDetailText.Text = "点击标题栏的账号按钮登录墨墨"; return; }
         _refreshing = true;
         var account=_accountVersion;var accountToken=_accountCts.Token;
         UpdateTodayStudyButton();
@@ -644,14 +643,19 @@ public partial class MainWindow : Window
     private void EditSettings(string? initialPage=null)
     {
         if (_adding || _refreshing) return;
-        SettingsResult result;
         _editingSettings=true;ReleaseGlobalShortcut();
-        try{result=SettingsDialog.Edit(this,_tokens,_preferences,ValidateGlobalShortcut,ReloadAccountAsync,initialPage??(_updates?.CanInstall==true?"软件更新":!_tokens.HasToken?"墨墨账号":null),_updates,startOnboarding:StartOnboarding);}
+        try
+        {
+            SettingsDialog.Edit(this,_tokens,_preferences,ValidateGlobalShortcut,ReloadAccountAsync,
+                initialPage??(_updates?.CanInstall==true?"软件更新":!_tokens.HasToken?"墨墨账号":null),_updates,
+                startOnboarding:StartOnboarding,settingsChanged:ApplySettingsUI);
+        }
         finally{_editingSettings=false;RefreshGlobalShortcut();RefreshDoubleCopy();RefreshHoverLookup();QueuePendingUpdateNotice();}
-        if (!result.Saved) return;
+    }
+    private void ApplySettingsUI()
+    {
         UpdateShortcutHints();
         UpdateExamCountdown();
-        StatusText.Text = _preferences.CloseToTray ? "设置已保存 · 关闭窗口时最小化到托盘。" : "设置已保存 · 关闭窗口时直接退出。";
     }
     private void SetCloudWriteBusy(bool busy)
     {

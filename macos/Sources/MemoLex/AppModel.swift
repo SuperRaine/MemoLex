@@ -87,7 +87,10 @@ struct Notice: Identifiable {
     private var lookupTask: Task<Void, Never>?
     private var accountTask: Task<Void, Never>?
     private var preferencesObserver: AnyCancellable?
+    private var preferencesSave: Task<Void, Never>?
     private var lastStubbornFetch: Date?
+    private var nextStubbornRetry: Date?
+    private var nextAccountCheck: Date?
     private let speaker = AVSpeechSynthesizer()
 
     init() {
@@ -95,29 +98,27 @@ struct Notice: Identifiable {
         history = load("history.json", as: [SearchRecord].self) ?? []
         activeAccountID = UserDefaults.standard.string(forKey: "activeAccount") ?? ""
         core.onUnauthorized = { [weak self] in self?.expireAccount() }
-        preferencesObserver = preferences.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        preferencesObserver = preferences.objectWillChange.sink { [weak self] _ in self?.schedulePreferencesSave() }
         updates = MacUpdates(preferences: preferences)
     }
     var activeAccount: SavedAccount? { accounts.first { $0.id == activeAccountID } }
-    var titleAccount: String { activeAccount?.name ?? accountStatus }
+    var titleAccount: String { activeAccount?.displayName ?? accountStatus }
     var stubbornCurrent: String { stubbornOrder.indices.contains(stubbornIndex) ? stubbornOrder[stubbornIndex]["spelling"].text : "" }
     var selectedNotepadTitle: String { selectedPad["title"].text }
-    var countdown: String {
-        let days = max(0, Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()), to: Calendar.current.startOfDay(for: preferences.examDate)).day ?? 0)
-        return "距 \(preferences.examName.trimmed.isEmpty ? "考试" : preferences.examName) 还有\(days)天"
-    }
     func initialize() async {
+        Task { await restoreAccount() }
         do {
             let metadata = try await core.request("initialize")
             wordCount = metadata["wordCount"].integer; translationProvider = metadata["translationProvider"].text
             ready = true; status = metadata["warning"].text.isEmpty ? "词典与本地助记已就绪。" : metadata["warning"].text
             updates.start()
-            if let account = activeAccount, !account.needsLogin {
-                if let expiry = account.expiresAt, expiry <= Date() { expireAccount() }
-                else if let token = try CredentialVault.read(account.id) { await activate(account.id, token: token) }
-            }
             if !preferences.onboardingCompleted { startTour() }
         } catch { fail(error) }
+    }
+    private func restoreAccount() async {
+        guard let account = activeAccount else { return }
+        if account.needsLogin { accountStatus = "请重新登录"; return }
+        await activate(account.id)
     }
     func suggest() {
         suggestionTask?.cancel()
@@ -134,7 +135,8 @@ struct Notice: Identifiable {
         guard ready, !query.isEmpty, query.count <= 100 else { return }
         lookupTask?.cancel(); wordVersion += 1
         let version = wordVersion; let account = accountVersion
-        search = query; showWindow?()
+        search = query
+        showWindow?()
         lookupTask = Task {
             do {
                 let chinese = query.range(of: "[\\p{Han}]", options: .regularExpression) != nil
@@ -148,11 +150,17 @@ struct Notice: Identifiable {
                     page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = ""; membership = false
                     let result = try await core.request("dictionary.lookup", ["word": .string(query)])
                     guard version == wordVersion else { return }
-                    word = result["word"].text; entry = result["entry"]; notes = result["notes"].list; suggestions = result["suggestions"].list.map(\.text)
+                    word = result["word"].text
+                    entry = result["entry"]
+                    if account == accountVersion { notes = result["notes"].list }
+                    suggestions = result["suggestions"].list.map(\.text)
                     recordHistory(word); status = entry == .null ? "本地词库未收录这个单词。" : "查词完成。"
                     Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }
                     Task { await loadExamples(reset: true) }
-                    if loggedIn { Task { await loadCloudWord(word, version: version, account: account) } }
+                    if loggedIn {
+                        let currentAccount = accountVersion
+                        Task { await loadCloudWord(word, version: version, account: currentAccount) }
+                    }
                 }
                 if navigate { appendLocation(.init(page: page, query: query)) }
             } catch { if version == wordVersion { fail(error) } }
@@ -233,53 +241,141 @@ struct Notice: Identifiable {
     func clearHistory() { history = []; save(history, "history.json") }
 
     func activate(_ id: String, token: String? = nil, verified: Bool = false) async {
-        accountVersion += 1; let generation = accountVersion; loggedIn = false; clearCloudState()
+        guard let account = accounts.first(where: { $0.id == id }) else { return }
+        accountVersion += 1
+        let generation = accountVersion
+        accountTask?.cancel()
+        loggedIn = false
+        clearCloudState()
+        activeAccountID = id
+        UserDefaults.standard.set(id, forKey: "activeAccount")
+        accountStatus = "正在连接"
         do {
-            try await core.setAccount(token: nil)
-            guard generation == accountVersion else { return }
+            if account.needsLogin || (account.expiresAt.map { $0 <= Date() } ?? false) {
+                if !account.needsLogin { expireAccount() }
+                else { accountStatus = "请重新登录"; try await core.setAccount(token: nil) }
+                return
+            }
             let credential = try token ?? CredentialVault.read(id)
-            guard let credential else { throw CoreFailure(code: "login", message: "登录信息已失效，请重新登录。") }
+            guard let credential else { expireAccount(); return }
             try await core.setAccount(token: credential)
             guard generation == accountVersion else { return }
-            activeAccountID = id; loggedIn = true; accountStatus = "连接中"; UserDefaults.standard.set(id, forKey: "activeAccount")
-            if !verified { _ = try await core.request("account.validate") }
+            loggedIn = true
+            let query = word
+            if !query.isEmpty {
+                Task {
+                    if let result = try? await core.request("notes.local", ["word": .string(query)]),
+                       generation == accountVersion, query == word { notes = result.list }
+                }
+            }
+            checkAccountConnection(generation, verified: verified)
+        } catch {
             guard generation == accountVersion else { return }
-            accountStatus = "已登录"; await refreshNotepads(); await refreshStubborn(force: true)
-            if !word.isEmpty { await loadCloudWord(word, version: wordVersion, account: generation) }
-        } catch { if generation == accountVersion { accountStatus = "暂时离线"; if !loggedIn { fail(error) } } }
+            accountStatus = "连接未完成"
+            status = error.localizedDescription
+            nextAccountCheck = Date().addingTimeInterval(45)
+        }
     }
-    func finishLogin(_ authorization: J, identity: String, target: SavedAccount?) async throws {
+    private func checkAccountConnection(_ generation: Int, verified: Bool = false) {
+        accountTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                if !verified { _ = try await core.request("account.validate", timeout: 55) }
+                guard generation == accountVersion, !Task.isCancelled else { return }
+                accountStatus = "已登录"
+                nextAccountCheck = nil
+                async let stubborn: Void = refreshStubborn(force: true)
+                async let pads: Void = refreshNotepads()
+                if !word.isEmpty { await loadCloudWord(word, version: wordVersion, account: generation) }
+                _ = await (stubborn, pads)
+            } catch {
+                guard generation == accountVersion, !Task.isCancelled else { return }
+                accountStatus = "暂时离线"
+                status = error.localizedDescription
+                nextAccountCheck = Date().addingTimeInterval(45)
+            }
+        }
+    }
+    func finishLogin(_ authorization: J, identity: String, fromOfficialPage: Bool = false) async throws {
         let token = authorization["token"].text
         guard !token.isEmpty else { throw CoreFailure(code: "login", message: "未能获取登录信息，请重新登录。") }
-        _ = try await core.request("login.validate", ["token": .string(token)])
+        if !fromOfficialPage { _ = try await core.request("login.validate", ["token": .string(token)]) }
         let identity = identity.trimmed.lowercased()
-        let sameIdentity = !identity.isEmpty ? accounts.first { $0.identity == identity } : nil
-        let existing = sameIdentity ?? (target?.identity == identity && !identity.isEmpty ? target : nil)
+        let sameIdentity = identity.isEmpty ? nil : accounts.first { $0.identity == identity }
+        let sameCredential = accounts.first { (try? CredentialVault.read($0.id)) == token }
+        if let sameCredential, !sameCredential.identity.isEmpty, !identity.isEmpty, sameCredential.identity != identity {
+            throw CoreFailure(code: "login", message: "本次授权属于另一个已保存账号，请重新登录对应账号。")
+        }
+        let existing = sameIdentity ?? sameCredential
         let id = existing?.id ?? UUID().uuidString
         try CredentialVault.save(token, account: id)
-        let account = SavedAccount(id: id, name: existing?.name ?? (identity.isEmpty ? "墨墨账号 \(accounts.count + 1)" : identity), identity: identity, expiresAt: parseISODate(authorization["expiresAt"].text))
-        accounts.removeAll { $0.id == id }; accounts.append(account); save(accounts, "accounts.json"); showLogin = false
-        await activate(id, token: token, verified: true)
+        let resolvedIdentity = identity.isEmpty ? (existing?.identity ?? "") : identity
+        let isPlaceholder = existing?.name.range(of: "^墨墨账号 [0-9]+$", options: .regularExpression) != nil
+        let name: String
+        if let existing, !isPlaceholder || resolvedIdentity.isEmpty {
+            name = existing.displayName
+        } else {
+            name = resolvedIdentity.isEmpty ? "墨墨账号 \(accounts.count + 1)" : SavedAccount.displayIdentity(resolvedIdentity)
+        }
+        let account = SavedAccount(id: id, name: name, identity: resolvedIdentity, expiresAt: parseISODate(authorization["expiresAt"].text))
+        if let index = accounts.firstIndex(where: { $0.id == id }) { accounts[index] = account } else { accounts.append(account) }
+        save(accounts, "accounts.json")
+        showLogin = false
+        Task { await activate(id, token: token, verified: !fromOfficialPage) }
     }
     func logout() async {
-        accountVersion += 1; loggedIn = false; activeAccountID = ""; accountStatus = "未登录"; clearCloudState(); UserDefaults.standard.removeObject(forKey: "activeAccount")
-        try? await core.setAccount(token: nil)
-        if !word.isEmpty, let value = try? await core.request("notes.local", ["word": .string(word)]) { notes = value.list }
+        accountVersion += 1
+        let generation = accountVersion
+        accountTask?.cancel()
+        loggedIn = false
+        activeAccountID = ""
+        accountStatus = "未登录"
+        clearCloudState()
+        UserDefaults.standard.removeObject(forKey: "activeAccount")
+        await clearWorkerAccount(generation)
     }
     func expireAccount() {
-        guard loggedIn || !activeAccountID.isEmpty else { return }
-        if let index = accounts.firstIndex(where: { $0.id == activeAccountID }) { accounts[index].needsLogin = true; save(accounts, "accounts.json") }
-        accountVersion += 1; loggedIn = false; accountStatus = "登录已过期"; clearCloudState()
-        Task { try? await core.setAccount(token: nil) }
-        notice = .init(title: "登录已过期", message: "请在墨墨账号设置中重新登录。")
+        guard let index = accounts.firstIndex(where: { $0.id == activeAccountID }), !accounts[index].needsLogin else { return }
+        let id = accounts[index].id
+        accounts[index].needsLogin = true
+        CredentialVault.remove(id)
+        save(accounts, "accounts.json")
+        accountVersion += 1
+        let generation = accountVersion
+        accountTask?.cancel()
+        loggedIn = false
+        accountStatus = "登录已失效"
+        clearCloudState()
+        Task { await clearWorkerAccount(generation) }
+        notice = .init(title: "墨墨登录已失效", message: "请重新登录或导入有效的墨墨 API 授权。登录后，云词本和顽固单词会自动刷新。", confirm: "账号设置", action: { [weak self] in self?.openAccountSettings() })
     }
-    func checkExpiry() { if loggedIn, let expiry = activeAccount?.expiresAt, expiry <= Date() { expireAccount() } }
+    private func clearWorkerAccount(_ generation: Int) async {
+        guard generation == accountVersion else { return }
+        try? await core.setAccount(token: nil)
+        let query = word
+        guard !query.isEmpty, let value = try? await core.request("notes.local", ["word": .string(query)]),
+              generation == accountVersion, query == word else { return }
+        notes = value.list
+    }
+    func checkExpiry() {
+        guard let account = activeAccount, !account.needsLogin else { return }
+        if let expiry = account.expiresAt, expiry <= Date() { expireAccount(); return }
+        guard let retry = nextAccountCheck, retry <= Date() else { return }
+        nextAccountCheck = nil
+        if loggedIn { checkAccountConnection(accountVersion) }
+        else { Task { await activate(account.id) } }
+    }
     func renameAccount(_ id: String, _ name: String) {
         guard let index = accounts.firstIndex(where: { $0.id == id }), !name.trimmed.isEmpty else { return }
         accounts[index].name = String(name.trimmed.prefix(80)); save(accounts, "accounts.json")
     }
     func removeAccount(_ id: String) async { if activeAccountID == id { await logout() }; CredentialVault.remove(id); accounts.removeAll { $0.id == id }; save(accounts, "accounts.json") }
-    private func clearCloudState() { notes = []; notepads = []; selectedPad = .null; notebookRows = []; notebookLoading = false; membership = false; todayStatus = ""; writing = false; stubbornWords = []; stubbornOrder = []; stubbornIndex = 0; stubbornTotal = 0; stubbornLoading = false; lastStubbornFetch = nil }
+    private func clearCloudState() {
+        notes = []; notepads = []; selectedPad = .null; notebookRows = []; notebookLoading = false
+        membership = false; todayStatus = ""; writing = false
+        stubbornWords = []; stubbornOrder = []; stubbornIndex = 0; stubbornTotal = 0; stubbornLoading = false
+        stubbornHint = ""; lastStubbornFetch = nil; nextStubbornRetry = nil; nextAccountCheck = nil
+    }
     func refreshNotepads() async {
         guard loggedIn else { return }; let generation = accountVersion
         do {
@@ -343,6 +439,7 @@ struct Notice: Identifiable {
     }
     func refreshStubborn(force: Bool = false) async {
         guard loggedIn, !stubbornLoading else { return }
+        if !force, let retry = nextStubbornRetry, retry > Date() { return }
         if !force, let fetched = lastStubbornFetch, Date().timeIntervalSince(fetched) < 900 { return }
         stubbornLoading = true; let generation = accountVersion
         do {
@@ -350,12 +447,19 @@ struct Notice: Identifiable {
             guard generation == accountVersion else { return }
             let previous = stubbornOrder.map { $0["spelling"].text }; let current = stubbornCurrent
             stubbornWords = result["words"].list; stubbornTotal = result["total"].integer; lastStubbornFetch = Date()
+            nextStubbornRetry = nil
             stubbornHint = result["complete"].flag ? "" : "已获取 \(stubbornWords.count)/\(stubbornTotal)，部分记录受接口上限影响。"
             if preferences.stubbornSort == "random", Set(previous) == Set(stubbornWords.map { $0["spelling"].text }) {
                 let updated = Dictionary(stubbornWords.map { ($0["spelling"].text, $0) }, uniquingKeysWith: { first, _ in first })
                 stubbornOrder = previous.compactMap { updated[$0] }; stubbornIndex = stubbornOrder.firstIndex { $0["spelling"].text == current } ?? 0
             } else { reorderStubborn() }
-        } catch { if generation == accountVersion { stubbornHint = error.localizedDescription } }
+        } catch {
+            if generation == accountVersion, !Task.isCancelled {
+                lastStubbornFetch = nil
+                nextStubbornRetry = Date().addingTimeInterval(65)
+                stubbornHint = error.localizedDescription
+            }
+        }
         if generation == accountVersion { stubbornLoading = false }
     }
     func reorderStubborn() {
@@ -363,8 +467,13 @@ struct Notice: Identifiable {
         switch preferences.stubbornSort {
         case "alphabetical": stubbornOrder = stubbornWords.sorted { preferences.alphabetDescending ? $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedDescending : $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedAscending }
         case "random": stubbornOrder = stubbornWords.shuffled()
-        default: stubbornOrder = stubbornWords.sorted { let left = parseISODate($0["nextStudyDate"].text) ?? .distantFuture; let right = parseISODate($1["nextStudyDate"].text) ?? .distantFuture; return left == right ? $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedAscending : left < right }
-        }; preferences.save()
+        default:
+            let scheduled = stubbornWords.map { (word: $0, date: parseISODate($0["nextStudyDate"].text) ?? .distantFuture) }
+            stubbornOrder = scheduled.sorted { left, right in
+                if left.date != right.date { return left.date < right.date }
+                return left.word["spelling"].text.localizedCaseInsensitiveCompare(right.word["spelling"].text) == .orderedAscending
+            }.map(\.word)
+        }
     }
     func nextStubborn() {
         guard stubbornOrder.count > 1 else { return }
@@ -382,7 +491,15 @@ struct Notice: Identifiable {
         if generation == wordVersion { notes = result.list }; status = cloud ? "助记已同步到墨墨。" : "助记已保存到本地。"
     }
     func openAccountSettings() { settingsPage = "墨墨账号"; sheet = .settings }
-    func savePreferences() { preferences.save(); applySystemPreferences?(); reorderStubborn() }
+    private func schedulePreferencesSave() {
+        preferencesSave?.cancel()
+        preferencesSave = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard !Task.isCancelled else { return }
+            self?.preferences.save()
+            self?.applySystemPreferences?()
+        }
+    }
     func fail(_ error: Error) { if let coreError = error as? CoreFailure, coreError.code == "cancelled" { return }; status = error.localizedDescription; notice = .init(title: "操作未完成", message: error.localizedDescription) }
     private func load<T: Decodable>(_ name: String, as type: T.Type) -> T? { guard let data = try? Data(contentsOf: AppPaths.profile.appendingPathComponent(name)) else { return nil }; return try? JSONDecoder().decode(type, from: data) }
     private func save<T: Encodable>(_ value: T, _ name: String) { do { try FileManager.default.createDirectory(at: AppPaths.profile, withIntermediateDirectories: true); try JSONEncoder().encode(value).write(to: AppPaths.profile.appendingPathComponent(name), options: .atomic) } catch { status = "本地资料暂时无法保存。" } }

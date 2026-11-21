@@ -3,16 +3,14 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace MemoLex.Core;
+namespace MemoLex.Build;
 
 /// <summary>
 /// Reads the plaintext brief-definition section of one verified local file format.
-/// The source stays outside MemoLex; no dictionary data is exported or written.
+/// Used only when preparing the built-in dictionary.
 /// </summary>
 public sealed class LocalBriefDictionary
 {
-    public const string SourceLabel = "本地简明释义";
-
     // This is a format profile, not a general-purpose combined.bin decoder. Unknown
     // releases must be inspected independently before adding another profile.
     private static readonly FormatProfile SupportedProfile = new(
@@ -40,7 +38,6 @@ public sealed class LocalBriefDictionary
         _profile = profile;
     }
 
-    public int Count => Volatile.Read(ref _state)?.Entries.Count ?? 0;
     public bool Available => Volatile.Read(ref _state) is not null;
     public string? LoadWarning => _loadWarning;
 
@@ -50,37 +47,13 @@ public sealed class LocalBriefDictionary
         lock (_loadGate) return _loadTask ??= Task.Run(LoadCore);
     }
 
-    public DictionaryEntry? Lookup(string word)
-    {
-        var state = Volatile.Read(ref _state);
-        if (state is null || string.IsNullOrWhiteSpace(word)
-            || !state.Entries.TryGetValue(word.Trim(), out var address)) return null;
-
-        return new DictionaryEntry
-        {
-            word = address.Word,
-            translation = StrictUtf8.GetString(state.Text, address.Offset, address.Length)
-        };
-    }
-
-    public bool TryLookup(string word, out DictionaryEntry? entry)
-    {
-        entry = Lookup(word);
-        return entry is not null;
-    }
-
-    internal IEnumerable<DictionaryEntry> EnumerateEntries()
+    internal IEnumerable<(string Word, string Translation)> EnumerateEntries()
     {
         var state = Volatile.Read(ref _state);
         if (state is null) yield break;
         foreach (var address in state.Entries.Values)
             if (address.Length > 0)
-                yield return new DictionaryEntry
-                {
-                    word = address.Word,
-                    translation = StrictUtf8.GetString(state.Text, address.Offset, address.Length),
-                    source = "local-brief"
-                };
+                yield return (address.Word, StrictUtf8.GetString(state.Text, address.Offset, address.Length));
     }
 
     private void LoadCore()

@@ -15,6 +15,7 @@ public partial class MainWindow
     private DateTimeOffset? _accountRetryAt;
     private bool _checkingAccount;
     internal Action<string>? AccountExpiryNotification {get;set;}
+    private string InactiveAccountStatus=>_tokens.HasExpiredSession?"登录已失效":"未连接";
     private void StartAccountClock()
     {
         CheckAccountExpiry();
@@ -39,13 +40,17 @@ public partial class MainWindow
         {
             if(_tokens.ExpireIfDue())HandleExpiredAccount();
             else if(_accountCredentialKey!=_tokens.CredentialKey)await ReloadAccountAsync();
-            else if(_tokens.HasExpiredSession)SetAccountStatus("登录已过期");
-            else if(_allowCloud&&_ready&&_tokens.HasToken&&_accountRetryAt<=DateTimeOffset.UtcNow)
+            else if(_tokens.HasExpiredSession)SetAccountStatus(InactiveAccountStatus);
+            else if(_allowCloud&&_ready&&_tokens.HasToken)
             {
-                _accountRetryAt=null;
-                await RefreshNotepadsAsync();
-                if(_accountAuthenticated&&_viewTarget==ViewTarget.Word&&ValidWord(_word))
-                    await LoadLocalAndCloudNotesAsync(_word,_accountCts.Token);
+                if(_accountRetryAt<=DateTimeOffset.UtcNow)
+                {
+                    _accountRetryAt=null;
+                    await RefreshNotepadsAsync();
+                    if(_accountAuthenticated&&_viewTarget==ViewTarget.Word&&ValidWord(_word))
+                        await LoadLocalAndCloudNotesAsync(_word,_accountCts.Token);
+                }
+                if(_stubbornRetryAt is {} retry&&retry<=DateTimeOffset.UtcNow)_=RefreshStubbornWordsAsync();
             }
         }
         catch{}
@@ -53,8 +58,10 @@ public partial class MainWindow
     }
     private async void HandleExpiredAccount()
     {
-        await ReloadAccountAsync();SetAccountStatus("登录已过期");
-        const string message="墨墨登录已过期，已退出当前账号。请在设置中重新登录。";
+        await ReloadAccountAsync();
+        if(_tokens.HasToken)return;
+        SetAccountStatus(InactiveAccountStatus);
+        const string message="墨墨登录已失效。重新登录或导入有效授权后，会自动刷新云词本和顽固单词。";
         StatusText.Text=message;
         if(AccountExpiryNotification!=null)AccountExpiryNotification(message);
         else if(_desktopIntegration)System.Windows.MessageBox.Show(this,message,"需要重新登录",System.Windows.MessageBoxButton.OK,System.Windows.MessageBoxImage.Information);
@@ -79,7 +86,7 @@ public partial class MainWindow
     private void SetAccountError(Exception error)
     {
         if(!_allowCloud){SetAccountStatus("离线模式");return;}
-        if(!_tokens.HasToken){SetAccountStatus("未连接");return;}
+        if(!_tokens.HasToken){SetAccountStatus(InactiveAccountStatus);return;}
         if(_accountRejected){SetAccountStatus("登录失效");return;}
         if(error is not MaiMemoException {StatusCode:HttpStatusCode.Forbidden or HttpStatusCode.NotFound or HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity})
         {
@@ -106,7 +113,7 @@ public partial class MainWindow
         _notepadCache.Clear();_notepadLoads.Clear();_deletedNotepads.Clear();++_membershipVersion;
         _membershipWord=_membershipPad="";_refreshing=false;
         _changingLists=true;NotepadCombo.ItemsSource=Array.Empty<CloudNotepad>();_changingLists=false;
-        SetAccountStatus(_tokens.HasToken?"连接中":"未连接");UpdateTodayStudyButton();
+        SetAccountStatus(_tokens.HasToken?"连接中":InactiveAccountStatus);UpdateTodayStudyButton();
         var view=CaptureView();
         if(view.Target==ViewTarget.Translation){await RefreshNotepadsAsync();RestoreTranslationView(view);}
         else if(view.Target==ViewTarget.ChineseSearch&&view.Chinese is {} chinese)await Task.WhenAll(RefreshNotepadsAsync(),SearchChineseAsync(chinese.Query,false,false,chinese));

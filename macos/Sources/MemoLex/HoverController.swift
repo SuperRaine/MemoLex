@@ -76,7 +76,7 @@ import SwiftUI
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 350, height: 180), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         let size: CGFloat = model.preferences.hoverFontSize == "large" ? 17 : model.preferences.hoverFontSize == "small" ? 12 : 14
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true; panel.level = .floating; panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false; panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = NSHostingView(rootView: HoverView(value: value, fontSize: size) { [weak self] word in self?.panel?.orderOut(nil); self?.model.lookup(word) }.preferredColorScheme(.light))
+        panel.contentView = NSHostingView(rootView: HoverView(value: value, fontSize: size) { [weak self] word in self?.panel?.orderOut(nil); self?.model.lookup(word) })
         panel.alphaValue = model.preferences.hoverTranslucent ? 0.89 : 1
         let available = NSScreen.screens.first { $0.frame.contains(cursor) }?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1000, height: 750)
         let x = min(max(cursor.x + 12, available.minX + 6), available.maxX - 356); var y = cursor.y - 192
@@ -96,7 +96,7 @@ private struct HoverView: View {
             if value["entry"] != .null { Text(value["entry"]["translation"].text.decodedLines).font(.system(size: fontSize)).lineLimit(3).foregroundStyle(Palette.ink) }
             else { Text("未找到释义，可试试：").font(.system(size: fontSize)).foregroundStyle(Palette.muted); HStack { ForEach(Array(value["suggestions"].list.prefix(3)), id: \.text) { word in Button(word.text) { navigate(word.text) }.buttonStyle(.plain).foregroundStyle(Palette.deep) } } }
             if let note = value["notes"].list.first { Text(note["text"].text).font(.system(size: max(11, fontSize - 1))).lineLimit(3).foregroundStyle(Palette.deep) }
-        }.padding(16).frame(width: 350, height: 180, alignment: .topLeading).background(.white, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.border))
+        }.padding(16).frame(width: 350, height: 180, alignment: .topLeading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.border))
     }
 }
 

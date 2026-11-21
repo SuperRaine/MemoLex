@@ -12,7 +12,6 @@ public sealed record ChineseSearchResult(string Word,string Meaning,string Match
     public bool IsExactMatch {get;init;}
     public string Source {get;init;}="ecdict";
     public bool IsPreferredSource=>Source=="local-brief";
-    public string SourceLabel=>IsPreferredSource?"本地词库":"ECDICT";
     public override string ToString()=>Word;
 }
 public sealed record ChineseSearchPage(string Query,IReadOnlyList<ChineseSearchResult> Items,int Total);
@@ -26,12 +25,10 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
     private readonly object _gate=new();
     private readonly object _loadGate=new();
     private Task? _loadTask;
-    private PreferredIndex? _preferred;
-    private sealed record PreferredIndex(string[] Words,Dictionary<string,int[]> Tokens);
     private sealed class SemanticEntry {public int[] ids {get;set;}=[]; public string[] equivalents {get;set;}=[];}
     private sealed record QueryVariant(string Text,double Weight,bool Direct);
     private sealed record Sense(string Text,string Normalized,string Literal,bool Specialist,int Order,string Pos);
-    public bool Available=>_postings!=null||_preferred!=null;
+    public bool Available=>_postings!=null;
     private static readonly Regex Han=new(@"[\u3400-\u9fff]",RegexOptions.Compiled);
     private static readonly Regex Annotation=new(@"\[[^\]]*\]|\([^)]*\)|（[^）]*）",RegexOptions.Compiled);
     private static readonly Regex NegativePrefix=new(@"(?:不|没|无|非|未|欠|没有|缺乏|缺少|欠缺|不能|不太|难以|不善|不宜|不受)$",RegexOptions.Compiled);
@@ -65,40 +62,9 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
     private static string LiteralChinese(string text)=>string.Concat(Han.Matches(text).Select(match=>match.Value));
     public Task LoadAsync()
     {
-        lock(_loadGate)return _loadTask??=Task.Run(LoadCore);
+        lock(_loadGate)return _loadTask??=Task.Run(LoadIndex);
     }
-    private void LoadCore()
-    {
-        // This index stays in memory. The user's local dictionary file is never modified or
-        // copied into the application's distributable dictionary resources.
-        if(dictionary.PreferredAvailable)
-        {
-            var words=new List<string>();var postingsByToken=new Dictionary<string,List<int>>(StringComparer.Ordinal);
-            foreach(var entry in dictionary.EnumeratePreferredEntries())
-            {
-                var text=LiteralChinese(entry.translation);if(text.Length==0)continue;
-                var id=words.Count;words.Add(entry.word);
-                var grams=new HashSet<string>(StringComparer.Ordinal);
-                for(var index=0;index<text.Length;index++)
-                {
-                    grams.Add("1:"+text[index]);
-                    if(index+1<text.Length)grams.Add("2:"+text.Substring(index,2));
-                }
-                foreach(var gram in grams)
-                {
-                    if(!postingsByToken.TryGetValue(gram,out var ids))postingsByToken[gram]=ids=[];
-                    ids.Add(id);
-                }
-            }
-            _preferred=new(words.ToArray(),postingsByToken.ToDictionary(pair=>pair.Key,pair=>pair.Value.ToArray(),StringComparer.Ordinal));
-        }
-        try{LoadFallback();}
-        catch(Exception error)when(_preferred!=null&&error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
-        {
-            _tokens.Clear();_semantic.Clear();
-        }
-    }
-    private void LoadFallback()
+    private void LoadIndex()
     {
         var path=Path.Combine(_directory,"chinese.postings");var tokens=Path.Combine(_directory,"chinese.tokens.tsv");
         var meta=Path.Combine(_directory,"chinese.meta.json");var synonyms=Path.Combine(_directory,"chinese.synonyms.json");
@@ -218,15 +184,6 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
         {
             cancellationToken.ThrowIfCancellationRequested();
             var grams=variant.Text.Length==1?new[]{"1:"+variant.Text}:Enumerable.Range(0,variant.Text.Length-1).Select(index=>"2:"+variant.Text.Substring(index,2)).Distinct().ToArray();
-            if(_preferred is {} preferred)
-            {
-                var localPages=grams.Select(gram=>preferred.Tokens.GetValueOrDefault(gram)??[]).OrderBy(page=>page.Length).ToArray();
-                if(localPages.Length>0&&localPages[0].Length>0)
-                {
-                    var ids=localPages[0].ToHashSet();foreach(var page in localPages.Skip(1)){ids.IntersectWith(page);if(ids.Count==0)break;}
-                    foreach(var id in ids)candidates.TryAdd(preferred.Words[id],0);
-                }
-            }
             var pages=grams.Select(gram=>Posting(gram,cancellationToken)).OrderBy(page=>page.Length).ToArray();
             if(pages.Length>0&&pages[0].Length>0)
             {
@@ -244,8 +201,6 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
         foreach(var pair in candidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            // Candidate IDs are only word identities. Matching, ranking and the
-            // displayed sense must all use the same preferred definition.
             var entry=dictionary.Lookup(pair.Key);if(entry==null)continue;
             var senses=Senses(entry.translation);var best=pair.Value;var bestMeaningScore=0d;var meaning="";var kind=best>0?"词网同义":"释义匹配";
             // An explicitly typed 的 constrains the complete sense. Without it,

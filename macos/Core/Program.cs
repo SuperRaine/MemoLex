@@ -92,8 +92,7 @@ internal sealed class CoreService : IDisposable
     {
         Environment.SetEnvironmentVariable("MEMOLEX_RESOURCES", resources);
         var data = Path.Combine(resources, "data");
-        var configured = Path.Combine(profile, "dictionary.path");
-        _dictionary = new(data, File.Exists(configured) ? File.ReadAllText(configured).Trim() : null);
+        _dictionary = new(data);
         _related = new(_dictionary, data); _chinese = new(_dictionary, data);
         _notes = new(Path.Combine(profile, "mnemonics.user.json"), Path.Combine(data, "mnemonics.json"));
         _api = new(_tokens);
@@ -118,14 +117,19 @@ internal sealed class CoreService : IDisposable
             using var client = new MaiMemoClient(temporary);
             return await client.ResolveWordAsync("hello", cancellation) ?? throw new MaiMemoException("暂时无法确认登录信息。");
         }
+        if (method == "account.validate")
+        {
+            using var validation = _api.BindNativeAccount(T(p, "accountKey"));
+            return await _api.ResolveWordAsync("hello", cancellation) ?? throw new MaiMemoException("暂时无法确认登录信息。");
+        }
         await _ready.Value.WaitAsync(cancellation);
-        var authenticated = method.StartsWith("notepads.", StringComparison.Ordinal) || method.StartsWith("study.", StringComparison.Ordinal) || method is "notes.cloud" or "notes.publish" or "stubborn" or "account.validate";
+        var authenticated = method.StartsWith("notepads.", StringComparison.Ordinal) || method.StartsWith("study.", StringComparison.Ordinal) || method is "notes.cloud" or "notes.publish" or "stubborn";
         var accountKey = _tokens.CredentialKey;
         using var scope = authenticated ? _api.BindNativeAccount(T(p, "accountKey")) : null;
         var word = T(p, "word").Trim();
         switch (method)
         {
-            case "initialize": return new { version = "1.8.0", wordCount = _dictionary.Count, localMnemonicCount = _notes.BundledCount, preferredDictionaryAvailable = _dictionary.PreferredAvailable, warning = _notes.LoadWarning ?? _dictionary.PreferredWarning, mnemonicTypes = MnemonicTypes.All, translationProvider = _translation.PreferredProvider };
+            case "initialize": return new { version = typeof(CoreService).Assembly.GetName().Version?.ToString(3), wordCount = _dictionary.Count, localMnemonicCount = _notes.BundledCount, warning = _notes.LoadWarning, mnemonicTypes = MnemonicTypes.All, translationProvider = _translation.PreferredProvider };
             case "dictionary.lookup":
                 word = ExampleText.ResolveLookupWord(word, candidate => _dictionary.Lookup(candidate) != null);
                 return new { entry = _dictionary.Lookup(word), word, notes = _notes.Get(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24) };
@@ -164,7 +168,6 @@ internal sealed class CoreService : IDisposable
                     _notes.SaveEdit(word, new(saved.Id, saved.NoteType, saved.Text, saved.Id, "cloud", accountKey), accountKey);
                     return _notes.Get(word, accountKey);
                 }
-            case "account.validate": return await _api.ResolveWordAsync("hello", cancellation) ?? throw new MaiMemoException("暂时无法确认登录信息。");
             case "study.status": return new { status = await _api.GetTodayStudyStatusAsync(await RequireWord(word, cancellation), cancellation) };
             case "study.add": return await _api.AddToTodayAsync(await RequireWord(word, cancellation), cancellationToken: cancellation);
             case "stubborn": return await _api.GetStubbornWordsAsync(cancellationToken: cancellation);

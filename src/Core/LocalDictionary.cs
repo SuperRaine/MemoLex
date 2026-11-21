@@ -37,38 +37,12 @@ public sealed class LocalDictionary : IDisposable
     private FileStream? _data;
     private readonly object _gate = new();
     private readonly string _directory;
-    internal static string? ReadConfiguredBriefPath(string? settingsPath=null)
-    {
-        if(settingsPath==null)
-        {
-            var environmentPath=Environment.GetEnvironmentVariable("MEMOLEX_LOCAL_DICTIONARY");
-            if(!string.IsNullOrWhiteSpace(environmentPath))return environmentPath.Trim();
-            settingsPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MemoLex","dictionary.path");
-        }
-        try
-        {
-            var path=File.Exists(settingsPath)?File.ReadAllText(settingsPath).Trim():null;
-            return string.IsNullOrWhiteSpace(path)?null:path;
-        }
-        catch(Exception error)when(error is IOException or UnauthorizedAccessException){return null;}
-    }
-    private readonly LocalBriefDictionary? _preferred;
-    public LocalDictionary(string? directory = null,string? preferredPath=null)
+    public LocalDictionary(string? directory = null)
     {
         _directory = directory ?? Path.Combine(ApplicationPaths.RuntimeDirectory, "data");
-        preferredPath??=directory==null?ReadConfiguredBriefPath():null;
-        if(!string.IsNullOrWhiteSpace(preferredPath))_preferred=new(preferredPath);
-    }
-    internal LocalDictionary(string directory,LocalBriefDictionary preferred) : this(directory)
-    {
-        _preferred=preferred;
     }
     public int Count => _entries.Count;
-    public int PreferredCount=>_preferred?.Count??0;
-    public bool PreferredAvailable=>_preferred?.Available==true;
-    public string? PreferredWarning=>_preferred?.LoadWarning;
-    public Task LoadAsync()=>Task.WhenAll(LoadBaseAsync(),_preferred?.LoadAsync()??Task.CompletedTask);
-    private Task LoadBaseAsync() => Task.Run(() =>
+    public Task LoadAsync() => Task.Run(() =>
     {
         if(_data!=null)return;
         var directory = _directory;
@@ -88,15 +62,6 @@ public sealed class LocalDictionary : IDisposable
 
     public DictionaryEntry? Lookup(string word)
     {
-        var entry=LookupBase(word);var local=_preferred?.Lookup(word);
-        if(!string.IsNullOrWhiteSpace(local?.translation))
-        {
-            entry??=local;entry.translation=local.translation;entry.source="local-brief";
-        }
-        return entry;
-    }
-    private DictionaryEntry? LookupBase(string word)
-    {
         if (_data == null || !_entries.TryGetValue(word.Trim(), out var address)) return null;
         lock (_gate)
         {
@@ -109,10 +74,7 @@ public sealed class LocalDictionary : IDisposable
     internal int SourceRowCount=>_sourceWords.Count;
     internal string SourceWord(int id)=>_sourceWords[id];
     internal string IndexPath=>Path.Combine(_directory,"dictionary.index.tsv");
-    internal IEnumerable<DictionaryEntry> EnumeratePreferredEntries()=>_preferred?.EnumerateEntries()??[];
-    // Legacy postings and WordNet IDs identify ECDICT rows. Resolve their words
-    // through Lookup when showing preferred definitions; do not reinterpret IDs.
-    internal DictionaryEntry? LookupBySourceId(int id)=>id>=0&&id<_sourceWords.Count?LookupBase(_sourceWords[id]):null;
+    internal DictionaryEntry? LookupBySourceId(int id)=>id>=0&&id<_sourceWords.Count?Lookup(_sourceWords[id]):null;
     public IReadOnlyList<string> Suggest(string prefix, int count = 20)
     {
         prefix = prefix.Trim();

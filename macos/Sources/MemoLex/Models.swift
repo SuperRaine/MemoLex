@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -34,13 +35,14 @@ enum J: Codable, Equatable, Sendable {
 }
 
 enum Palette {
-    static let accent = Color(red: 0.204, green: 0.737, blue: 0.988)
-    static let deep = Color(red: 0.031, green: 0.498, blue: 0.686)
-    static let ink = Color(red: 0.145, green: 0.220, blue: 0.290)
-    static let muted = Color(red: 0.51, green: 0.62, blue: 0.70)
-    static let canvas = Color(red: 0.953, green: 0.969, blue: 0.984)
-    static let wash = Color(red: 0.937, green: 0.973, blue: 0.996)
-    static let border = Color(red: 0.87, green: 0.92, blue: 0.96)
+    static let accent = Color.accentColor
+    static let deep = Color(nsColor: .linkColor)
+    static let ink = Color.primary
+    static let muted = Color.secondary
+    static let canvas = Color(nsColor: .windowBackgroundColor)
+    static let paper = Color(nsColor: .textBackgroundColor)
+    static let wash = Color(nsColor: .controlAccentColor).opacity(0.09)
+    static let border = Color(nsColor: .separatorColor).opacity(0.65)
 }
 
 struct SavedAccount: Codable, Identifiable, Equatable {
@@ -49,6 +51,15 @@ struct SavedAccount: Codable, Identifiable, Equatable {
     var identity: String
     var expiresAt: Date?
     var needsLogin = false
+
+    static func displayIdentity(_ value: String) -> String {
+        if value.contains("@") { return value }
+        let digits = value.filter(\.isNumber)
+        guard (7...18).contains(digits.count), value.range(of: "^\\+?[0-9 ()-]+$", options: .regularExpression) != nil else { return value }
+        return String(digits.prefix(3)) + "••••" + String(digits.suffix(4))
+    }
+
+    var displayName: String { Self.displayIdentity(name) }
 }
 
 struct SearchRecord: Codable, Identifiable {
@@ -124,23 +135,25 @@ struct NativeShortcut: Codable, Equatable {
     }
     func save() {
         let values: [String: Any] = ["closeToTray": closeToTray, "rememberClose": rememberClose, "doubleCopy": doubleCopy, "hoverEnabled": hoverEnabled, "hoverNearest": hoverNearest, "hoverTranslucent": hoverTranslucent, "hoverAutoAdd": hoverAutoAdd, "hoverDelay": min(3000, max(100, hoverDelay)), "hoverModifiers": hoverModifiers, "hoverFontSize": hoverFontSize, "alwaysOnTop": alwaysOnTop, "showCountdown": showCountdown, "examName": String(examName.prefix(40)), "examDate": examDate, "stubbornSort": stubbornSort, "alphabetDescending": alphabetDescending, "concealMeanings": concealMeanings, "automaticUpdates": automaticUpdates, "automaticDownloads": automaticDownloads, "updateFrequency": updateFrequency, "updateSource": updateSource, "selectedNotepad": selectedNotepad, "onboardingCompleted": onboardingCompleted]
-        for key in keys { defaults.set(values[key], forKey: key) }
-        defaults.set(startAtLogin, forKey: "startAtLogin")
-        if let data = try? JSONEncoder().encode(shortcuts) { defaults.set(data, forKey: "shortcuts") }
-    }
-    convenience init(copying source: Preferences) { self.init(); copyEditable(from: source) }
-    func copyEditable(from source: Preferences) {
-        closeToTray = source.closeToTray; rememberClose = source.rememberClose; doubleCopy = source.doubleCopy; startAtLogin = source.startAtLogin
-        hoverEnabled = source.hoverEnabled; hoverNearest = source.hoverNearest; hoverTranslucent = source.hoverTranslucent; hoverAutoAdd = source.hoverAutoAdd
-        hoverDelay = source.hoverDelay; hoverModifiers = source.hoverModifiers; hoverFontSize = source.hoverFontSize
-        showCountdown = source.showCountdown; examName = source.examName; examDate = source.examDate; shortcuts = source.shortcuts
+        for key in keys {
+            guard let value = values[key] else { continue }
+            if (defaults.object(forKey: key) as? NSObject)?.isEqual(value) != true {
+                defaults.set(value, forKey: key)
+            }
+        }
+        if defaults.bool(forKey: "startAtLogin") != startAtLogin { defaults.set(startAtLogin, forKey: "startAtLogin") }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        if let data = try? encoder.encode(shortcuts), data != defaults.data(forKey: "shortcuts") {
+            defaults.set(data, forKey: "shortcuts")
+        }
     }
 }
 
 enum AppPaths {
     static let profile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MemoLex", isDirectory: true)
     static var resources: URL { Bundle.main.resourceURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath) }
-    static var version: String { "1.8.0" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.9.0" }
     static let repository = "https://github.com/SuperRaine/MemoLex"
 }
 

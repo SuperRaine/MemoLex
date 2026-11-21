@@ -71,7 +71,7 @@ public partial class MainWindow
             var meaning=new TextBlock {FontSize=13,LineHeight=22,TextTrimming=TextTrimming.CharacterEllipsis,Foreground=Brush("#4F6D85"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0),ToolTip=item.Meaning};Grid.SetColumn(meaning,1);
             foreach(var part in TextHighlights.Split(item.MatchedMeaning,new[]{ChineseReverseSearch.Normalize(_chineseQuery)}))
                 meaning.Inlines.Add(new Run(part.Text){Background=part.Highlighted?Brush("#E1F4FF"):System.Windows.Media.Brushes.Transparent,FontWeight=part.Highlighted?FontWeights.SemiBold:FontWeights.Normal});
-            body.Children.Add(meaning);var kind=new TextBlock {Text=item.SourceLabel+" · "+item.Kind,FontSize=10,Foreground=Brush(item.IsExactMatch?"#1688B7":"#99ACBA"),VerticalAlignment=VerticalAlignment.Center};Grid.SetColumn(kind,2);body.Children.Add(kind);
+            body.Children.Add(meaning);var kind=new TextBlock {Text=item.Kind,FontSize=10,Foreground=Brush(item.IsExactMatch?"#1688B7":"#99ACBA"),VerticalAlignment=VerticalAlignment.Center};Grid.SetColumn(kind,2);body.Children.Add(kind);
             ChineseResultsPanel.Children.Add(new Border {Child=body,Background=System.Windows.Media.Brushes.White,BorderBrush=Brush("#E2EBF3"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(7),Padding=new Thickness(13,8,13,8),Margin=new Thickness(0,0,0,4)});
         }
     }

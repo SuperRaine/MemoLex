@@ -100,7 +100,9 @@ public sealed class Preferences
         SearchHistory.Clear();
         History.Clear();
     }
-    public void Save()
+    public void Save() => TrySave();
+
+    internal bool TrySave()
     {
         try
         {
@@ -108,9 +110,11 @@ public sealed class Preferences
             var temporary = _path + ".tmp";
             File.WriteAllText(temporary, JsonSerializer.Serialize(this));
             File.Move(temporary, _path, true);
+            return true;
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+        return false;
     }
 }
 

@@ -54,7 +54,7 @@ struct TourOverlay: View {
                             HStack { Text("\(index + 1) / \(AppModel.tourSteps.count)").font(.system(size: 11)).foregroundStyle(Palette.deep); Picker("", selection: Binding(get: { index }, set: { model.setTourStep($0) })) { ForEach(Array(AppModel.tourSteps.enumerated()), id: \.offset) { position, item in Text(item.title).tag(position) } }.labelsHidden() }
                             Text(step.text).font(.system(size: 13)).lineSpacing(5).foregroundStyle(Palette.deep)
                             HStack { Button("跳过") { model.finishTour() }; Spacer(); Button("上一步") { model.setTourStep(index - 1) }.disabled(index == 0); Button(index == AppModel.tourSteps.count - 1 ? "完成" : "下一步") { model.setTourStep(index + 1) }.buttonStyle(MemoButtonStyle(accent: true, compact: true)) }.buttonStyle(MemoButtonStyle(compact: true))
-                        }.padding(17).frame(width: min(340, geometry.size.width - 32)).background(.white, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.accent)).shadow(color: .black.opacity(0.2), radius: 15, y: 4).position(cardPosition(target: target, size: geometry.size))
+                        }.padding(17).frame(width: min(340, geometry.size.width - 32)).background(Palette.paper, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.accent)).shadow(color: .black.opacity(0.2), radius: 15, y: 4).position(cardPosition(target: target, size: geometry.size))
                     }
                 }.transition(.opacity)
             }
