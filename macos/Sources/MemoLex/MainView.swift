@@ -4,7 +4,7 @@ import SwiftUI
 struct TitlebarMetrics: Equatable {
     var leading: CGFloat = 85
     var center: CGFloat = 20
-    var fullScreenInset: CGFloat = 0
+    var isFullScreen = false
     var controlsHeight: CGFloat { min(30, center * 2) }
     var height: CGFloat { max(36, center * 2 + 3) }
 }
@@ -142,9 +142,11 @@ private struct MainTitlebar: View {
         let metrics = model.titlebar
         HStack(spacing: compact ? 5 : 8) {
             Color.clear.frame(width: metrics.leading).allowsHitTesting(false)
-            titleButton(preferences.alwaysOnTop ? "pin.fill" : "pin", label: "窗口置顶", selected: preferences.alwaysOnTop) {
-                preferences.alwaysOnTop.toggle()
-                model.applySystemPreferences?()
+            if !metrics.isFullScreen {
+                titleButton(preferences.alwaysOnTop ? "pin.fill" : "pin", label: "窗口置顶", selected: preferences.alwaysOnTop) {
+                    preferences.alwaysOnTop.toggle()
+                    model.applySystemPreferences?()
+                }
             }
             HStack(spacing: 0) {
                 titleButton("chevron.left", label: "后退") { model.move(-1) }.disabled(!model.canGoBack)
@@ -167,7 +169,6 @@ private struct MainTitlebar: View {
             .frame(height: metrics.controlsHeight)
             .padding(.top, max(0, metrics.center - metrics.controlsHeight / 2))
             .frame(height: metrics.height, alignment: .top)
-            .padding(.top, metrics.fullScreenInset)
             .background(Palette.chrome).foregroundStyle(Palette.ink)
     }
 

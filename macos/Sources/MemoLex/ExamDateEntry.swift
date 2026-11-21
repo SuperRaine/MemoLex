@@ -58,8 +58,8 @@ struct ExamDateEntry: View {
                 saveDate(clampDay: clampDay)
             })
             DateNumberBox(title: unit, text: binding, values: values, range: range, digits: digits,
-                          commit: finishEditing)
-                .padding(.horizontal, 6).frame(width: width, height: 34).controlSurface()
+                          commit: { finishEditing(clampDay: clampDay) })
+                .frame(width: width)
             Text(unit).font(.callout).foregroundStyle(Palette.muted).accessibilityHidden(true)
         }
     }
@@ -76,9 +76,9 @@ struct ExamDateEntry: View {
         if !Self.calendar.isDate(value, inSameDayAs: date) { date = value }
     }
 
-    private func finishEditing() {
+    private func finishEditing(clampDay: Bool) {
         if let y = Int(year), (1...9999).contains(y) { year = Self.yearText(y) }
-        saveDate(clampDay: false)
+        saveDate(clampDay: clampDay)
         let parts = Self.calendar.dateComponents([.year, .month, .day], from: date)
         year = Self.yearText(parts.year ?? 1)
         month = String(parts.month ?? 1)
@@ -86,88 +86,117 @@ struct ExamDateEntry: View {
     }
 }
 
-private struct DateNumberBox: NSViewRepresentable {
+private struct DateNumberBox: View {
     var title: String
     @Binding var text: String
     var values: [Int]
     var range: ClosedRange<Int>
     var digits: Int
     var commit: () -> Void
+    @Environment(\.isEnabled) private var enabled
+    @State private var expanded = false
+    @State private var hovered = false
+    @State private var editing = false
 
-    func makeNSView(context: Context) -> NSComboBox {
-        let field = NSComboBox()
+    var body: some View {
+        HStack(spacing: 0) {
+            DateNumberField(title: title, text: $text, range: range, digits: digits,
+                            commit: commit, editing: { editing = $0 })
+                .frame(height: 20)
+                .padding(.leading, 9)
+            Button { expanded.toggle() } label: {
+                DropdownChevron(expanded: expanded)
+                    .frame(width: 26, height: 34)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("选择\(title)")
+        }
+        .frame(height: 34)
+        .dropdownSurface(active: expanded || editing, hovered: hovered && enabled)
+        .onHover { hovered = $0 }
+        .dropdownOptions(expanded: $expanded, selection: Int(text),
+                         options: values.map { ($0, String($0)) }, minimumWidth: 80) { value in
+            text = digits == 4 ? String(format: "%04d", value) : String(value)
+            commit()
+        }
+        .opacity(enabled ? 1 : 0.55)
+    }
+}
+
+private struct DateNumberField: NSViewRepresentable {
+    var title: String
+    @Binding var text: String
+    var range: ClosedRange<Int>
+    var digits: Int
+    var commit: () -> Void
+    var editing: (Bool) -> Void
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
         field.isEditable = true
         field.isSelectable = true
-        field.completes = false
         field.drawsBackground = false
         field.isBezeled = false
         field.isBordered = false
-        field.isButtonBordered = false
-        field.numberOfVisibleItems = 8
-        field.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        field.focusRingType = .none
+        field.cell?.usesSingleLineMode = true
+        field.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
+        field.textColor = NSColor(Palette.ink)
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         field.setAccessibilityLabel(title)
-        field.toolTip = "输入\(title)或从列表选择，也可以按 ↑ ↓ 调整"
+        field.toolTip = "可直接输入，也可以按 ↑ ↓ 调整"
         field.delegate = context.coordinator
         return field
     }
 
-    func updateNSView(_ field: NSComboBox, context: Context) {
-        let coordinator = context.coordinator
-        coordinator.parent = self
-        if coordinator.options != values {
-            coordinator.options = values
-            field.removeAllItems()
-            field.addItems(withObjectValues: values.map(String.init))
-        }
+    func updateNSView(_ field: NSTextField, context: Context) {
+        context.coordinator.parent = self
         field.isEnabled = context.environment.isEnabled
-        if field.stringValue != text { field.stringValue = text }
+        if let editor = field.currentEditor() {
+            if editor.string != text { editor.string = text }
+        } else if field.stringValue != text {
+            field.stringValue = text
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    final class Coordinator: NSObject, NSComboBoxDelegate {
-        var parent: DateNumberBox
-        var options: [Int] = []
-        private var menuOpen = false
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: DateNumberField
 
-        init(_ parent: DateNumberBox) { self.parent = parent }
+        init(_ parent: DateNumberField) { self.parent = parent }
 
-        func comboBoxWillPopUp(_ notification: Notification) { menuOpen = true }
-        func comboBoxWillDismiss(_ notification: Notification) { menuOpen = false }
-
-        func comboBoxSelectionDidChange(_ notification: Notification) {
-            guard let field = notification.object as? NSComboBox,
-                  options.indices.contains(field.indexOfSelectedItem) else { return }
-            set(options[field.indexOfSelectedItem], on: field)
-        }
+        func controlTextDidBeginEditing(_ notification: Notification) { parent.editing(true) }
 
         func controlTextDidChange(_ notification: Notification) {
-            guard let field = notification.object as? NSComboBox else { return }
-            let filtered = field.stringValue.prefix(parent.digits).compactMap(\.wholeNumberValue)
-                .filter { (0...9).contains($0) }.map(String.init).joined()
-            if filtered != field.stringValue { field.currentEditor()?.string = filtered }
+            guard let field = notification.object as? NSTextField, let editor = field.currentEditor() else { return }
+            let entered = editor.string
+            let filtered = entered.compactMap(\.wholeNumberValue).filter { (0...9).contains($0) }
+                .prefix(parent.digits).map(String.init).joined()
+            if filtered != entered { editor.string = filtered }
             parent.text = filtered
         }
 
-        func controlTextDidEndEditing(_ notification: Notification) { parent.commit() }
+        func controlTextDidEndEditing(_ notification: Notification) {
+            parent.editing(false)
+            parent.commit()
+        }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-            guard !menuOpen, let field = control as? NSComboBox else { return false }
             let change: Int
             switch selector {
             case #selector(NSResponder.moveUp(_:)): change = 1
             case #selector(NSResponder.moveDown(_:)): change = -1
             default: return false
             }
-            let value = (Int(parent.text) ?? parent.range.lowerBound) + change
-            set(min(parent.range.upperBound, max(parent.range.lowerBound, value)), on: field)
-            return true
-        }
-
-        private func set(_ number: Int, on field: NSComboBox) {
+            let next = (Int(parent.text) ?? parent.range.lowerBound) + change
+            let number = min(parent.range.upperBound, max(parent.range.lowerBound, next))
             let value = parent.digits == 4 ? String(format: "%04d", number) : String(number)
-            field.stringValue = value
+            textView.string = value
             parent.text = value
+            return true
         }
     }
 }

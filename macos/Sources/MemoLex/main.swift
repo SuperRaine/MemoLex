@@ -18,7 +18,6 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     private var noticeShowing = false
     private var updateTimer: Timer?
     private var appliedStartAtLogin: Bool?
-    private var nativeTitlebarHeight: CGFloat = 28
     private let loginRegistration = DispatchQueue(label: "MemoLex.LoginRegistration", qos: .utility)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -70,8 +69,10 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
                       height: max(frameSize.height, sender.minSize.height, MainView.minimumSize.height))
     }
     func windowDidResize(_ notification: Notification) { alignTitlebar() }
-    func windowDidEnterFullScreen(_ notification: Notification) { alignTitlebar() }
-    func windowDidExitFullScreen(_ notification: Notification) { alignTitlebar() }
+    func windowWillEnterFullScreen(_ notification: Notification) { window.level = .normal }
+    func windowDidEnterFullScreen(_ notification: Notification) { alignTitlebar(); applyWindowLevel() }
+    func windowDidExitFullScreen(_ notification: Notification) { alignTitlebar(); applyWindowLevel() }
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) { applyWindowLevel() }
     func windowDidChangeScreen(_ notification: Notification) { alignTitlebar() }
 
     private func installContent<Content: View>(_ view: Content, in window: NSWindow) {
@@ -89,11 +90,8 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
         guard let window, let content = window.contentView else { return }
         let next: TitlebarMetrics
         let contentRect = content.convert(content.bounds, to: nil)
-        let systemInset = max(0, contentRect.maxY - window.contentLayoutRect.maxY)
         if window.styleMask.contains(.fullScreen) {
-            // AppKit reveals its own floating title strip at the top of full screen.
-            let inset = max(nativeTitlebarHeight, systemInset, window.screen?.safeAreaInsets.top ?? 0)
-            next = TitlebarMetrics(leading: 14, center: 20, fullScreenInset: inset)
+            next = TitlebarMetrics(leading: 14, center: 20, isFullScreen: true)
         } else {
             let buttons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
             let frames = buttons.compactMap { type -> CGRect? in
@@ -103,14 +101,18 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
             guard let first = frames.first, let right = frames.map(\.maxX).max() else { return }
             let center = contentRect.maxY - first.midY
             guard (10...48).contains(center) else { return }
-            nativeTitlebarHeight = max(center * 2, systemInset)
             next = TitlebarMetrics(leading: right - contentRect.minX + 10, center: center)
         }
         if model.titlebar != next { model.titlebar = next }
     }
+    private func applyWindowLevel() {
+        guard let window else { return }
+        let floating = model.preferences.alwaysOnTop && !window.styleMask.contains(.fullScreen)
+        let level: NSWindow.Level = floating ? .floating : .normal
+        if window.level != level { window.level = level }
+    }
     func applyPreferences() {
-        let level: NSWindow.Level = model.preferences.alwaysOnTop ? .floating : .normal
-        if window?.level != level { window?.level = level }
+        applyWindowLevel()
         integration?.configure()
         let startAtLogin = model.preferences.startAtLogin
         guard appliedStartAtLogin != startAtLogin else { return }

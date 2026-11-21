@@ -26,28 +26,132 @@ struct MemoPicker<Value: Hashable>: View {
     var placeholder: String? = nil
     var height: CGFloat = 34
     @Environment(\.isEnabled) private var enabled
+    @State private var expanded = false
+    @State private var hovered = false
 
     private var selectedLabel: String { options.first { $0.0 == selection }?.1 ?? placeholder ?? title }
 
     var body: some View {
-        Menu {
-            ForEach(options, id: \.0) { value, label in
-                Button { selection = value } label: {
-                    if selection == value { Label(label, systemImage: "checkmark") }
-                    else { Text(label) }
-                }
-            }
-        } label: {
+        Button { expanded.toggle() } label: {
             HStack(spacing: 8) {
                 Text(selectedLabel).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(Palette.muted)
-            }.font(.system(size: 13)).foregroundStyle(Palette.ink)
-                .padding(.horizontal, 10).frame(height: height).controlSurface()
+                    .foregroundStyle(options.contains { $0.0 == selection } ? Palette.ink : Palette.muted)
+                DropdownChevron(expanded: expanded)
+            }.font(.system(size: 13, weight: .medium))
+                .padding(.horizontal, 11).frame(height: height)
+                .dropdownSurface(active: expanded, hovered: hovered && enabled && !options.isEmpty)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
         .accessibilityLabel(title).accessibilityValue(selectedLabel).help(selectedLabel)
-        .opacity(enabled && !options.isEmpty ? 1 : 0.52).disabled(options.isEmpty)
+        .dropdownOptions(expanded: $expanded, selection: selection, options: options) { selection = $0 }
+        .opacity(enabled && !options.isEmpty ? 1 : 0.55).disabled(options.isEmpty)
+    }
+}
+
+struct DropdownChevron: View {
+    var expanded: Bool
+
+    var body: some View {
+        Image(systemName: "chevron.down")
+            .font(.system(size: 10, weight: .semibold))
+            .rotationEffect(.degrees(expanded ? 180 : 0))
+            .foregroundStyle(expanded ? Palette.deep : Palette.muted)
+            .frame(width: 14, height: 14)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct DropdownWidth: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct DropdownList<Value: Hashable>: View {
+    var selection: Value?
+    var options: [(Value, String)]
+    var select: (Value) -> Void
+    var dismiss: () -> Void
+    @FocusState private var focused: Bool
+    @State private var highlighted: Value?
+    @State private var hovered: Value?
+
+    var body: some View {
+        ScrollViewReader { scroll in
+            ScrollView {
+                VStack(spacing: 2) {
+                    ForEach(options, id: \.0) { value, label in option(value, label: label).id(value) }
+                }.padding(5)
+            }
+            .frame(height: CGFloat(min(options.count, 8)) * 32 + 8)
+            .focusable().focused($focused)
+            .onAppear {
+                highlighted = options.first { $0.0 == selection }?.0 ?? options.first?.0
+                focused = true
+            }
+            .onChange(of: highlighted) { value in
+                if let value { scroll.scrollTo(value, anchor: .center) }
+            }
+            .onMoveCommand(perform: moveHighlight)
+            .onExitCommand(perform: dismiss)
+        }
+    }
+
+    private func option(_ value: Value, label: String) -> some View {
+        let selected = value == selection
+        let emphasized = (hovered ?? highlighted) == value
+        return Button { select(value) } label: {
+            HStack(spacing: 9) {
+                Text(label).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .semibold)).opacity(selected ? 1 : 0)
+                    .accessibilityHidden(true)
+            }
+            .font(.system(size: 13, weight: selected ? .semibold : .regular))
+            .foregroundStyle(selected ? Palette.deep : Palette.ink)
+            .padding(.horizontal, 9).frame(height: 30)
+            .background(selected || emphasized ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .keyboardShortcut(self.highlighted == value ? KeyboardShortcut(.return, modifiers: []) : nil)
+        .onHover { if $0 { hovered = value } else if hovered == value { hovered = nil } }
+    }
+
+    private func moveHighlight(_ direction: MoveCommandDirection) {
+        guard !options.isEmpty, direction == .up || direction == .down else { return }
+        let index = options.firstIndex { $0.0 == highlighted } ?? 0
+        let next = index + (direction == .up ? -1 : 1)
+        hovered = nil
+        highlighted = options[min(options.count - 1, max(0, next))].0
+    }
+}
+
+private struct DropdownOptions<Value: Hashable>: ViewModifier {
+    @Binding var expanded: Bool
+    var selection: Value?
+    var options: [(Value, String)]
+    var minimumWidth: CGFloat
+    var select: (Value) -> Void
+    @State private var width: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .background { GeometryReader { geometry in Color.clear.preference(key: DropdownWidth.self, value: geometry.size.width) } }
+            .onPreferenceChange(DropdownWidth.self) { width = $0 }
+            .popover(isPresented: $expanded, arrowEdge: .bottom) {
+                DropdownList(selection: selection, options: options, select: {
+                    expanded = false
+                    select($0)
+                }, dismiss: { expanded = false })
+                .frame(width: max(width, minimumWidth))
+                .background(Palette.paper)
+            }
     }
 }
 
@@ -148,6 +252,16 @@ struct LinkedText: View {
 }
 
 extension View {
+    func dropdownOptions<Value: Hashable>(expanded: Binding<Bool>, selection: Value?, options: [(Value, String)],
+                                           minimumWidth: CGFloat = 126, select: @escaping (Value) -> Void) -> some View {
+        modifier(DropdownOptions(expanded: expanded, selection: selection, options: options, minimumWidth: minimumWidth, select: select))
+    }
+    func dropdownSurface(active: Bool, hovered: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 8)
+        return background(active ? Palette.wash : Palette.control, in: shape)
+            .overlay(shape.strokeBorder(active || hovered ? Palette.accent : Palette.border, lineWidth: active ? 1.15 : 1)
+                .allowsHitTesting(false))
+    }
     func controlSurface() -> some View {
         background(Palette.control, in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.border, lineWidth: 0.65).allowsHitTesting(false))
