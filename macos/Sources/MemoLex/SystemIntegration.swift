@@ -6,8 +6,53 @@ import ServiceManagement
 import SwiftUI
 
 @MainActor enum PermissionCenter {
-    static var accessibility: Bool { AXIsProcessTrusted() }
-    static var screen: Bool { CGPreflightScreenCaptureAccess() }
+    struct Snapshot: Equatable {
+        var accessibility = false
+        var screen = false
+    }
+    private static var cached = Snapshot()
+    private static var lastProbe = -Double.infinity
+    private static var lastCapture = -Double.infinity
+    private static var uptime: TimeInterval { ProcessInfo.processInfo.systemUptime }
+
+    static var accessibility: Bool { AXIsProcessTrusted() || snapshot().accessibility }
+    static var screen: Bool { CGPreflightScreenCaptureAccess() || uptime - lastCapture < 10 || snapshot().screen }
+
+    static func snapshot(refresh: Bool = false) -> Snapshot {
+        if refresh || uptime - lastProbe >= 2 {
+            cached = Snapshot(accessibility: AXIsProcessTrusted() || canReadOtherApplication(),
+                              screen: CGPreflightScreenCaptureAccess() || canReadOtherWindowTitles())
+            lastProbe = uptime
+        }
+        return Snapshot(accessibility: cached.accessibility, screen: cached.screen || uptime - lastCapture < 10)
+    }
+
+    static func recordScreenAccess() { lastCapture = uptime }
+
+    private static func canReadOtherApplication() -> Bool {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        guard let application = NSWorkspace.shared.runningApplications.first(where: {
+            $0.processIdentifier != ownPID && $0.activationPolicy == .regular && !$0.isTerminated
+        }) else { return false }
+        let element = AXUIElementCreateApplication(application.processIdentifier)
+        AXUIElementSetMessagingTimeout(element, 0.15)
+        var role: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) == .success && role != nil
+    }
+
+    private static func canReadOtherWindowTitles() -> Bool {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let pids = Set(NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && $0.processIdentifier != ownPID }.map(\.processIdentifier))
+        guard !pids.isEmpty,
+              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return false }
+        // Quartz withholds other applications' window titles when recording is unauthorized.
+        return windows.contains { window in
+            guard let pid = window[kCGWindowOwnerPID as String] as? NSNumber, pids.contains(pid.int32Value),
+                  let title = window[kCGWindowName as String] as? String else { return false }
+            return !title.isEmpty
+        }
+    }
+
     static func requestAccessibility() { _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) }
     static func requestScreen() { _ = CGRequestScreenCaptureAccess() }
     static func open(_ section: String) { if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(section)") { NSWorkspace.shared.open(url) } }
@@ -16,14 +61,42 @@ import SwiftUI
 struct PermissionsSettings: View {
     @ObservedObject var model: AppModel
     @State private var refresh = 0
+    @State private var permissions: PermissionCenter.Snapshot?
     var body: some View {
-        VStack(alignment: .leading, spacing: 17) {
-            permission("辅助功能", enabled: PermissionCenter.accessibility, detail: "用于读取其他软件中的英文文本、监听连续两次 ⌘C。") { PermissionCenter.requestAccessibility(); PermissionCenter.open("Privacy_Accessibility") }
-            permission("屏幕录制", enabled: PermissionCenter.screen, detail: "用于图片取词和截图翻译。识别在本机完成。") { PermissionCenter.requestScreen(); PermissionCenter.open("Privacy_ScreenCapture") }
-            Button("刷新权限状态") { refresh += 1; model.applySystemPreferences?() }.buttonStyle(MemoButtonStyle())
-        }.id(refresh).tourTarget("permissions").onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh += 1; model.applySystemPreferences?() }
+        VStack(alignment: .leading, spacing: 13) {
+            permission("辅助功能", icon: "hand.tap", enabled: permissions?.accessibility,
+                       detail: "读取其他软件中的英文文本，监听连续两次 ⌘C。") {
+                if permissions?.accessibility != true { PermissionCenter.requestAccessibility() }
+                PermissionCenter.open("Privacy_Accessibility")
+            }
+            permission("屏幕录制", icon: "rectangle.dashed", enabled: permissions?.screen,
+                       detail: "用于图片取词和截图翻译。识别在本机完成。") {
+                if permissions?.screen != true { PermissionCenter.requestScreen() }
+                PermissionCenter.open("Privacy_ScreenCapture")
+            }
+            Button { refresh += 1 } label: { Label("刷新权限状态", systemImage: "arrow.clockwise") }
+                .buttonStyle(MemoButtonStyle())
+        }.tourTarget("permissions")
+            .task(id: refresh) {
+                permissions = PermissionCenter.snapshot(refresh: true)
+                model.applySystemPreferences?()
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                if !Task.isCancelled { permissions = PermissionCenter.snapshot(refresh: true) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh += 1 }
     }
-    private func permission(_ title: String, enabled: Bool, detail: String, action: @escaping () -> Void) -> some View { SettingsCard(title: title) { HStack { Text(enabled ? "已允许" : "尚未允许").foregroundStyle(enabled ? Palette.deep : Palette.muted); Spacer(); Button("前往系统设置", action: action).buttonStyle(MemoButtonStyle(compact: true)) }; Text(detail).font(.system(size: 12)).foregroundStyle(Palette.muted) } }
+    private func permission(_ title: String, icon: String, enabled: Bool?, detail: String, action: @escaping () -> Void) -> some View {
+        SettingsCard(title: title) {
+            HStack {
+                Label(enabled == true ? "已允许" : enabled == nil ? "正在检查…" : "待系统确认",
+                      systemImage: enabled == true ? "checkmark.circle.fill" : icon)
+                    .font(.callout).foregroundStyle(enabled == true ? Palette.deep : Palette.muted)
+                Spacer()
+                Button("前往系统设置", action: action).buttonStyle(MemoButtonStyle(compact: true))
+            }
+            Text(detail).font(.callout).foregroundStyle(Palette.muted)
+        }
+    }
 }
 
 enum LoginService {
@@ -40,18 +113,41 @@ struct ShortcutSettings: View {
     private let rows = [("search", "唤起快速查词"), ("clipboard", "查询剪贴板"), ("screenshot", "截图翻译")]
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            ForEach(rows, id: \.0) { key, title in HStack { Text(title).frame(width: 160, alignment: .leading); ShortcutRecorder(shortcut: Binding(get: { preferences.shortcuts[key] ?? NativeShortcut.defaults[key]! }, set: { preferences.shortcuts[key] = $0 })).frame(width: 190, height: 36) } }
-            Text("全局快捷键可在其他软件中使用。点击输入框后按下组合键。").font(.system(size: 12)).foregroundStyle(Palette.muted)
-            Divider()
-            Text("⌘L 快速查词   ·   ⌘Y 查词历史   ·   ⌘[ / ⌘] 后退或前进").foregroundStyle(Palette.muted)
-            Text("⌘T 段落翻译   ·   ⌘↩ 加入云词本或开始翻译").foregroundStyle(Palette.muted)
+            SettingsCard(title: "全局快捷键") {
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                    ForEach(rows, id: \.0) { key, title in
+                        GridRow {
+                            Text(title).font(.callout)
+                            ShortcutRecorder(shortcut: Binding(get: { preferences.shortcuts[key] ?? NativeShortcut.defaults[key]! },
+                                                               set: { preferences.shortcuts[key] = $0 }))
+                                .frame(width: 145, height: 33).controlSurface().accessibilityLabel(title)
+                        }
+                    }
+                }
+                Text("全局快捷键可在其他软件中使用。").font(.callout).foregroundStyle(Palette.muted)
+            }
+            SettingsCard(title: "窗口内快捷键") {
+                Text("⌘L 快速查词   ·   ⌘Y 查词历史   ·   ⌘[ / ⌘] 后退或前进").foregroundStyle(Palette.muted)
+                Text("⌘T 段落翻译   ·   ⌘↩ 加入云词本或开始翻译").foregroundStyle(Palette.muted)
+            }
         }
     }
 }
 
 private struct ShortcutRecorder: NSViewRepresentable {
     @Binding var shortcut: NativeShortcut
-    func makeNSView(context: Context) -> KeyField { let field = KeyField(); field.onRecord = { shortcut = $0 }; field.stringValue = shortcut.label; field.isEditable = false; field.isBezeled = true; field.bezelStyle = .roundedBezel; field.alignment = .center; return field }
+    func makeNSView(context: Context) -> KeyField {
+        let field = KeyField()
+        field.onRecord = { shortcut = $0 }
+        field.stringValue = shortcut.label
+        field.isEditable = false
+        field.isBezeled = false
+        field.isBordered = false
+        field.drawsBackground = false
+        field.font = .monospacedSystemFont(ofSize: 13, weight: .medium)
+        field.alignment = .center
+        return field
+    }
     func updateNSView(_ field: KeyField, context: Context) { field.stringValue = shortcut.label; field.onRecord = { shortcut = $0 } }
     final class KeyField: NSTextField {
         var onRecord: ((NativeShortcut) -> Void)?

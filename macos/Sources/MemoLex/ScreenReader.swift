@@ -18,7 +18,6 @@ enum ScreenText {
     static func appKit(_ rect: CGRect) -> CGRect { CGRect(x: rect.minX, y: primaryHeight - rect.maxY, width: rect.width, height: rect.height) }
 
     static func accessible(at point: CGPoint) -> ScreenWord? {
-        guard AXIsProcessTrusted() else { return nil }
         var element: AXUIElement?
         let system = AXUIElementCreateSystemWide(); AXUIElementSetMessagingTimeout(system, 0.2)
         guard AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &element) == .success, let element else { return nil }
@@ -108,6 +107,11 @@ enum ScreenText {
 }
 
 enum ScreenCapture {
+    static func hasAccess() async -> Bool {
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) else { return false }
+        return !content.displays.isEmpty
+    }
+
     static func image(_ rect: CGRect) async throws -> CGImage {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first(where: { CGDisplayBounds($0.displayID).contains(CGPoint(x: rect.midX, y: rect.midY)) }) else { throw CoreFailure(code: "capture", message: "未找到要截取的屏幕。") }

@@ -15,8 +15,8 @@ fi
 # The release archive is a pinned data source; the Windows program is not included.
 DATA_ROOT="${MEMOLEX_DATA_ROOT:-}"
 if [ -z "$DATA_ROOT" ]; then
-  curl --fail --location --retry 3 --output "$WORK/windows.zip" 'https://github.com/SuperRaine/MemoLex/releases/download/v1.9.0/MemoLex-1.9.0-Windows-x64.zip'
-  printf '%s  %s\n' 'b67f6fec630874b36552707e8ae048fb0d5b7bb28ddc4a57326b346cc4c6b155' "$WORK/windows.zip" | shasum -a 256 -c -
+  curl --fail --location --retry 3 --output "$WORK/windows.zip" 'https://github.com/SuperRaine/MemoLex/releases/download/v1.10.0/MemoLex-1.10.0-Windows-x64.zip'
+  printf '%s  %s\n' '9e3188362f49205f02e43093888eb8c63c6ff1dc6fb2668d1ec917c808e9fee8' "$WORK/windows.zip" | shasum -a 256 -c -
   unzip -q "$WORK/windows.zip" 'MemoLex/app/data/*' 'MemoLex/app/ThirdParty/*' -d "$WORK/data-source"
   DATA_ROOT="$WORK/data-source/MemoLex/app"
 fi

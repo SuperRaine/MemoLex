@@ -47,7 +47,9 @@ struct StubbornView: View {
                 TextField("筛选单词或释义", text: $filter).inputFrame()
                 HStack(spacing: 10) {
                     Text("排序").foregroundStyle(Palette.muted)
-                    Picker("", selection: $preferences.stubbornSort) { Text("复习时间").tag("review"); Text("字母顺序").tag("alphabetical"); Text("随机轮换").tag("random") }.labelsHidden().frame(width: 136).onChange(of: preferences.stubbornSort) { _ in model.reorderStubborn() }
+                    MemoPicker(title: "排序", selection: $preferences.stubbornSort,
+                               options: [("review", "复习时间"), ("alphabetical", "字母顺序"), ("random", "随机轮换")])
+                        .frame(width: 136).onChange(of: preferences.stubbornSort) { _ in model.reorderStubborn() }
                     if model.preferences.stubbornSort == "alphabetical" { Button(model.preferences.alphabetDescending ? "Z–A" : "A–Z") { model.preferences.alphabetDescending.toggle(); model.reorderStubborn() }.buttonStyle(MemoButtonStyle(compact: true)) }
                     Spacer()
                     Toggle("遮住释义", isOn: $preferences.concealMeanings).toggleStyle(.switch).controlSize(.small).onChange(of: preferences.concealMeanings) { _ in revealed = []; preferences.save() }
@@ -97,8 +99,13 @@ struct MnemonicView: View {
             DialogHeader(title: "编辑助记") { model.sheet = nil }
             VStack(alignment: .leading, spacing: 14) {
                 Text("\(model.word) · 编辑助记").font(.system(size: 23, weight: .semibold))
-                Picker("助记", selection: $selected) { Text("新建助记").tag(""); ForEach(model.notes, id: \.idText) { note in Text(note["noteType"].text + " · " + String(note["text"].text.prefix(35))).tag(note["id"].text) } }.onChange(of: selected) { value in load(value) }
-                Picker("分类", selection: $type) { ForEach(types, id: \.self) { Text($0).tag($0) } }.frame(width: 230)
+                MemoPicker(title: "助记", selection: $selected, options: [("", "新建助记")] + model.notes.map { note in
+                    (note["id"].text, note["noteType"].text + " · " + String(note["text"].text.prefix(35)))
+                }).onChange(of: selected) { value in load(value) }
+                HStack {
+                    Text("分类").sectionLabel()
+                    MemoPicker(title: "助记分类", selection: $type, options: types.map { ($0, $0) }).frame(width: 170)
+                }
                 TextEditor(text: $text).font(.system(size: 15)).padding(8).frame(maxWidth: .infinity, maxHeight: .infinity).overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.border))
                 Text(error.isEmpty ? "本地保存后离线也能查看；登录后可同步到墨墨。" : error).font(.system(size: 12)).foregroundStyle(error.isEmpty ? Palette.muted : .red)
                 HStack { Spacer(); Button("保存到本地") { Task { await save(cloud: false) } }; Button("同步到墨墨") { Task { await save(cloud: true) } }.disabled(!model.loggedIn) }.buttonStyle(MemoButtonStyle()).disabled(saving || text.trimmed.isEmpty || text.count > 20000)

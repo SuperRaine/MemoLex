@@ -168,8 +168,12 @@ internal sealed class CoreService : IDisposable
                     _notes.SaveEdit(word, new(saved.Id, saved.NoteType, saved.Text, saved.Id, "cloud", accountKey), accountKey);
                     return _notes.Get(word, accountKey);
                 }
-            case "study.status": return new { status = await _api.GetTodayStudyStatusAsync(await RequireWord(word, cancellation), cancellation) };
-            case "study.add": return await _api.AddToTodayAsync(await RequireWord(word, cancellation), cancellationToken: cancellation);
+            case "study.status":
+                var studyWord = await _api.ResolveWordAsync(word, cancellation);
+                return new { status = studyWord == null ? "Missing" : (await _api.GetTodayStudyStatusAsync(studyWord, cancellation)).ToString() };
+            case "study.add":
+                var verifyOnly = p.ValueKind == JsonValueKind.Object && p.TryGetProperty("verifyOnly", out var verify) && verify.ValueKind == JsonValueKind.True;
+                return await _api.AddToTodayAsync(await RequireWord(word, cancellation), verifyOnly, cancellation);
             case "stubborn": return await _api.GetStubbornWordsAsync(cancellationToken: cancellation);
             case "notepads.list": return await _api.ListNotepadsAsync(cancellation);
             case "notepads.get": return await _api.GetNotepadAsync(T(p, "id"), cancellation);

@@ -69,6 +69,7 @@ struct Notice: Identifiable {
     @Published var tourIndex: Int? = nil
     @Published var canGoBack = false
     @Published var canGoForward = false
+    @Published var titlebar = TitlebarMetrics()
     var showWindow: (() -> Void)?
     var applySystemPreferences: (() -> Void)?
     var captureScreen: (() -> Void)?
@@ -111,7 +112,6 @@ struct Notice: Identifiable {
             let metadata = try await core.request("initialize")
             wordCount = metadata["wordCount"].integer; translationProvider = metadata["translationProvider"].text
             ready = true; status = metadata["warning"].text.isEmpty ? "词典与本地助记已就绪。" : metadata["warning"].text
-            updates.start()
             if !preferences.onboardingCompleted { startTour() }
         } catch { fail(error) }
     }
@@ -147,7 +147,7 @@ struct Notice: Identifiable {
                     chineseResults = result["items"].list; chineseTotal = result["total"].integer
                     status = "找到 \(chineseTotal) 个相关结果。"
                 } else {
-                    page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = ""; membership = false
+                    page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = loggedIn ? "Loading" : ""; membership = false
                     let result = try await core.request("dictionary.lookup", ["word": .string(query)])
                     guard version == wordVersion else { return }
                     word = result["word"].text
@@ -172,12 +172,18 @@ struct Notice: Identifiable {
     }
     private func loadCloudWord(_ query: String, version: Int, account: Int) async {
         async let cloudNotes = try? core.request("notes.cloud", ["word": .string(query)])
-        async let study = try? core.request("study.status", ["word": .string(query)])
-        let result = await (cloudNotes, study)
+        await refreshTodayStatus(query, version: version, account: account)
+        let result = await cloudNotes
         guard version == wordVersion, account == accountVersion else { return }
-        if let value = result.0 { notes = value.list }
-        todayStatus = result.1?["status"].text ?? ""
+        if let result { notes = result.list }
         await refreshMembership()
+    }
+    private func refreshTodayStatus(_ query: String, version: Int, account: Int) async {
+        guard loggedIn, version == wordVersion, account == accountVersion, query == word else { return }
+        todayStatus = "Loading"
+        let result = try? await core.request("study.status", ["word": .string(query)])
+        guard loggedIn, version == wordVersion, account == accountVersion, query == word else { return }
+        todayStatus = result?["status"].text ?? "Failed"
     }
     func loadExamples(reset: Bool) async {
         if reset { examplesVersion += 1; exampleOffset = 0; examples = [] }
@@ -406,11 +412,36 @@ struct Notice: Identifiable {
     }
     func addToday() {
         guard loggedIn else { openAccountSettings(); return }
-        notice = .init(title: "添加到今日新学", message: "请在墨墨背单词 → 我的 → 学习数据同步 → 学习数据自动同步中开启同步，便于及时更新学习状态。", confirm: "添加", action: { [weak self] in Task { await self?.performAddToday() } })
+        switch todayStatus {
+        case "Failed":
+            Task { await refreshTodayStatus(word, version: wordVersion, account: accountVersion) }
+        case "SyncRequired", "PendingVerification":
+            Task { await performAddToday(verifyOnly: true) }
+        case "Loading", "AlreadyLearned", "AlreadyToday", "Added", "Planned", "Missing":
+            return
+        default:
+            notice = .init(title: "将「\(word)」添加到今日新学？",
+                message: "学习状态依赖墨墨的数据同步。开启手机端自动同步，可及时更新学习记录。\n\n墨墨背单词 → 我的 → 学习数据同步 → 学习数据自动同步",
+                confirm: "添加", action: { [weak self] in Task { await self?.performAddToday() } })
+        }
     }
-    private func performAddToday() async {
+    private func performAddToday(verifyOnly: Bool = false) async {
         guard !writing, !word.isEmpty else { return }; writing = true; let generation = accountVersion; let query = word
-        do { let result = try await core.request("study.add", ["word": .string(query)]); if generation == accountVersion, query == word { todayStatus = result["status"].text; switch todayStatus { case "AlreadyLearned": status = "这个单词已有学习记录。"; case "Added", "AlreadyToday", "Planned": status = "已安排今日新学。"; case "NotAdded": status = "尚未加入今日新学，请稍后重试。"; default: status = "已提交，学习状态还需等待手机端同步。" } } }
+        do {
+            let result = try await core.request("study.add", ["word": .string(query), "verifyOnly": .bool(verifyOnly)])
+            if generation == accountVersion, query == word {
+                todayStatus = result["status"].text
+                switch todayStatus {
+                case "Added": status = "「\(query)」已加入今日新学。"
+                case "AlreadyToday": status = "「\(query)」已计划新学，不会重复添加。"
+                case "Planned": status = "「\(query)」已计划新学，手机端同步后可查看今日安排。"
+                case "AlreadyLearned": status = "「\(query)」已学过或已安排今日复习，无需再加入新学。"
+                case "SyncRequired": status = "「\(query)」的学习记录还未同步，请在墨墨 App 同步后点击核对。"
+                case "NotAdded": status = "墨墨本次未添加「\(query)」。"
+                default: status = "「\(query)」是否加入今日新学还未确认，请在墨墨 App 同步后点击核对。"
+                }
+            }
+        }
         catch { if generation == accountVersion { fail(error) } }; if generation == accountVersion { writing = false }
     }
     func createNotebook() {

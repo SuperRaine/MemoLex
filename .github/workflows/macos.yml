@@ -8,6 +8,9 @@ on:
       portable_sha256:
         description: SHA-256 of the specified portable archive
         type: string
+      draft_tag:
+        description: Attach the verified DMG to this release draft
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -74,3 +77,42 @@ jobs:
           sleep 20
           kill -0 "$PID"
           kill "$PID"
+  attach:
+    if: inputs.draft_tag != ''
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.draft_tag }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: MemoLex-macOS
+      - name: Attach the verified Mac installer
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          draft="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish)"
+          jq -e --arg sha "$GITHUB_SHA" '.isDraft and .targetCommitish == $sha' <<< "$draft"
+          VERSION="$(printf '%s' "$RELEASE_TAG" | cut -c2-)"
+          DMG="MemoLex-$VERSION-macOS-universal.dmg"
+          export VERSION DMG
+          python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+          from zipfile import ZipFile
+          disk = Path(os.environ["DMG"])
+          with disk.open("rb") as stream:
+              stream.seek(-512, os.SEEK_END)
+              assert stream.read(4) == b"koly"
+          with ZipFile(disk.with_suffix(".zip")) as bundle:
+              info = plistlib.loads(bundle.read("MemoLex.app/Contents/Info.plist"))
+              assert info["CFBundleShortVersionString"] == os.environ["VERSION"]
+          PY
+          gh release upload "$RELEASE_TAG" "$DMG" --repo "$GITHUB_REPOSITORY"
+          hash="$(sha256sum "$DMG" | cut -d' ' -f1)"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            | jq -e --arg name "$DMG" --arg digest "sha256:$hash" '.assets | any(.name == $name and .digest == $digest)'

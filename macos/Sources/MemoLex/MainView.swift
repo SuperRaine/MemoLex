@@ -1,7 +1,16 @@
 import AppKit
 import SwiftUI
 
+struct TitlebarMetrics: Equatable {
+    var leading: CGFloat = 85
+    var center: CGFloat = 20
+    var fullScreenInset: CGFloat = 0
+    var controlsHeight: CGFloat { min(30, center * 2) }
+    var height: CGFloat { max(36, center * 2 + 3) }
+}
+
 struct MainView: View {
+    static let minimumSize = NSSize(width: 760, height: 520)
     @ObservedObject var model: AppModel
     @ObservedObject private var preferences: Preferences
     @FocusState private var searchFocused: Bool
@@ -33,11 +42,13 @@ struct MainView: View {
                     Text(model.status).lineLimit(1).truncationMode(.tail)
                     Spacer()
                     Text(dictionarySummary)
-                }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 18).frame(height: 27).background(.bar)
+                }.font(.caption).foregroundStyle(Palette.muted).padding(.horizontal, 18).frame(height: 27).background(Palette.chrome)
             }.background(Palette.canvas).foregroundStyle(Palette.ink)
                 .overlayPreferenceValue(TourTargets.self) { anchors in TourOverlay(model: model, anchors: anchors, context: "main") }
         }
+        .frame(minWidth: Self.minimumSize.width, minHeight: Self.minimumSize.height)
         .ignoresSafeArea(.container, edges: .top)
+        .tint(Palette.accent)
         .toggleStyle(.checkbox)
         .environment(\.openURL, OpenURLAction { url in
             if url.scheme == "memolex", let query = url.path.removingPercentEncoding { model.lookup(String(query.dropFirst())); return .handled }
@@ -69,9 +80,8 @@ struct MainView: View {
                         .onChange(of: model.search) { _ in model.suggest() }
                     Button { model.lookup(model.search) } label: { Image(systemName: "return") }
                         .buttonStyle(.borderless).help("查词").accessibilityLabel("查词")
-                }.padding(.horizontal, 9).frame(height: 34)
-                    .background(Palette.paper, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.border, lineWidth: 0.6))
+                }.padding(.horizontal, 10).frame(height: 36)
+                    .controlSurface()
                     .tourTarget("search")
                 HStack(spacing: 7) {
                     Button("段落翻译") { model.enterTranslation() }.buttonStyle(MemoButtonStyle(compact: true)).frame(maxWidth: .infinity)
@@ -81,29 +91,44 @@ struct MainView: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text("单词建议").sectionLabel()
                 ScrollView { LazyVStack(alignment: .leading, spacing: 1) {
-                    ForEach(model.suggestions, id: \.self) { word in Button { model.lookup(word) } label: { Text(word).font(.system(size: 14)).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 9).padding(.horizontal, 9) }.buttonStyle(.plain) }
+                    ForEach(model.suggestions, id: \.self) { word in
+                        Button { model.lookup(word) } label: { Text(word).font(.system(size: 14)).lineLimit(1) }
+                            .buttonStyle(SidebarRowStyle(selected: word == model.word))
+                    }
                 } }.frame(maxWidth: .infinity)
             }.frame(maxHeight: .infinity)
             VStack(alignment: .leading, spacing: 7) {
                 HStack { Text("最近查词").sectionLabel(); Spacer(); Button("全部 \(model.history.count) 条") { model.sheet = .history }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(Palette.deep) }
                 ScrollView { LazyVStack(alignment: .leading, spacing: 1) {
                     if model.history.isEmpty { Text("查过的单词会出现在这里").font(.system(size: 11)).foregroundStyle(Palette.muted).padding(9) }
-                    ForEach(model.history.prefix(60)) { record in Button { model.lookup(record.word) } label: { HStack { Text(record.word); Spacer(); Image(systemName: "arrow.right").font(.system(size: 9)).foregroundStyle(Palette.muted) }.font(.system(size: 14)).padding(.vertical, 9).padding(.horizontal, 9).contentShape(Rectangle()) }.buttonStyle(.plain) }
+                    ForEach(model.history.prefix(60)) { record in
+                        Button { model.lookup(record.word) } label: {
+                            HStack {
+                                Text(record.word).lineLimit(1)
+                                Spacer()
+                                Image(systemName: "arrow.right").font(.system(size: 9)).foregroundStyle(Palette.muted)
+                            }.font(.system(size: 14)).contentShape(Rectangle())
+                        }.buttonStyle(SidebarRowStyle(selected: record.word == model.word))
+                    }
                 } }
             }.frame(maxHeight: .infinity)
             cloudCard.tourTarget("cloud")
-        }.padding(.horizontal, compact ? 14 : 17).padding(.vertical, 15).background(.regularMaterial)
+        }.padding(.horizontal, compact ? 14 : 17).padding(.vertical, 15).background(Palette.sidebar)
     }
     private var cloudCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack { Text("我的云词本").font(.system(size: 12, weight: .semibold)); Spacer(); Button { Task { await model.refreshNotepads() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.plain) }
-            Picker("", selection: Binding(get: { model.preferences.selectedNotepad }, set: { id in Task { await model.selectNotepad(id) } })) {
-                if model.notepads.isEmpty { Text("选择词本").tag("") }
-                ForEach(model.notepads, id: \.idText) { pad in Text(pad["title"].text).tag(pad["id"].text) }
-            }.labelsHidden().disabled(!model.loggedIn).frame(maxWidth: .infinity)
-            Text(model.loggedIn ? "\(model.notepads.count) 个云词本 · 自动保存选择" : "登录墨墨账号后即可使用").font(.system(size: 10)).foregroundStyle(Palette.muted)
+            MemoPicker(title: "选择云词本", selection: notepadSelection,
+                       options: model.notepads.map { ($0["id"].text, $0["title"].text) }).disabled(!model.loggedIn)
+            if !model.loggedIn { Text("登录墨墨账号后即可使用").font(.caption).foregroundStyle(Palette.muted) }
             HStack { Spacer(); Button("查看 / 编辑") { model.sheet = .notepad }.disabled(model.selectedPad == .null); Button("新建") { model.createNotebook() } }.buttonStyle(MemoButtonStyle(compact: true))
-        }.foregroundStyle(Palette.deep).padding(13).background(Palette.wash, in: RoundedRectangle(cornerRadius: 11)).overlay(RoundedRectangle(cornerRadius: 11).stroke(Palette.border))
+        }.foregroundStyle(Palette.ink).padding(12).background(Palette.wash, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.border, lineWidth: 0.6).allowsHitTesting(false))
+    }
+
+    private var notepadSelection: Binding<String> {
+        Binding(get: { model.preferences.selectedNotepad }, set: { id in
+            Task<Void, Never> { await model.selectNotepad(id) }
+        })
     }
 }
 
@@ -114,73 +139,86 @@ private struct MainTitlebar: View {
     @ObservedObject var preferences: Preferences
     var compact: Bool
     var body: some View {
-        HStack(spacing: compact ? 7 : 12) {
-            Color.clear.frame(width: 62).allowsHitTesting(false)
-            HStack(spacing: 7) {
-                OwlImage().frame(width: 26, height: 26)
-                if !compact { Text("墨墨搜词").font(.headline).fixedSize() }
-            }.help("墨墨搜词")
-            HStack(spacing: 3) {
+        let metrics = model.titlebar
+        HStack(spacing: compact ? 5 : 8) {
+            Color.clear.frame(width: metrics.leading).allowsHitTesting(false)
+            titleButton(preferences.alwaysOnTop ? "pin.fill" : "pin", label: "窗口置顶", selected: preferences.alwaysOnTop) {
+                preferences.alwaysOnTop.toggle()
+                model.applySystemPreferences?()
+            }
+            HStack(spacing: 0) {
                 titleButton("chevron.left", label: "后退") { model.move(-1) }.disabled(!model.canGoBack)
                 titleButton("chevron.right", label: "前进") { model.move(1) }.disabled(!model.canGoForward)
             }
-            GeometryReader { geometry in
-                HStack(spacing: 5) {
-                    if geometry.size.width >= 210 { Text("顽固单词").font(.system(size: 10)).foregroundStyle(Palette.muted) }
-                    Button(model.stubbornCurrent.isEmpty ? (model.loggedIn ? (model.stubbornLoading ? "获取中…" : model.stubbornHint.isEmpty ? "暂无" : "查看") : "登录") : model.stubbornCurrent) {
-                        if !model.loggedIn { model.openAccountSettings() } else if !model.stubbornCurrent.isEmpty { model.lookup(model.stubbornCurrent) } else { model.sheet = .stubborn }
-                    }.font(.system(size: 15, weight: .semibold)).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading).buttonStyle(.plain).help(model.stubbornCurrent)
-                    Button("全部") { if model.loggedIn { model.sheet = .stubborn } else { model.openAccountSettings() } }.font(.system(size: 10)).buttonStyle(.plain)
-                    titleButton(preferences.stubbornSort == "random" ? "shuffle" : "chevron.right", label: "下一个顽固单词") { model.nextStubborn() }.disabled(model.stubbornOrder.count < 2)
-                }.padding(.horizontal, 8).frame(width: min(264, geometry.size.width), height: 32)
-                    .background(Palette.wash, in: RoundedRectangle(cornerRadius: 8))
-                    .position(x: min(264, geometry.size.width) / 2, y: geometry.size.height / 2)
-            }.frame(minWidth: 105).tourTarget("stubborn")
-
+            stubbornBar.frame(minWidth: 102, maxWidth: compact ? 230 : 300).tourTarget("stubborn")
+            Spacer(minLength: 0)
             if preferences.showCountdown {
                 TimelineView(.periodic(from: Date(), by: 30)) { context in countdown(at: context.date) }
                     .fixedSize(horizontal: true, vertical: false).layoutPriority(2)
             }
             Button { model.openAccountSettings() } label: {
-                Label { Text(model.titleAccount).lineLimit(1).frame(maxWidth: compact ? 95 : 135) }
+                Label { Text(model.titleAccount).font(.system(size: 12, weight: .medium)).lineLimit(1).frame(maxWidth: compact ? 82 : 132, alignment: .leading) }
                     icon: { Image(systemName: model.activeAccount?.needsLogin == true ? "person.crop.circle.badge.exclamationmark" : "person.crop.circle") }
-            }.buttonStyle(.borderless).fixedSize(horizontal: true, vertical: false).layoutPriority(2)
+            }.buttonStyle(MemoButtonStyle(compact: true)).fixedSize(horizontal: true, vertical: false).layoutPriority(2)
                 .help(model.titleAccount + " · " + model.accountStatus)
-            HStack(spacing: compact ? 0 : 4) {
-                titleButton("gearshape", label: "设置") { model.sheet = .settings }
-                titleButton(preferences.alwaysOnTop ? "pin.fill" : "pin", label: "窗口置顶") {
-                    preferences.alwaysOnTop.toggle()
-                    model.applySystemPreferences?()
-                }
-            }
-        }.padding(.horizontal, compact ? 10 : 14).frame(height: 49).background(.bar).foregroundStyle(Palette.ink)
+            titleButton("gearshape", label: "设置") { model.sheet = .settings }
+            OwlImage().frame(width: 25, height: 25).help("墨墨搜词").accessibilityLabel("墨墨搜词")
+        }.padding(.trailing, compact ? 10 : 14)
+            .frame(height: metrics.controlsHeight)
+            .padding(.top, max(0, metrics.center - metrics.controlsHeight / 2))
+            .frame(height: metrics.height, alignment: .top)
+            .padding(.top, metrics.fullScreenInset)
+            .background(Palette.chrome).foregroundStyle(Palette.ink)
     }
+
+    private var stubbornBar: some View {
+        HStack(spacing: compact ? 5 : 8) {
+            if !compact && !model.stubbornCurrent.isEmpty { Text("顽固单词").font(.caption).foregroundStyle(Palette.muted).fixedSize() }
+            Button(model.stubbornCurrent.isEmpty ? (model.loggedIn ? (model.stubbornLoading ? "获取中…" : "顽固单词") : "顽固单词") : model.stubbornCurrent) {
+                if !model.loggedIn { model.openAccountSettings() }
+                else if !model.stubbornCurrent.isEmpty { model.lookup(model.stubbornCurrent) }
+                else { model.sheet = .stubborn }
+            }.font(.system(size: model.stubbornCurrent.isEmpty ? 12 : 15, weight: .semibold))
+                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading).buttonStyle(.plain)
+                .help(model.stubbornCurrent.isEmpty ? "顽固单词" : model.stubbornCurrent)
+            Button("全部") { if model.loggedIn { model.sheet = .stubborn } else { model.openAccountSettings() } }
+                .font(.caption).buttonStyle(.plain).fixedSize().foregroundStyle(Palette.deep)
+            titleButton(preferences.stubbornSort == "random" ? "shuffle" : "arrow.right", label: "下一个顽固单词") { model.nextStubborn() }
+                .disabled(model.stubbornOrder.count < 2)
+        }.padding(.leading, 9).padding(.trailing, 2).frame(height: 29)
+            .background(Palette.wash, in: RoundedRectangle(cornerRadius: 8))
+    }
+
     private func countdown(at date: Date) -> some View {
         let calendar = Calendar.current
         let days = max(0, calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: preferences.examDate)).day ?? 0)
         let name = preferences.examName.trimmed.isEmpty ? "考试" : preferences.examName.trimmed
-        let visibleName = name.count > (compact ? 9 : 16) ? String(name.prefix(compact ? 9 : 16)) + "…" : name
+        let visibleName = name.count > (compact ? 7 : 12) ? String(name.prefix(compact ? 7 : 12)) + "…" : name
         return Text("距 \(visibleName) 还有\(days)天")
             .font(.caption.weight(.medium)).monospacedDigit().foregroundStyle(.red)
             .lineLimit(1).help("距 \(name) 还有\(days)天")
     }
-    private func titleButton(_ image: String, label: String, action: @escaping () -> Void) -> some View {
+    private func titleButton(_ image: String, label: String, selected: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: image).font(.system(size: 13, weight: .medium))
-                .frame(width: compact ? 24 : 29, height: 28).contentShape(Rectangle())
-        }.buttonStyle(.borderless).help(label).accessibilityLabel(label)
+                .frame(width: compact ? 25 : 29, height: 28).contentShape(Rectangle())
+        }.buttonStyle(.borderless).foregroundStyle(selected ? Palette.deep : Palette.ink)
+         .background(selected ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+         .help(label).accessibilityLabel(label)
     }
 }
 
 private struct WordPage: View {
     @ObservedObject var model: AppModel
     var compact: Bool
+    private static let tagNames = ["zk": "中考", "gk": "高考", "cet4": "CET-4", "cet6": "CET-6",
+                                   "ky": "考研", "toefl": "TOEFL", "ielts": "IELTS", "gre": "GRE"]
     var body: some View {
         ScrollView {
             Card(padding: compact ? 20 : 28) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .center, spacing: 15) {
-                        Text(model.word.isEmpty ? "Welcome" : model.word).font(.system(size: compact ? 32 : 42, weight: .semibold)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                        Text(model.word.isEmpty ? "查词" : model.word).font(.system(size: compact ? 32 : 42, weight: .semibold)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
                         if compact { VStack(spacing: 6) { actions } } else { HStack(spacing: 8) { actions } }
                     }
                     HStack(spacing: 8) {
@@ -188,8 +226,11 @@ private struct WordPage: View {
                         Button { model.speak() } label: { Label("发音", systemImage: "speaker.wave.2") }.disabled(model.word.isEmpty)
                         Button("海词词典") { model.openHaici?(model.word) }.disabled(model.word.isEmpty)
                     }.buttonStyle(MemoButtonStyle(compact: true)).padding(.top, 8).padding(.bottom, 14)
-                    HStack(spacing: 5) { ForEach(model.entry["tag"].text.split(separator: " ").map(String.init), id: \.self) { Text($0.replacingOccurrences(of: "cet", with: "CET-")).font(.system(size: 10)).padding(.horizontal, 7).padding(.vertical, 4).background(Palette.wash, in: Capsule()).foregroundStyle(Palette.deep) } }
-                    Text(model.word.isEmpty ? "输入一个英文单词，开始查词。" : "内置词库 · 离线可用" + (model.entry["bnc"].text.isEmpty ? "" : "  /  BNC 词频 #\(model.entry["bnc"].text)")).font(.system(size: 10)).foregroundStyle(Palette.muted).padding(.top, 8)
+                    wordTags
+                    if !model.word.isEmpty {
+                        Text("内置词库 · 离线可用" + (model.entry["bnc"].text.isEmpty ? "" : "  /  BNC 词频 #\(model.entry["bnc"].text)"))
+                            .font(.caption).foregroundStyle(Palette.muted).padding(.top, 8)
+                    }
                     rule
                     Text("中文释义").sectionLabel().padding(.bottom, 8)
                     LinkedText(text: model.word.isEmpty ? "在左侧输入单词，即可查看释义。" : (model.entry == .null ? "本地词库暂无释义，可打开海词词典查看。" : model.entry["translation"].text.decodedLines), size: 17)
@@ -201,18 +242,50 @@ private struct WordPage: View {
                     if model.notes.isEmpty { Text(model.word.isEmpty ? "查词后查看助记" : "暂无助记，点击“编辑助记”添加。").font(.system(size: 12)).foregroundStyle(Palette.muted) }
                     ForEach(Array(model.notes.enumerated()), id: \.offset) { _, note in VStack(alignment: .leading, spacing: 9) { Text(note["noteType"].text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.deep); LinkedText(text: note["text"].text, size: 15, color: Palette.deep) }.padding(18).frame(maxWidth: .infinity, alignment: .leading).background(Palette.wash, in: RoundedRectangle(cornerRadius: 10)).padding(.bottom, 8) }
                     rule
-                    HStack { Text("真题例句").font(.system(size: 17, weight: .semibold)); Spacer(); Picker("", selection: $model.examplePaper) { Text("全部考试").tag("ALL"); Text("考研").tag("POSTGRADUATE"); Text("大学四级").tag("CET4"); Text("大学六级").tag("CET6"); Text("高考").tag("COLLEGE_ENTRANCE_EXAM") }.labelsHidden().frame(width: 137).onChange(of: model.examplePaper) { _ in Task { await model.loadExamples(reset: true) } } }
+                    HStack {
+                        Text("真题例句").font(.system(size: 17, weight: .semibold))
+                        Spacer()
+                        MemoPicker(title: "真题类型", selection: $model.examplePaper, options: [
+                            ("ALL", "全部考试"), ("POSTGRADUATE", "考研"), ("CET4", "大学四级"),
+                            ("CET6", "大学六级"), ("COLLEGE_ENTRANCE_EXAM", "高考")
+                        ], height: 30).frame(width: 125)
+                    }.onChange(of: model.examplePaper) { _ in Task { await model.loadExamples(reset: true) } }
                     Text("点击英文单词可查看释义").font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.top, 8).padding(.bottom, 12)
                     ExamplesView(model: model)
                 }
             }.padding(.trailing, 5)
         }
     }
+    private var wordTags: some View {
+        let tags = model.entry["tag"].text.split(separator: " ").map(String.init)
+        var labels = tags.map { Self.tagNames[$0] ?? $0.uppercased() }
+        if model.entry["oxford"].text == "1" { labels.append("核心词汇") }
+        if let stars = Int(model.entry["collins"].text), stars > 0 { labels.append(String(repeating: "★", count: min(stars, 5))) }
+        return HStack(spacing: 5) {
+            ForEach(labels, id: \.self) { label in
+                Text(label).font(.system(size: 10, weight: .medium)).padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Palette.wash, in: Capsule()).foregroundStyle(Palette.deep)
+            }
+        }
+    }
     @ViewBuilder private var actions: some View {
         Button(model.membership ? "✓ 已加入云词本" : "＋ 加入云词本") { Task { await model.toggleMembership() } }.buttonStyle(MemoButtonStyle(accent: true)).disabled(model.word.isEmpty || model.writing)
-        Button(todayLabel) { model.addToday() }.buttonStyle(MemoButtonStyle()).disabled(model.word.isEmpty || model.writing || ["AlreadyLearned", "AlreadyToday", "Planned", "Added"].contains(model.todayStatus)).tourTarget("today")
+        Button(todayLabel) { model.addToday() }.buttonStyle(MemoButtonStyle())
+            .disabled(model.word.isEmpty || model.writing || ["AlreadyLearned", "AlreadyToday", "Planned", "Added", "Loading", "Missing"].contains(model.todayStatus))
+            .tourTarget("today")
     }
-    private var todayLabel: String { switch model.todayStatus { case "AlreadyLearned": return "已学过的单词"; case "AlreadyToday", "Planned", "Added": return "已计划新学"; default: return "＋ 今日新学" } }
+    private var todayLabel: String {
+        switch model.todayStatus {
+        case "AlreadyLearned": return "已学过"
+        case "AlreadyToday", "Planned", "Added": return "已计划新学"
+        case "Loading": return "正在获取学习状态…"
+        case "Missing": return "墨墨未收录"
+        case "Failed": return "重新获取学习状态"
+        case "SyncRequired": return "核对学习记录"
+        case "PendingVerification": return "核对今日新学"
+        default: return "＋ 今日新学"
+        }
+    }
     private var rule: some View { Divider().overlay(Palette.border).padding(.vertical, 23) }
 }
 
@@ -280,7 +353,14 @@ private struct TranslationPage: View {
     @ObservedObject var model: AppModel
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack { Text("段落翻译").font(.system(size: 23, weight: .semibold)); Spacer(); Picker("", selection: $model.translationDirection) { Text("英译中").tag("en|zh-CN"); Text("中译英").tag("zh-CN|en") }.labelsHidden().frame(width: 112); Button(model.translating ? "翻译中…" : "翻译") { Task { await model.translate() } }.buttonStyle(MemoButtonStyle(accent: true)).disabled(model.translating) }
+            HStack(spacing: 9) {
+                Text("段落翻译").font(.system(size: 23, weight: .semibold))
+                Spacer()
+                MemoPicker(title: "翻译方向", selection: $model.translationDirection,
+                           options: [("en|zh-CN", "英译中"), ("zh-CN|en", "中译英")]).frame(width: 104)
+                Button(model.translating ? "翻译中…" : "翻译") { Task { await model.translate() } }
+                    .buttonStyle(MemoButtonStyle(accent: true)).disabled(model.translating)
+            }
             TextEditor(text: $model.translationInput).font(.system(size: 15)).padding(8).frame(height: 140).background(Palette.paper, in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.border)).tourTarget("translation")
             Text((model.translationProvider.isEmpty ? "" : "\(model.translationProvider) · ") + "点击英文单词可查看释义。").font(.system(size: 11)).foregroundStyle(Palette.muted)
             ScrollView { VStack(spacing: 14) { Card { VStack(alignment: .leading, spacing: 12) { Text("原文").sectionLabel(); LinkedText(text: model.translationSource.isEmpty ? "翻译后在这里阅读原文" : model.translationSource, size: 16) } }; Card { VStack(alignment: .leading, spacing: 12) { Text("译文").sectionLabel(); LinkedText(text: model.translationOutput.isEmpty ? "译文将在这里显示" : model.translationOutput, size: 16) } } } }

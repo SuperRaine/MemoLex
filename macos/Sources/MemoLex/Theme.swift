@@ -7,34 +7,103 @@ struct MemoButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(compact ? .callout : .body)
-            .padding(.horizontal, compact ? 8 : 12).padding(.vertical, compact ? 4 : 6)
-            .foregroundStyle(accent ? Color.white : Palette.ink)
+            .font(.system(size: compact ? 12 : 13, weight: accent ? .semibold : .medium))
+            .padding(.horizontal, compact ? 9 : 13)
+            .frame(minHeight: compact ? 27 : 33)
+            .foregroundStyle(accent ? Palette.accentInk : Palette.ink)
             .background(accent ? Palette.accent.opacity(configuration.isPressed ? 0.78 : 1) :
-                Color(nsColor: .controlBackgroundColor).opacity(configuration.isPressed ? 0.5 : 1),
-                in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(accent ? Color.clear : Palette.border, lineWidth: 0.6))
+                (configuration.isPressed ? Palette.wash : Palette.control),
+                in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(accent ? Color.clear : Palette.border, lineWidth: 0.65))
             .opacity(enabled ? 1 : 0.38)
+    }
+}
+
+struct MemoPicker<Value: Hashable>: View {
+    var title: String
+    @Binding var selection: Value
+    var options: [(Value, String)]
+    var placeholder: String? = nil
+    var height: CGFloat = 34
+    @Environment(\.isEnabled) private var enabled
+
+    private var selectedLabel: String { options.first { $0.0 == selection }?.1 ?? placeholder ?? title }
+
+    var body: some View {
+        Menu {
+            ForEach(options, id: \.0) { value, label in
+                Button { selection = value } label: {
+                    if selection == value { Label(label, systemImage: "checkmark") }
+                    else { Text(label) }
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(selectedLabel).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(Palette.muted)
+            }.font(.system(size: 13)).foregroundStyle(Palette.ink)
+                .padding(.horizontal, 10).frame(height: height).controlSurface()
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden)
+        .accessibilityLabel(title).accessibilityValue(selectedLabel).help(selectedLabel)
+        .opacity(enabled && !options.isEmpty ? 1 : 0.52).disabled(options.isEmpty)
+    }
+}
+
+struct SidebarRowStyle: ButtonStyle {
+    var selected = false
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: 33)
+            .padding(.horizontal, 9)
+            .background(selected || configuration.isPressed ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
     }
 }
 
 struct Card<Content: View>: View {
     var padding: CGFloat = 20
     @ViewBuilder var content: Content
-    var body: some View { content.padding(padding).frame(maxWidth: .infinity, alignment: .leading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.border, lineWidth: 0.5)) }
+    var body: some View { content.padding(padding).frame(maxWidth: .infinity, alignment: .leading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Palette.border, lineWidth: 0.6)) }
 }
 
 struct DialogHeader: View {
     var title: String
+    var nativeClose = false
     var close: () -> Void
     var body: some View {
-        HStack(spacing: 8) {
-            OwlImage().frame(width: 27, height: 27)
+        HStack(spacing: 12) {
+            if nativeClose { NativeCloseButton(action: close).frame(width: 16, height: 16) }
+            else { OwlImage().frame(width: 27, height: 27) }
             Text(title).font(.headline)
             Spacer()
-            Button(action: close) { Image(systemName: "xmark.circle.fill").font(.system(size: 17)).frame(width: 28, height: 28) }
-                .buttonStyle(.borderless).foregroundStyle(.tertiary).help("关闭").accessibilityLabel("关闭")
-        }.padding(.horizontal, 13).frame(height: 45).background(.bar).overlay(alignment: .bottom) { Divider() }
+            if !nativeClose {
+                Button(action: close) { Image(systemName: "xmark").font(.system(size: 12, weight: .semibold)).frame(width: 28, height: 28) }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary).help("关闭").accessibilityLabel("关闭")
+            }
+        }.padding(.horizontal, 16).frame(height: 45).background(Palette.chrome).overlay(alignment: .bottom) { Palette.border.frame(height: 1) }
+    }
+}
+
+private struct NativeCloseButton: NSViewRepresentable {
+    var action: () -> Void
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSWindow.standardWindowButton(.closeButton, for: [.titled, .closable]) ?? NSButton()
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.close)
+        button.isHidden = false
+        button.toolTip = "关闭设置"
+        button.setAccessibilityLabel("关闭设置")
+        return button
+    }
+    func updateNSView(_ button: NSButton, context: Context) { context.coordinator.action = action }
+    func makeCoordinator() -> Coordinator { Coordinator(action) }
+    final class Coordinator: NSObject {
+        var action: () -> Void
+        init(_ action: @escaping () -> Void) { self.action = action }
+        @objc func close() { action() }
     }
 }
 
@@ -79,6 +148,10 @@ struct LinkedText: View {
 }
 
 extension View {
-    func inputFrame(height: CGFloat = 36) -> some View { self.textFieldStyle(.plain).padding(.horizontal, 10).frame(height: height).background(Palette.paper, in: RoundedRectangle(cornerRadius: 7)).overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Palette.border, lineWidth: 0.6)) }
+    func controlSurface() -> some View {
+        background(Palette.control, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.border, lineWidth: 0.65).allowsHitTesting(false))
+    }
+    func inputFrame(height: CGFloat = 34) -> some View { textFieldStyle(.plain).padding(.horizontal, 10).frame(height: height).controlSurface() }
     func sectionLabel() -> some View { self.font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.muted) }
 }

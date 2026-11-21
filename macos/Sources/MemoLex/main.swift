@@ -18,6 +18,7 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     private var noticeShowing = false
     private var updateTimer: Timer?
     private var appliedStartAtLogin: Bool?
+    private var nativeTitlebarHeight: CGFloat = 28
     private let loginRegistration = DispatchQueue(label: "MemoLex.LoginRegistration", qos: .utility)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -25,9 +26,18 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
         let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1400, height: 900)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1160, visible.width - 40), height: min(800, visible.height - 45)), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "墨墨搜词"; window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true; window.toolbar = nil
-        window.minSize = NSSize(width: 760, height: 520); window.isMovableByWindowBackground = true; window.isReleasedWhenClosed = false; window.delegate = self
-        window.contentView = NSHostingView(rootView: MainView(model: model))
+        window.isMovableByWindowBackground = true; window.isReleasedWhenClosed = false; window.delegate = self
+        installContent(MainView(model: model), in: window)
         if !window.setFrameUsingName("MemoLex.Main") { window.center() }
+        let minimumFrame = window.frameRect(forContentRect: CGRect(origin: .zero, size: MainView.minimumSize)).size
+        window.minSize = minimumFrame
+        window.contentMinSize = MainView.minimumSize
+        let restored = window.frame
+        if restored.width < minimumFrame.width || restored.height < minimumFrame.height {
+            let height = max(restored.height, minimumFrame.height)
+            window.setFrame(CGRect(x: restored.minX, y: restored.maxY - height,
+                                   width: max(restored.width, minimumFrame.width), height: height), display: false)
+        }
         window.setFrameAutosaveName("MemoLex.Main")
         model.showWindow = { [weak self] in self?.show() }
         model.openHaici = { [weak self] word in self?.openHaici(word) }
@@ -38,12 +48,66 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
         makeStatusItem(); applyPreferences()
         model.updates.onAvailable = { [weak self] in self?.updatePending = true; self?.promptUpdate() }
         updateTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in Task { @MainActor in self?.promptUpdate() } }
-        show(); Task { await model.initialize() }
+        show()
+        model.updates.start()
+        Task { await model.initialize() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { show(); return true }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) { if !model.removingApplication { model.preferences.save() }; integration?.stop(); model.updates.stop(); model.core.stop(); updateTimer?.invalidate() }
-    func show() { guard let window else { return }; NSApp.setActivationPolicy(.regular); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
+    func show() {
+        guard let window else { return }
+        NSApp.setActivationPolicy(.regular)
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async { [weak self] in self?.alignTitlebar() }
+    }
+
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard sender === window else { return frameSize }
+        return NSSize(width: max(frameSize.width, sender.minSize.width, MainView.minimumSize.width),
+                      height: max(frameSize.height, sender.minSize.height, MainView.minimumSize.height))
+    }
+    func windowDidResize(_ notification: Notification) { alignTitlebar() }
+    func windowDidEnterFullScreen(_ notification: Notification) { alignTitlebar() }
+    func windowDidExitFullScreen(_ notification: Notification) { alignTitlebar() }
+    func windowDidChangeScreen(_ notification: Notification) { alignTitlebar() }
+
+    private func installContent<Content: View>(_ view: Content, in window: NSWindow) {
+        // The native container owns the window limits. A root hosting view can reset them.
+        let container = NSView(frame: .zero)
+        window.contentView = container
+        let hosting = NSHostingView(rootView: view)
+        hosting.sizingOptions = []
+        hosting.frame = container.bounds
+        hosting.autoresizingMask = [.width, .height]
+        container.addSubview(hosting)
+    }
+
+    private func alignTitlebar() {
+        guard let window, let content = window.contentView else { return }
+        let next: TitlebarMetrics
+        let contentRect = content.convert(content.bounds, to: nil)
+        let systemInset = max(0, contentRect.maxY - window.contentLayoutRect.maxY)
+        if window.styleMask.contains(.fullScreen) {
+            // AppKit reveals its own floating title strip at the top of full screen.
+            let inset = max(nativeTitlebarHeight, systemInset, window.screen?.safeAreaInsets.top ?? 0)
+            next = TitlebarMetrics(leading: 14, center: 20, fullScreenInset: inset)
+        } else {
+            let buttons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+            let frames = buttons.compactMap { type -> CGRect? in
+                guard let button = window.standardWindowButton(type), button.superview != nil else { return nil }
+                return button.convert(button.bounds, to: nil)
+            }
+            guard let first = frames.first, let right = frames.map(\.maxX).max() else { return }
+            let center = contentRect.maxY - first.midY
+            guard (10...48).contains(center) else { return }
+            nativeTitlebarHeight = max(center * 2, systemInset)
+            next = TitlebarMetrics(leading: right - contentRect.minX + 10, center: center)
+        }
+        if model.titlebar != next { model.titlebar = next }
+    }
     func applyPreferences() {
         let level: NSWindow.Level = model.preferences.alwaysOnTop ? .floating : .normal
         if window?.level != level { window?.level = level }
@@ -102,15 +166,36 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     private func openHaici(_ word: String) {
         if let haiciWindow, let haici { haici.navigate(word: word); haiciWindow.makeKeyAndOrderFront(nil); return }
         let browser = HaiciBrowser(word: word); let browserWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        browserWindow.title = "海词词典"; browserWindow.minSize = NSSize(width: 600, height: 450); browserWindow.isReleasedWhenClosed = false; browserWindow.contentView = NSHostingView(rootView: HaiciView(browser: browser, close: { [weak browserWindow] in browserWindow?.close() })); browserWindow.center(); browserWindow.makeKeyAndOrderFront(nil); haici = browser; haiciWindow = browserWindow
+        browserWindow.title = "海词词典"
+        browserWindow.isReleasedWhenClosed = false
+        installContent(HaiciView(browser: browser, close: { [weak browserWindow] in browserWindow?.close() }), in: browserWindow)
+        browserWindow.contentMinSize = NSSize(width: 600, height: 450)
+        browserWindow.center(); browserWindow.makeKeyAndOrderFront(nil); haici = browser; haiciWindow = browserWindow
     }
     private func promptUpdate() {
         guard updatePending, window?.isVisible == true, model.sheet == nil, model.tourIndex == nil, model.notice == nil, NSApp.modalWindow == nil else { return }
         updatePending = false
-        let alert = NSAlert(); alert.messageText = "发现新版 \(model.updates.latestVersion)"; alert.informativeText = model.updates.downloaded != nil ? "新版已下载完成，可前往设置安装。" : "可以现在下载，也可以稍后在设置中更新。"
-        alert.addButton(withTitle: model.updates.busy || model.updates.downloaded != nil ? "查看更新" : "下载更新"); alert.addButton(withTitle: "稍后")
+        let alert = NSAlert()
+        alert.messageText = "发现新版 \(model.updates.latestVersion)"
+        alert.informativeText = model.updates.downloaded != nil ? "新版已下载，可前往设置安装。" : "可以现在更新，也可以稍后在设置中查看。"
+        let action = !model.updates.hasUpdate ? "前往下载页面" : model.updates.busy || model.updates.downloaded != nil ? "查看更新" : "下载更新"
+        alert.addButton(withTitle: action)
+        alert.addButton(withTitle: "稍后")
         alert.accessoryView = NSHostingView(rootView: UpdatePromptOptions(preferences: model.preferences).frame(width: 290, height: 32))
-        alert.beginSheetModal(for: window) { [weak self] response in Task { @MainActor in guard let self else { return }; self.model.preferences.save(); if response == .alertFirstButtonReturn { self.model.settingsPage = "软件更新"; self.model.sheet = .settings; if !self.model.updates.busy && self.model.updates.downloaded == nil { await self.model.updates.download() } } } }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            Task { @MainActor in
+                guard let self else { return }
+                self.model.preferences.save()
+                guard response == .alertFirstButtonReturn else { return }
+                if !self.model.updates.hasUpdate {
+                    if let url = URL(string: AppPaths.repository + "/releases/latest") { NSWorkspace.shared.open(url) }
+                    return
+                }
+                self.model.settingsPage = "软件更新"
+                self.model.sheet = .settings
+                if !self.model.updates.busy && self.model.updates.downloaded == nil { await self.model.updates.download() }
+            }
+        }
     }
     private func presentNotice() {
         guard !noticeShowing, let notice = model.notice, let parent = NSApp.keyWindow ?? window else { return }

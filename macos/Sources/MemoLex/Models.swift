@@ -35,14 +35,30 @@ enum J: Codable, Equatable, Sendable {
 }
 
 enum Palette {
-    static let accent = Color.accentColor
-    static let deep = Color(nsColor: .linkColor)
-    static let ink = Color.primary
-    static let muted = Color.secondary
-    static let canvas = Color(nsColor: .windowBackgroundColor)
-    static let paper = Color(nsColor: .textBackgroundColor)
-    static let wash = Color(nsColor: .controlAccentColor).opacity(0.09)
-    static let border = Color(nsColor: .separatorColor).opacity(0.65)
+    // Light-mode values follow the Windows Theme.xaml and settings surfaces.
+    static let accent = Color(nsColor: rgb(0x34BCFC))
+    static let accentInk = Color(nsColor: rgb(0x173749))
+    static let deep = adaptive(0x087FAF, 0x73D1FE)
+    static let ink = adaptive(0x25384A, 0xE6F1F8)
+    static let muted = adaptive(0x647E93, 0xACC3D3)
+    static let canvas = adaptive(0xF3F7FB, 0x161F28)
+    static let paper = adaptive(0xFFFFFF, 0x202C37)
+    static let chrome = adaptive(0xF9FCFF, 0x1D2934)
+    static let sidebar = adaptive(0xF6FAFE, 0x192632)
+    static let control = adaptive(0xFFFFFF, 0x263542)
+    static let wash = adaptive(0xE8F7FF, 0x17394D)
+    static let border = adaptive(0xE2EAF2, 0x344759)
+
+    private static func adaptive(_ light: UInt32, _ dark: UInt32) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            rgb(appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light)
+        })
+    }
+
+    private static func rgb(_ hex: UInt32) -> NSColor {
+        NSColor(srgbRed: CGFloat((hex >> 16) & 255) / 255.0, green: CGFloat((hex >> 8) & 255) / 255.0,
+                blue: CGFloat(hex & 255) / 255.0, alpha: 1)
+    }
 }
 
 struct SavedAccount: Codable, Identifiable, Equatable {
@@ -54,9 +70,13 @@ struct SavedAccount: Codable, Identifiable, Equatable {
 
     static func displayIdentity(_ value: String) -> String {
         if value.contains("@") { return value }
-        let digits = value.filter(\.isNumber)
-        guard (7...18).contains(digits.count), value.range(of: "^\\+?[0-9 ()-]+$", options: .regularExpression) != nil else { return value }
-        return String(digits.prefix(3)) + "••••" + String(digits.suffix(4))
+        let identity = value.trimmed
+        if identity.range(of: #"^[+0-9]{3}[.*•…·]+[0-9]{4}$"#, options: .regularExpression) != nil {
+            return String(identity.prefix(3)) + "****" + String(identity.suffix(4))
+        }
+        let phone = identity.filter { $0.isNumber || $0 == "+" }
+        guard (7...19).contains(phone.count), identity.range(of: #"^\+?[0-9 ()-]+$"#, options: .regularExpression) != nil else { return value }
+        return String(phone.prefix(3)) + "****" + String(phone.suffix(4))
     }
 
     var displayName: String { Self.displayIdentity(name) }
@@ -153,7 +173,7 @@ struct NativeShortcut: Codable, Equatable {
 enum AppPaths {
     static let profile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MemoLex", isDirectory: true)
     static var resources: URL { Bundle.main.resourceURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath) }
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.9.0" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.10.0" }
     static let repository = "https://github.com/SuperRaine/MemoLex"
 }
 

@@ -33,7 +33,7 @@ import SwiftUI
         guard model.preferences.hoverEnabled, !attempted, modifiersAllowed(), Date().timeIntervalSince(stoppedAt) * 1000 >= Double(model.preferences.hoverDelay), model.sheet == nil, model.tourIndex == nil, NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
         attempted = true; let version = generation
         task = Task {
-            var candidate = ScreenText.accessible(at: quartz)
+            var candidate = PermissionCenter.accessibility ? ScreenText.accessible(at: quartz) : nil
             var capturedFingerprint: [UInt8]?
             var crop = CGRect.zero
             if candidate == nil, PermissionCenter.screen {
@@ -105,10 +105,23 @@ private struct HoverView: View {
     private var panels: [NSPanel] = []
     private var monitor: Any?
     private var wasVisible = false
+    private var checkingPermission = false
     init(model: AppModel) { self.model = model }
     func start() {
-        guard panels.isEmpty else { return }
-        guard PermissionCenter.screen else { PermissionCenter.requestScreen(); model.notice = .init(title: "允许屏幕录制", message: "请在系统设置中允许墨墨搜词录制屏幕，然后重试截图翻译。"); return }
+        guard panels.isEmpty, !checkingPermission else { return }
+        if PermissionCenter.screen { beginSelection(); return }
+        checkingPermission = true
+        Task {
+            defer { checkingPermission = false }
+            if await ScreenCapture.hasAccess() {
+                PermissionCenter.recordScreenAccess()
+                beginSelection()
+            } else {
+                model.notice = .init(title: "检查屏幕录制权限", message: "macOS 暂时无法提供屏幕内容。请在系统设置中确认墨墨搜词的屏幕录制权限，再试一次。")
+            }
+        }
+    }
+    private func beginSelection() {
         wasVisible = NSApp.windows.contains { $0.isVisible && !($0 is NSPanel) }; NSApp.windows.filter { !($0 is NSPanel) }.forEach { $0.orderOut(nil) }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in if event.keyCode == 53 { self?.cancel(); return nil }; return event }
         for screen in NSScreen.screens {
@@ -127,7 +140,7 @@ private struct HoverView: View {
         closePanels()
         guard rect.width >= 4, rect.height >= 4 else { if wasVisible { model.showWindow?() }; return }
         Task {
-            do { try await Task.sleep(nanoseconds: 120_000_000); let image = try await ScreenCapture.image(rect); let result = try await ScreenText.recognize(image, crop: rect); model.showWindow?(); await model.classify(result.0) }
+            do { try await Task.sleep(nanoseconds: 120_000_000); let image = try await ScreenCapture.image(rect); PermissionCenter.recordScreenAccess(); let result = try await ScreenText.recognize(image, crop: rect); model.showWindow?(); await model.classify(result.0) }
             catch { model.showWindow?(); model.fail(CoreFailure(code: "capture", message: "未能读取截图，请检查屏幕录制权限后重试。")) }
         }
     }

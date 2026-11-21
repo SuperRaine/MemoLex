@@ -24,7 +24,8 @@ struct TourStep {
         .init(title: "截图翻译", text: "框选屏幕中的英文。单个词直接查词，段落进入翻译。", target: "screenshot"),
         .init(title: "鼠标取词", text: "开启后，将鼠标停在英文单词上即可查看释义。", target: "hover", settings: "鼠标取词"),
         .init(title: "剪贴板查词", text: "开启后，选中文字连按两次 ⌘C，唤起软件查词或翻译。", target: "clipboard", settings: "常规"),
-        .init(title: "考试倒计时", text: "填写考试名称和日期，即可在标题栏查看倒计时。", target: "countdown", settings: "常规"),
+        .init(title: "考试倒计时", text: "设置考试名称，分别选择或输入年、月、日。开启后可在标题栏看到剩余天数。", target: "countdown", settings: "常规"),
+        .init(title: "软件更新", text: "在这里检查新版。下载完成后，点击“更新并重启”安装。", target: "updates", settings: "软件更新"),
         .init(title: "系统权限", text: "取词和截图需要 Mac 授权，可在这里查看并设置。", target: "permissions", settings: "系统权限")
     ]
     func startTour() { showWindow?(); setTourStep(0) }
@@ -51,7 +52,11 @@ struct TourOverlay: View {
                         Path { path in path.addRect(CGRect(origin: .zero, size: geometry.size)); path.addRoundedRect(in: target, cornerSize: CGSize(width: 8, height: 8)) }.fill(.black.opacity(0.43), style: FillStyle(eoFill: true)).allowsHitTesting(false)
                         RoundedRectangle(cornerRadius: 8).stroke(Palette.accent, lineWidth: 2.5).frame(width: target.width, height: target.height).position(x: target.midX, y: target.midY).allowsHitTesting(false)
                         VStack(alignment: .leading, spacing: 14) {
-                            HStack { Text("\(index + 1) / \(AppModel.tourSteps.count)").font(.system(size: 11)).foregroundStyle(Palette.deep); Picker("", selection: Binding(get: { index }, set: { model.setTourStep($0) })) { ForEach(Array(AppModel.tourSteps.enumerated()), id: \.offset) { position, item in Text(item.title).tag(position) } }.labelsHidden() }
+                            HStack {
+                                Text("\(index + 1) / \(AppModel.tourSteps.count)").font(.system(size: 11)).foregroundStyle(Palette.deep)
+                                MemoPicker(title: "引导步骤", selection: Binding(get: { index }, set: { model.setTourStep($0) }),
+                                           options: AppModel.tourSteps.enumerated().map { ($0.offset, $0.element.title) }, height: 29)
+                            }
                             Text(step.text).font(.system(size: 13)).lineSpacing(5).foregroundStyle(Palette.deep)
                             HStack { Button("跳过") { model.finishTour() }; Spacer(); Button("上一步") { model.setTourStep(index - 1) }.disabled(index == 0); Button(index == AppModel.tourSteps.count - 1 ? "完成" : "下一步") { model.setTourStep(index + 1) }.buttonStyle(MemoButtonStyle(accent: true, compact: true)) }.buttonStyle(MemoButtonStyle(compact: true))
                         }.padding(17).frame(width: min(340, geometry.size.width - 32)).background(Palette.paper, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.accent)).shadow(color: .black.opacity(0.2), radius: 15, y: 4).position(cardPosition(target: target, size: geometry.size))

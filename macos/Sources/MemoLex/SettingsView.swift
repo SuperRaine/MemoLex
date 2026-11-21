@@ -11,29 +11,33 @@ struct SettingsView: View {
     ]
     var body: some View {
         VStack(spacing: 0) {
-            DialogHeader(title: "设置") { model.sheet = nil }
+            DialogHeader(title: "设置", nativeClose: true) { model.sheet = nil }
             HStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: 3) {
                         ForEach(pages, id: \.0) { page, icon in
+                            let selected = page == model.settingsPage
                             Button { model.settingsPage = page } label: {
-                                Label(page, systemImage: icon)
-                                    .font(.system(size: 13, weight: page == model.settingsPage ? .semibold : .regular))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 10).padding(.vertical, 8)
-                                    .background(page == model.settingsPage ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 7))
-                            }.buttonStyle(.plain)
-                              .foregroundStyle(page == model.settingsPage ? Palette.deep : Palette.ink)
+                                HStack(spacing: 10) {
+                                    Image(systemName: icon).font(.system(size: 14, weight: .medium))
+                                        .frame(width: 21).accessibilityHidden(true)
+                                    Text(page).font(.system(size: 13, weight: selected ? .semibold : .regular))
+                                }.frame(maxWidth: .infinity, minHeight: 33, alignment: .leading)
+                                    .contentShape(Rectangle())
+                            }.buttonStyle(SidebarRowStyle(selected: selected))
+                             .foregroundStyle(selected ? Palette.deep : Palette.ink)
+                             .accessibilityAddTraits(selected ? .isSelected : [])
                         }
                     }.padding(10)
-                }.frame(width: 174).background(.regularMaterial)
-                Divider()
+                }.frame(width: 174).background(Palette.sidebar)
+                Palette.border.frame(width: 1)
                 VStack(spacing: 0) {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 17) {
                             settingsHeading
                             pageContent
-                        }.padding(23).frame(maxWidth: .infinity, alignment: .leading)
+                        }.padding(24).frame(maxWidth: 780, alignment: .leading)
+                         .frame(maxWidth: .infinity, alignment: .leading)
                     }.frame(maxHeight: .infinity)
                     if !status.isEmpty {
                         Text(status).font(.footnote).foregroundStyle(.secondary)
@@ -42,8 +46,9 @@ struct SettingsView: View {
                 }
             }.frame(maxHeight: .infinity)
         }.frame(width: min(900, (NSScreen.main?.visibleFrame.width ?? 1100) - 65), height: min(650, (NSScreen.main?.visibleFrame.height ?? 820) - 65))
-            .background(Palette.canvas).foregroundStyle(Palette.ink).toggleStyle(.checkbox)
+            .background(Palette.canvas).foregroundStyle(Palette.ink).tint(Palette.accent).toggleStyle(.checkbox)
             .onChange(of: model.settingsPage) { _ in status = "" }
+            .onExitCommand { model.sheet = nil }
             .overlayPreferenceValue(TourTargets.self) { anchors in TourOverlay(model: model, anchors: anchors, context: "settings") }
             .sheet(isPresented: $model.showLogin) { LoginView(model: model) }
     }
@@ -88,24 +93,45 @@ private struct GeneralSettings: View {
         VStack(alignment: .leading, spacing: 15) {
             SettingsCard(title: "考试倒计时") {
                 Toggle("在标题栏显示考试倒计时", isOn: $preferences.showCountdown).tourTarget("countdown")
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 6) { Text("考试名称").foregroundStyle(Palette.muted); TextField("考试", text: $preferences.examName).inputFrame() }.frame(width: 180)
-                    VStack(alignment: .leading, spacing: 6) { Text("考试日期 · 可选择或输入").foregroundStyle(Palette.muted); DateEntry(date: $preferences.examDate).frame(height: 36) }.frame(maxWidth: .infinity, alignment: .leading)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 16) { examName; examDate }.fixedSize(horizontal: true, vertical: false)
+                    VStack(alignment: .leading, spacing: 12) { examName; examDate }
                 }.disabled(!preferences.showCountdown)
             }
-            HStack(alignment: .top, spacing: 12) {
-                SettingsCard(title: "关闭窗口") {
-                    Picker("", selection: $preferences.closeToTray) { Text("收起到菜单栏").tag(true); Text("退出软件").tag(false) }.pickerStyle(.radioGroup).labelsHidden()
-                    Toggle("记住关闭方式，下次不再询问", isOn: $preferences.rememberClose)
-                }.frame(maxWidth: .infinity)
-                SettingsCard(title: "启动与快捷查词") {
-                    Toggle("登录 Mac 时自动启动", isOn: $preferences.startAtLogin)
-                    Toggle("连按两次 ⌘C 查词或翻译", isOn: $preferences.doubleCopy).tourTarget("clipboard")
-                    Text("选中文字后，在 750 毫秒内连按两次 ⌘C。").font(.system(size: 11)).foregroundStyle(Palette.muted)
-                }.frame(maxWidth: .infinity)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 12) { closeBehavior; launchBehavior }
+                VStack(spacing: 12) { closeBehavior; launchBehavior }
             }
             Button("查看新手引导") { model.sheet = nil; model.startTour() }.buttonStyle(MemoButtonStyle())
         }
+    }
+    private var examName: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("考试名称").sectionLabel()
+            TextField("考试", text: $preferences.examName).inputFrame().accessibilityLabel("考试名称")
+        }.frame(width: 164)
+    }
+    private var examDate: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("考试日期").sectionLabel()
+            ExamDateEntry(date: $preferences.examDate)
+        }
+    }
+    private var closeBehavior: some View {
+        SettingsCard(title: "关闭窗口") {
+            Picker("关闭窗口", selection: $preferences.closeToTray) {
+                Text("收起到菜单栏").tag(true)
+                Text("退出软件").tag(false)
+            }.pickerStyle(.radioGroup).labelsHidden()
+            Toggle("记住关闭方式，下次不再询问", isOn: $preferences.rememberClose)
+        }.frame(minWidth: 195)
+    }
+    private var launchBehavior: some View {
+        SettingsCard(title: "启动与快捷查词") {
+            Toggle("登录 Mac 时自动启动", isOn: $preferences.startAtLogin)
+            Toggle("连按两次 ⌘C 查词或翻译", isOn: $preferences.doubleCopy).tourTarget("clipboard")
+            Text("选中文字后，在 750 毫秒内连按两次 ⌘C。").font(.system(size: 11)).foregroundStyle(Palette.muted)
+        }.frame(minWidth: 195)
     }
 }
 
@@ -113,12 +139,12 @@ struct SettingsCard<Content: View>: View {
     var title: String
     @ViewBuilder var content: Content
     var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            Text(title).font(.headline)
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.system(size: 14, weight: .semibold))
             content
-        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.paper, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Palette.border, lineWidth: 0.5))
+        }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Palette.paper, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.border, lineWidth: 0.6).allowsHitTesting(false))
     }
 }
 
@@ -133,7 +159,11 @@ private struct HoverSettings: View {
             Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 14) {
                 GridRow { Text("取词方式").foregroundStyle(Palette.muted); HStack(spacing: 12) { Text("鼠标悬停 ＋").foregroundStyle(Palette.muted); modifier("⌃", flag: 1); modifier("⌥", flag: 2); modifier("⇧", flag: 4) }.frame(height: 36) }
                 GridRow { Text("取词延迟").foregroundStyle(Palette.muted); HStack { TextField("750", value: $preferences.hoverDelay, format: .number).inputFrame().frame(width: 100); Text("毫秒（100–3000）").foregroundStyle(Palette.muted) } }
-                GridRow { Text("浮窗字体大小").foregroundStyle(Palette.muted); Picker("", selection: $preferences.hoverFontSize) { Text("较小").tag("small"); Text("标准").tag("standard"); Text("较大").tag("large") }.labelsHidden().frame(width: 180) }
+                GridRow {
+                    Text("浮窗字体大小").foregroundStyle(Palette.muted)
+                    MemoPicker(title: "浮窗字体大小", selection: $preferences.hoverFontSize,
+                               options: [("small", "较小"), ("standard", "标准"), ("large", "较大")]).frame(width: 160)
+                }
             }
             Text("将鼠标停在英文单词上即可取词，移开后浮窗自动收起。开启组合键后，取词时需同时按住。图片在本机识别。").font(.system(size: 12)).foregroundStyle(Palette.muted)
             Text("自动收藏前，请先登录并选择云词本。仅收藏准确匹配的单词。").font(.system(size: 12)).foregroundStyle(Palette.muted)
@@ -154,12 +184,9 @@ private struct AccountSettings: View {
             Text(model.activeAccount.map { "当前账号：\($0.displayName)" } ?? "还未登录墨墨账号").font(.headline)
             Button("登录或添加账号") { model.loginTarget = nil; model.showLogin = true }.buttonStyle(MemoButtonStyle(accent: true)).tourTarget("login")
             Text("选择账号即可切换").font(.system(size: 12, weight: .semibold))
-            Picker("", selection: $selected) {
-                Text("请选择账号").tag("")
-                ForEach(model.accounts) { account in
-                    Text(account.displayName + (account.needsLogin ? " · 需要登录" : "")).tag(account.id)
-                }
-            }.labelsHidden().onChange(of: selected) { id in
+            MemoPicker(title: "切换账号", selection: $selected, options: model.accounts.map { account in
+                (account.id, account.displayName + (account.needsLogin ? " · 需要登录" : ""))
+            }, placeholder: "请选择账号").onChange(of: selected) { id in
                 name = model.accounts.first { $0.id == id }?.displayName ?? ""
                 if id != model.activeAccountID, model.accounts.contains(where: { $0.id == id && !$0.needsLogin }) { Task { await model.activate(id) } }
             }
@@ -226,16 +253,4 @@ private struct AboutSettings: View {
         let padding = rect.width * 0.1; let size = NSSize(width: rect.width + padding * 2, height: rect.height + padding * 2)
         return NSImage(size: size, flipped: false) { _ in NSColor.white.setFill(); NSRect(origin: .zero, size: size).fill(); NSImage(cgImage: crop, size: rect.size).draw(in: NSRect(x: padding, y: padding, width: rect.width, height: rect.height)); return true }
     }
-}
-
-private struct DateEntry: NSViewRepresentable {
-    @Binding var date: Date
-    func makeNSView(context: Context) -> NSDatePicker { let picker = NSDatePicker(); picker.datePickerStyle = .textFieldAndStepper; picker.datePickerElements = [.yearMonthDay]; picker.datePickerMode = .single; picker.locale = Locale(identifier: "zh_CN"); picker.target = context.coordinator; picker.action = #selector(Coordinator.changed(_:)); picker.dateValue = date; return picker }
-    func updateNSView(_ picker: NSDatePicker, context: Context) {
-        context.coordinator.parent = self
-        if picker.dateValue != date { picker.dateValue = date }
-        picker.isEnabled = context.environment.isEnabled
-    }
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-    final class Coordinator: NSObject { var parent: DateEntry; init(_ parent: DateEntry) { self.parent = parent }; @objc func changed(_ sender: NSDatePicker) { parent.date = sender.dateValue } }
 }
