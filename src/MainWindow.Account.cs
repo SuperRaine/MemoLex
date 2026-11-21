@@ -107,6 +107,7 @@ public partial class MainWindow
         ++_accountVersion;_accountCredentialKey=_tokens.CredentialKey;_api.ExpectedCredentialKey=_accountCredentialKey;_accountAuthenticated=_accountRejected=false;_accountRetryAt=null;
         _accountCts.Cancel();_accountCts.Dispose();_accountCts=new CancellationTokenSource();
         ResetStubbornWords();
+        RestoreStubbornWords();
         if(_ready)_=RefreshStubbornWordsAsync();
         _lookupCts?.Cancel();_notesCts?.Cancel();_studyLoadCts?.Cancel();++_studyReadVersion;
         _cloudCache.Clear();_vocabulary=null;_todayStudyStates.Clear();_studyLoadingWord=null;

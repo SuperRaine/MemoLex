@@ -6,6 +6,13 @@ import ServiceManagement
 import SwiftUI
 
 @MainActor enum PermissionCenter {
+    enum Kind: String, Sendable {
+        case accessibility = "Accessibility"
+        case screen = "ScreenCapture"
+
+        var title: String { self == .accessibility ? "辅助功能" : "屏幕录制" }
+        var icon: String { self == .accessibility ? "hand.tap" : "rectangle.dashed" }
+    }
     struct Snapshot: Equatable {
         var accessibility = false
         var screen = false
@@ -31,13 +38,15 @@ import SwiftUI
 
     private static func canReadOtherApplication() -> Bool {
         let ownPID = ProcessInfo.processInfo.processIdentifier
-        guard let application = NSWorkspace.shared.runningApplications.first(where: {
+        let applications = NSWorkspace.shared.runningApplications.filter {
             $0.processIdentifier != ownPID && $0.activationPolicy == .regular && !$0.isTerminated
-        }) else { return false }
-        let element = AXUIElementCreateApplication(application.processIdentifier)
-        AXUIElementSetMessagingTimeout(element, 0.15)
-        var role: CFTypeRef?
-        return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) == .success && role != nil
+        }
+        return applications.prefix(3).contains { application in
+            let element = AXUIElementCreateApplication(application.processIdentifier)
+            AXUIElementSetMessagingTimeout(element, 0.10)
+            var role: CFTypeRef?
+            return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) == .success && role != nil
+        }
     }
 
     private static func canReadOtherWindowTitles() -> Bool {
@@ -56,26 +65,76 @@ import SwiftUI
     static func requestAccessibility() { _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) }
     static func requestScreen() { _ = CGRequestScreenCaptureAccess() }
     static func open(_ section: String) { if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(section)") { NSWorkspace.shared.open(url) } }
+
+    static func openSettings(for kind: Kind, request: Bool) {
+        if request {
+            switch kind {
+            case .accessibility: requestAccessibility()
+            case .screen: requestScreen()
+            }
+        }
+        open("Privacy_\(kind.rawValue)")
+    }
+
+    static func verify() async -> Snapshot {
+        let status = snapshot(refresh: true)
+        if !status.screen, await ScreenCapture.hasAccess() { recordScreenAccess() }
+        return snapshot()
+    }
+
+    static func reset(_ kind: Kind) async -> Bool {
+        guard let bundleID = Bundle.main.bundleIdentifier, bundleID == "com.superraine.MemoLex",
+              Bundle.main.bundleURL.pathExtension == "app" else { return false }
+        let success = await Task.detached(priority: .utility) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            process.arguments = ["reset", kind.rawValue, bundleID]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            do {
+                try process.run()
+                process.waitUntilExit()
+                return process.terminationStatus == 0
+            } catch { return false }
+        }.value
+        if success {
+            lastProbe = -.infinity
+            if kind == .screen { lastCapture = -.infinity }
+        }
+        return success
+    }
 }
 
 struct PermissionsSettings: View {
     @ObservedObject var model: AppModel
     @State private var refresh = 0
     @State private var permissions: PermissionCenter.Snapshot?
+    @State private var checking = false
+    @State private var resetting: PermissionCenter.Kind?
+    @State private var recovery = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
-            permission("辅助功能", icon: "hand.tap", enabled: permissions?.accessibility,
-                       detail: "读取其他软件中的英文文本，监听连续两次 ⌘C。") {
-                if permissions?.accessibility != true { PermissionCenter.requestAccessibility() }
-                PermissionCenter.open("Privacy_Accessibility")
+            permission(.accessibility, enabled: permissions?.accessibility,
+                       detail: "读取其他软件中的英文文本，监听连续两次 ⌘C。")
+            permission(.screen, enabled: permissions?.screen,
+                       detail: "用于图片取词和截图翻译。识别在本机完成。")
+            HStack(spacing: 10) {
+                Button {
+                    checking = true
+                    Task {
+                        permissions = await PermissionCenter.verify()
+                        model.applySystemPreferences?()
+                        checking = false
+                    }
+                } label: {
+                    Label(checking ? "正在检查…" : "刷新权限状态", systemImage: "arrow.clockwise")
+                }.disabled(checking || resetting != nil)
+                Button("在访达中显示软件") {
+                    NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL.resolvingSymlinksInPath()])
+                }
             }
-            permission("屏幕录制", icon: "rectangle.dashed", enabled: permissions?.screen,
-                       detail: "用于图片取词和截图翻译。识别在本机完成。") {
-                if permissions?.screen != true { PermissionCenter.requestScreen() }
-                PermissionCenter.open("Privacy_ScreenCapture")
-            }
-            Button { refresh += 1 } label: { Label("刷新权限状态", systemImage: "arrow.clockwise") }
-                .buttonStyle(MemoButtonStyle())
+            .buttonStyle(MemoButtonStyle())
+            if !recovery.isEmpty { Text(recovery).font(.callout).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true) }
         }.tourTarget("permissions")
             .task(id: refresh) {
                 permissions = PermissionCenter.snapshot(refresh: true)
@@ -85,17 +144,37 @@ struct PermissionsSettings: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh += 1 }
     }
-    private func permission(_ title: String, icon: String, enabled: Bool?, detail: String, action: @escaping () -> Void) -> some View {
-        SettingsCard(title: title) {
+    private func permission(_ kind: PermissionCenter.Kind, enabled: Bool?, detail: String) -> some View {
+        SettingsCard(title: kind.title) {
             HStack {
                 Label(enabled == true ? "已允许" : enabled == nil ? "正在检查…" : "待系统确认",
-                      systemImage: enabled == true ? "checkmark.circle.fill" : icon)
+                      systemImage: enabled == true ? "checkmark.circle.fill" : kind.icon)
                     .font(.callout).foregroundStyle(enabled == true ? Palette.deep : Palette.muted)
                 Spacer()
-                Button("前往系统设置", action: action).buttonStyle(MemoButtonStyle(compact: true))
+                HStack(spacing: 7) {
+                    Button("前往系统设置") { PermissionCenter.openSettings(for: kind, request: enabled != true) }
+                    Button(resetting == kind ? "正在重置…" : "重新授权") { confirmReset(kind) }
+                }.buttonStyle(MemoButtonStyle(compact: true)).disabled(resetting != nil || checking)
             }
             Text(detail).font(.callout).foregroundStyle(Palette.muted)
         }
+    }
+
+    private func confirmReset(_ kind: PermissionCenter.Kind) {
+        model.notice = .init(title: "重新授权\(kind.title)？",
+                             message: "清除墨墨搜词的这项旧授权，然后在系统设置中允许当前版本。",
+                             confirm: "重新授权", action: {
+            Task {
+                resetting = kind
+                let success = await PermissionCenter.reset(kind)
+                resetting = nil
+                recovery = success
+                    ? "旧授权已重置。请在系统设置允许墨墨搜词，再退出并重新打开软件。"
+                    : "请在系统设置中移除旧的墨墨搜词条目，用「＋」添加当前 App 并开启权限，再重新打开软件。"
+                PermissionCenter.openSettings(for: kind, request: success)
+                refresh += 1
+            }
+        })
     }
 }
 

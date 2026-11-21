@@ -182,10 +182,8 @@ struct LoginView: View {
 
 struct HaiciView: View {
     @ObservedObject var browser: HaiciBrowser
-    var close: () -> Void
     var body: some View {
         VStack(spacing: 0) {
-            DialogHeader(title: "海词词典", close: close)
             HStack(spacing: 8) { Button("←") { browser.browser.goBack() }.disabled(!browser.canGoBack); Button("→") { browser.browser.goForward() }.disabled(!browser.canGoForward); Button("刷新") { browser.browser.reload() }; Text(browser.url.absoluteString).lineLimit(1).truncationMode(.middle).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading); Button("用默认浏览器打开") { if HaiciBrowser.allowed(browser.url) { NSWorkspace.shared.open(browser.url) } } }.buttonStyle(MemoButtonStyle(compact: true)).padding(12)
             BrowserHost(browser: browser.browser)
             Text(browser.status).font(.system(size: 11)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading).padding(12)

@@ -44,7 +44,6 @@
       <Directory Id="AppMenuFolder" Name="墨墨搜词">
         <Component Id="MenuShortcut" Guid="27A416A0-A9DB-4395-B413-CA6D68471EC0">
           <Shortcut Id="StartMenuShortcut" Name="墨墨搜词" Target="[INSTALLFOLDER]MemoLex.exe" WorkingDirectory="INSTALLFOLDER" Icon="MemoLexIcon" />
-          <Shortcut Id="StartMenuUninstall" Name="卸载墨墨搜词" Target="[INSTALLFOLDER]Uninstall.exe" WorkingDirectory="INSTALLFOLDER" Icon="MemoLexIcon" />
           <RemoveFolder Id="RemoveAppMenuFolder" On="uninstall" />
           <RegistryValue Root="HKCU" Key="Software\SuperRaine\MemoLex\Installer" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
         </Component>

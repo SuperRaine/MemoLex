@@ -217,9 +217,16 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
 }
 
 struct UpdatesSettings: View {
-    @ObservedObject var updates: MacUpdates
+    @ObservedObject private var model: AppModel
+    @ObservedObject private var updates: MacUpdates
     @ObservedObject private var preferences: Preferences
-    init(updates: MacUpdates) { self.updates = updates; self.preferences = updates.preferences }
+    @State private var keepData = false
+
+    init(model: AppModel) {
+        self.model = model
+        self.updates = model.updates
+        self.preferences = model.preferences
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             SettingsCard(title: "自动更新") {
@@ -249,7 +256,22 @@ struct UpdatesSettings: View {
                 if updates.downloading { Button("取消下载") { updates.cancelDownload() }.buttonStyle(MemoButtonStyle(compact: true)) }
             }.tourTarget("updates")
             if !updates.release["body"].text.isEmpty { DisclosureGroup("更新说明") { Text(updates.release["body"].text).font(.system(size: 12)).textSelection(.enabled) } }
+            DisclosureGroup("卸载软件") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("保留用户资料", isOn: $keepData)
+                    Text("默认删除本机账号、助记、查词历史和设置，云端数据不受影响。").font(.footnote).foregroundStyle(Palette.muted)
+                    Button("卸载墨墨搜词", action: confirmUninstall).buttonStyle(MemoButtonStyle())
+                }.padding(.top, 10).disabled(updates.busy)
+            }
         }.onChange(of: preferences.automaticUpdates) { _ in updates.preferencesChanged() }.onChange(of: preferences.automaticDownloads) { _ in updates.preferencesChanged() }.onChange(of: preferences.updateFrequency) { _ in preferences.save() }.onChange(of: preferences.updateSource) { _ in preferences.save() }
+    }
+
+    private func confirmUninstall() {
+        let keep = keepData
+        model.notice = .init(title: "卸载墨墨搜词？",
+                             message: keep ? "软件会移到废纸篓，用户资料会保留。" : "软件会移到废纸篓，并删除本机账号、助记、历史和设置。",
+                             confirm: "卸载", destructive: true,
+                             action: { MacUninstaller.remove(keepData: keep, model: model) })
     }
 
     @ViewBuilder private var updateActions: some View {

@@ -138,15 +138,13 @@ private struct MainTitlebar: View {
     @ObservedObject var model: AppModel
     @ObservedObject var preferences: Preferences
     var compact: Bool
+    @FocusState private var pinFocused: Bool
     var body: some View {
         let metrics = model.titlebar
         HStack(spacing: compact ? 5 : 8) {
             Color.clear.frame(width: metrics.leading).allowsHitTesting(false)
             if !metrics.isFullScreen {
-                titleButton(preferences.alwaysOnTop ? "pin.fill" : "pin", label: "窗口置顶", selected: preferences.alwaysOnTop) {
-                    preferences.alwaysOnTop.toggle()
-                    model.applySystemPreferences?()
-                }
+                pinButton
             }
             HStack(spacing: 0) {
                 titleButton("chevron.left", label: "后退") { model.move(-1) }.disabled(!model.canGoBack)
@@ -164,7 +162,13 @@ private struct MainTitlebar: View {
             }.buttonStyle(MemoButtonStyle(compact: true)).fixedSize(horizontal: true, vertical: false).layoutPriority(2)
                 .help(model.titleAccount + " · " + model.accountStatus)
             titleButton("gearshape", label: "设置") { model.sheet = .settings }
-            OwlImage().frame(width: 25, height: 25).help("墨墨搜词").accessibilityLabel("墨墨搜词")
+            HStack(spacing: 6) {
+                OwlImage().frame(width: 28, height: 28).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("墨墨搜词").font(.system(size: compact ? 12 : 14, weight: .bold))
+                    Text("MemoLex").font(.system(size: 9)).foregroundStyle(Palette.muted)
+                }
+            }.fixedSize().accessibilityElement(children: .combine)
         }.padding(.trailing, compact ? 10 : 14)
             .frame(height: metrics.controlsHeight)
             .padding(.top, max(0, metrics.center - metrics.controlsHeight / 2))
@@ -175,15 +179,18 @@ private struct MainTitlebar: View {
     private var stubbornBar: some View {
         HStack(spacing: compact ? 5 : 8) {
             if !compact && !model.stubbornCurrent.isEmpty { Text("顽固单词").font(.caption).foregroundStyle(Palette.muted).fixedSize() }
-            Button(model.stubbornCurrent.isEmpty ? (model.loggedIn ? (model.stubbornLoading ? "获取中…" : "顽固单词") : "顽固单词") : model.stubbornCurrent) {
-                if !model.loggedIn { model.openAccountSettings() }
+            Button(model.stubbornCurrent.isEmpty ? (model.stubbornLoading ? "刷新中…" : "顽固单词") : model.stubbornCurrent) {
+                if !model.canBrowseStubborn { model.openAccountSettings() }
                 else if !model.stubbornCurrent.isEmpty { model.lookup(model.stubbornCurrent) }
                 else { model.sheet = .stubborn }
             }.font(.system(size: model.stubbornCurrent.isEmpty ? 12 : 15, weight: .semibold))
                 .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading).buttonStyle(.plain)
                 .help(model.stubbornCurrent.isEmpty ? "顽固单词" : model.stubbornCurrent)
-            Button("全部") { if model.loggedIn { model.sheet = .stubborn } else { model.openAccountSettings() } }
+            Button(model.stubbornLoading && !model.stubbornCurrent.isEmpty ? "刷新中…" : "全部") {
+                if model.canBrowseStubborn { model.sheet = .stubborn } else { model.openAccountSettings() }
+            }
                 .font(.caption).buttonStyle(.plain).fixedSize().foregroundStyle(Palette.deep)
+                .help("查看全部顽固单词")
             titleButton(preferences.stubbornSort == "random" ? "shuffle" : "arrow.right", label: "下一个顽固单词") { model.nextStubborn() }
                 .disabled(model.stubbornOrder.count < 2)
         }.padding(.leading, 9).padding(.trailing, 2).frame(height: 29)
@@ -199,12 +206,30 @@ private struct MainTitlebar: View {
             .font(.caption.weight(.medium)).monospacedDigit().foregroundStyle(.red)
             .lineLimit(1).help("距 \(name) 还有\(days)天")
     }
-    private func titleButton(_ image: String, label: String, selected: Bool = false, action: @escaping () -> Void) -> some View {
+    @ViewBuilder private var pinButton: some View {
+        let selected = preferences.alwaysOnTop
+        let button = Button {
+            preferences.alwaysOnTop.toggle()
+            model.applySystemPreferences?()
+        } label: {
+            Image(systemName: selected ? "pin.fill" : "pin")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(selected ? Palette.deep : Palette.ink)
+                .frame(width: 24, height: 24)
+                .background(selected || pinFocused ? Palette.wash : Color.clear, in: Circle())
+                .frame(width: compact ? 25 : 29, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).focused($pinFocused)
+        .help("窗口置顶").accessibilityLabel("窗口置顶").accessibilityAddTraits(selected ? .isSelected : [])
+        if #available(macOS 14.0, *) { button.focusEffectDisabled() }
+        else { button.clipShape(RoundedRectangle(cornerRadius: 8)) }
+    }
+    private func titleButton(_ image: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: image).font(.system(size: 13, weight: .medium))
                 .frame(width: compact ? 25 : 29, height: 28).contentShape(Rectangle())
-        }.buttonStyle(.borderless).foregroundStyle(selected ? Palette.deep : Palette.ink)
-         .background(selected ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+        }.buttonStyle(.borderless).foregroundStyle(Palette.ink)
          .help(label).accessibilityLabel(label)
     }
 }

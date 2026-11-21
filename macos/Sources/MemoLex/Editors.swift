@@ -39,7 +39,7 @@ struct StubbornView: View {
                         Text("\(model.titleAccount) · \(visible.count) 个单词").font(.footnote).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button(model.loggedIn ? "刷新" : "账号设置") {
+                    Button(model.stubbornLoading ? "刷新中…" : model.loggedIn ? "刷新" : "账号设置") {
                         if model.loggedIn { Task { await model.refreshStubborn(force: true) } }
                         else { model.openAccountSettings() }
                     }.disabled(model.stubbornLoading)
@@ -77,7 +77,7 @@ struct StubbornView: View {
             }
     }
     private var stubbornStatus: String {
-        if !model.loggedIn { return "登录墨墨账号后可查看顽固单词。" }
+        if !model.canBrowseStubborn { return "登录墨墨账号后可查看顽固单词。" }
         if !model.stubbornHint.isEmpty { return model.stubbornHint }
         return "点击单词查词。手机端同步学习数据后可刷新。"
     }

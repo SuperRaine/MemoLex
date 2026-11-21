@@ -58,7 +58,7 @@ public partial class MainWindow : Window
         _chinese=chinese??new ChineseReverseSearch(_dictionary);
         _mnemonics=mnemonics??new MnemonicStore();
         InitializeComponent();
-        UpdateStubbornCard();
+        RestoreStubbornWords();
         Activated+=(_,_)=>{if(_ready)_=RefreshStubbornWordsAsync();};
         RoundedWindow.Attach(this);
         RootFrame.SizeChanged+=(_,e)=>UpdateResponsiveLayout(e.NewSize);

@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 namespace MemoLex.Core;
 public sealed class DictionaryEntry
 {
+    private string _translation = "";
     public string word { get; set; } = "";
     public string phonetic { get; set; } = "";
     public string definition { get; set; } = "";
@@ -18,7 +19,12 @@ public sealed class DictionaryEntry
     [JsonIgnore] internal bool HasEnglishDefinition=>(LexicalFlags&4)!=0;
     [JsonIgnore] internal bool HasAdjectiveDefinition=>(LexicalFlags&1)!=0;
     [JsonIgnore] internal bool HasHistoricalDefinition=>(LexicalFlags&2)!=0;
-    public string translation { get; set; } = "";
+    public string translation
+    {
+        get => _translation;
+        set => _translation = NormalizeMeaning(value);
+    }
+    internal static string NormalizeMeaning(string? value) => value?.Replace(';', '；') ?? "";
     public string pos { get; set; } = "";
     public string collins { get; set; } = "";
     public string oxford { get; set; } = "";

@@ -13,6 +13,7 @@ public sealed partial class TokenStore
     public static string TokenPath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MemoLex", "token.dpapi");
     private readonly string _tokenPath;
+    internal string ProfileDirectory => Path.GetDirectoryName(Path.GetFullPath(_tokenPath))!;
 
     public TokenStore() : this(TokenPath) { }
     internal TokenStore(string tokenPath) => _tokenPath = tokenPath;

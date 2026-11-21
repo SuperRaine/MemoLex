@@ -33,11 +33,19 @@ public partial class MainWindow
         _stubbornRotation.Reset([],StubbornMode);
         UpdateStubbornCard();StubbornChanged?.Invoke();_stubbornDialog?.Close();
     }
+
+    private void RestoreStubbornWords()
+    {
+        if (_allowCloud && _tokens.ActiveAccount is { } account)
+            _stubbornWords = StubbornWordCache.Load(_tokens.ProfileDirectory, account.Id);
+        ApplyStubbornOrder();
+    }
+
     private string StubbornMeaning(string word)=>string.Join("；",(_dictionary.Lookup(word)?.translation??"").Replace("\\n","\n").Split('\n',StringSplitOptions.RemoveEmptyEntries));
     private StubbornSortMode StubbornMode=>_preferences.StubbornSort switch{"alphabetical"=>StubbornSortMode.Alphabetical,"random"=>StubbornSortMode.Random,_=>StubbornSortMode.Review};
-    private void ApplyStubbornOrder(bool preserveRandomRound=false)
+    private void ApplyStubbornOrder(bool preserveCurrent=false)
     {
-        _stubbornRotation.Reset(_stubbornWords?.Words??[],StubbornMode,_preferences.StubbornAlphabetDescending,preserveRandomRound);
+        _stubbornRotation.Reset(_stubbornWords?.Words??[],StubbornMode,_preferences.StubbornAlphabetDescending,preserveCurrent);
         UpdateStubbornCard();StubbornChanged?.Invoke();
     }
     private void UpdateStubbornCard()
@@ -48,10 +56,11 @@ public partial class MainWindow
         else if(_stubbornRotation.Current is {} word)StubbornWordText.Text=word.Spelling;
         else
         {
-            StubbornWordText.Text=_stubbornLoading?"获取中…":_stubbornError!=null?"重试":"暂无";
+            StubbornWordText.Text=_stubbornLoading?"刷新中…":_stubbornError!=null?"重试":"暂无";
         }
         var showCount=StubbornCard.Width>=210;
-        StubbornCountText.Text=showCount&&_stubbornWords!=null?$"全部 {_stubbornWords.Total}":"全部";
+        StubbornCountText.Text=online&&_stubbornLoading&&_stubbornRotation.Current!=null
+            ?"刷新中…":showCount&&_stubbornWords!=null?$"全部 {_stubbornWords.Total}":"全部";
         AllStubbornButton.ToolTip=_stubbornWords!=null?$"查看全部 {_stubbornWords.Total} 个顽固单词":"查看全部顽固单词";
         ShuffleStubbornButton.IsEnabled=online&&_stubbornRotation.Words.Count>1;
         ShuffleStubbornButton.ToolTip=StubbornMode==StubbornSortMode.Random?"下一个顽固单词（本轮不重复）":"下一个顽固单词";
@@ -74,11 +83,12 @@ public partial class MainWindow
     internal Task RefreshStubbornWordsAsync(bool force=false)
     {
         if(!_ready||!_allowCloud||!_tokens.HasToken){UpdateStubbornCard();return Task.CompletedTask;}
-        if(!force&&_stubbornTask is {IsCompleted:false})return _stubbornTask;
+        if(_stubbornTask is {IsCompleted:false})return _stubbornTask;
         if(!force&&_stubbornRetryAt is {} retry&&DateTimeOffset.UtcNow<retry)return Task.CompletedTask;
         if(!force&&_stubbornFetched!=null&&DateTimeOffset.UtcNow-_stubbornFetched<TimeSpan.FromMinutes(15))return Task.CompletedTask;
         _stubbornCts?.Cancel();_stubbornCts?.Dispose();_stubbornCts=CancellationTokenSource.CreateLinkedTokenSource(_accountCts.Token);
         var token=_stubbornCts.Token;var version=++_stubbornVersion;var account=_accountVersion;var key=_accountCredentialKey;
+        var accountId=_tokens.ActiveAccount?.Id;
         _stubbornLoading=true;_stubbornError=null;_stubbornLoaded=_stubbornTotal=0;UpdateStubbornCard();StubbornChanged?.Invoke();
         bool Current()=>!token.IsCancellationRequested&&version==_stubbornVersion&&account==_accountVersion&&key==_tokens.CredentialKey;
         return _stubbornTask=LoadAsync();
@@ -89,7 +99,15 @@ public partial class MainWindow
                 var progress=new Progress<StubbornLoadProgress>(value=>{if(!Current()||!_stubbornLoading)return;_stubbornLoaded=value.Loaded;_stubbornTotal=value.Total;UpdateStubbornCard();StubbornChanged?.Invoke();});
                 var words=await _api.GetStubbornWordsAsync(progress,token);
                 if(!Current())return;
-                _stubbornWords=words;_stubbornFetched=DateTimeOffset.UtcNow;_stubbornRetryAt=null;ApplyStubbornOrder(true);
+                _stubbornFetched=DateTimeOffset.UtcNow;_stubbornRetryAt=null;
+                if(!words.Complete&&_stubbornWords is {Complete:true})
+                {
+                    _stubbornError=$"本次只收到 {words.Words.Count}/{words.Total} 个单词，仍显示上次的列表。";
+                    return;
+                }
+                if(accountId!=null)StubbornWordCache.Save(_tokens.ProfileDirectory,accountId,words);
+                _stubbornWords=words;
+                ApplyStubbornOrder(true);
             }
             catch(OperationCanceledException){}
             catch(Exception error)
@@ -148,16 +166,28 @@ public partial class MainWindow
         var meaningColumn=new GridViewColumn{Header="释义",Width=440,CellTemplate=new DataTemplate{VisualTree=meaningButton}};columns.Columns.Add(meaningColumn);list.SizeChanged+=(_,_)=>meaningColumn.Width=Math.Max(200,list.ActualWidth-218);
         var hint=InputDialog.Text("");hint.FontSize=11;hint.Margin=new Thickness(0,11,0,0);Grid.SetRow(hint,4);body.Children.Add(hint);
         var entries=new Dictionary<string,StubbornEntry>(StringComparer.OrdinalIgnoreCase);StubbornWordList? displayed=null;
+        IReadOnlyList<StubbornWord>? renderedOrder=null;
+        string? renderedFilter=null;
+        bool definitionsReady=false;
+        var visibleCount=0;
         void Render()
         {
-            if(!ReferenceEquals(displayed,_stubbornWords)){displayed=_stubbornWords;entries.Clear();}
-            var ordered=_stubbornRotation.Words.Select(word=>
+            var filterText=filter.Text.Trim();
+            if(!ReferenceEquals(renderedOrder,_stubbornRotation.Words)||filterText!=renderedFilter||definitionsReady!=_ready)
             {
-                if(!entries.TryGetValue(word.Spelling,out var entry))entries[word.Spelling]=entry=new(word.Spelling,StubbornMeaning(word.Spelling),_preferences.HideStubbornMeanings);
-                return entry;
-            });
-            var text=filter.Text.Trim();var visible=ordered.Where(item=>item.Word.Contains(text,StringComparison.OrdinalIgnoreCase)||item.Meaning.Contains(text,StringComparison.OrdinalIgnoreCase)).ToArray();list.ItemsSource=visible;
-            count.Text=_stubbornLoading?$"正在获取 {_stubbornLoaded}/{_stubbornTotal}…":$"{_tokens.ActiveAccount?.Name??"当前账号"} · {visible.Length} 个单词";
+                if(!ReferenceEquals(displayed,_stubbornWords)||definitionsReady!=_ready)entries.Clear();
+                displayed=_stubbornWords;renderedOrder=_stubbornRotation.Words;renderedFilter=filterText;definitionsReady=_ready;
+                var visible=renderedOrder.Select(word=>
+                {
+                    if(!entries.TryGetValue(word.Spelling,out var entry))entries[word.Spelling]=entry=new(word.Spelling,StubbornMeaning(word.Spelling),_preferences.HideStubbornMeanings);
+                    return entry;
+                }).Where(item=>item.Word.Contains(filterText,StringComparison.OrdinalIgnoreCase)||item.Meaning.Contains(filterText,StringComparison.OrdinalIgnoreCase)).ToArray();
+                list.ItemsSource=visible;
+                visibleCount=visible.Length;
+            }
+            var progress=_stubbornTotal>0?$" · {_stubbornLoaded}/{_stubbornTotal}":"";
+            count.Text=_stubbornLoading?$"刷新中…{progress}":$"{_tokens.ActiveAccount?.Name??"当前账号"} · {visibleCount} 个单词";
+            refresh.Content=_stubbornLoading?"刷新中…":"刷新";
             refresh.IsEnabled=!_stubbornLoading;
             hint.Text=_stubbornError!=null?"刷新未完成："+_stubbornError:displayed is {Complete:false}?$"已获取 {displayed.Words.Count}/{displayed.Total}，部分记录受接口单次上限影响，可稍后刷新。":entries.Count==0&&!_stubbornLoading?"还没有已同步的顽固单词，在墨墨 App 同步后刷新。":_preferences.HideStubbornMeanings?"点击释义区域揭示答案，点击单词查词。":"点击单词查词；手机端同步学习数据后刷新。";
         }

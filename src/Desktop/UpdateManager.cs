@@ -178,12 +178,31 @@ internal sealed class UpdateManager:IDisposable
         Button("前往下载页面","UpdateReleasePage",()=>{try{Process.Start(new ProcessStartInfo(_release?.Page.AbsoluteUri??GitHubUpdateClient.Repository+"/releases/latest"){UseShellExecute=true});}catch{state.Text="无法打开浏览器。";}});
         var notes=new TextBox{IsReadOnly=true,TextWrapping=TextWrapping.Wrap,MaxHeight=130,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
         var notesSection=new Expander{Header="更新说明",Content=notes,Visibility=Visibility.Collapsed};panel.Children.Add(notesSection);
+        var directory=ApplicationPaths.InstallDirectory;
+        var uninstallPath=Path.Combine(directory,"Uninstall.exe");
+        var uninstall=new Button{Content="卸载墨墨搜词",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,14,0,0)};
+        uninstall.Visibility=File.Exists(uninstallPath)?Visibility.Visible:Visibility.Collapsed;
+        uninstall.Click+=(_,_)=>
+        {
+            try
+            {
+                using var process=Process.Start(new ProcessStartInfo(uninstallPath){UseShellExecute=true,WorkingDirectory=directory});
+            }
+            catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
+            {
+                state.Text="无法打开卸载程序，请确认安装文件完整后重试。";
+            }
+        };
+        panel.Children.Add(uninstall);owner.RegisterName("UninstallMemoLexButton",uninstall);
+        void UpdateUninstallAvailability() => uninstall.IsEnabled = !Busy;
         void Render(){state.Text=Status;bar.Value=Progress;bar.IsIndeterminate=Busy&&Progress==0;bar.Visibility=_busy?Visibility.Visible:Visibility.Collapsed;check.IsEnabled=!Busy;download.IsEnabled=CanDownload;install.IsEnabled=CanInstall;source.IsEnabled=!Busy;autoDownload.IsChecked=AutomaticallyDownload;autoDownload.IsEnabled=enabled.IsChecked==true;cancel.Visibility=Busy?Visibility.Visible:Visibility.Collapsed;frequency.IsEnabled=enabled.IsChecked==true;last.Text=_preferences.LastUpdateCheck is {} at?"上次检查："+at.ToLocalTime().ToString("yyyy-MM-dd HH:mm"):"还未检查";notes.Text=_release?.Notes??"";notesSection.Visibility=notes.Text.Length>0?Visibility.Visible:Visibility.Collapsed;}
         enabled.Checked+=(_,_)=>{_preferences.AutomaticUpdates=true;PolicyChanged();};enabled.Unchecked+=(_,_)=>{_preferences.AutomaticUpdates=false;PolicyChanged();};
         frequency.SelectionChanged+=(_,_)=>{_preferences.UpdateFrequency=((Frequency)frequency.SelectedItem).Value;PolicyChanged();};
         source.SelectionChanged+=(_,_)=>{_preferences.UpdateSource=((UpdateDownloadSource)source.SelectedItem).Id;PolicyChanged();};
         autoDownload.Checked+=(_,_)=>AutomaticallyDownload=true;autoDownload.Unchecked+=(_,_)=>AutomaticallyDownload=false;
         panel.Loaded+=(_,_)=>{Changed+=Render;Render();};panel.Unloaded+=(_,_)=>Changed-=Render;
+        panel.Loaded+=(_,_)=>{Changed+=UpdateUninstallAvailability;UpdateUninstallAvailability();};
+        panel.Unloaded+=(_,_)=>Changed-=UpdateUninstallAvailability;
         owner.RegisterName("AutomaticUpdates",enabled);owner.RegisterName("AutomaticUpdateDownloads",autoDownload);owner.RegisterName("UpdateFrequency",frequency);owner.RegisterName("UpdateDownloadSource",source);owner.RegisterName("UpdateStatus",state);Render();return panel;
     }
     private sealed record Frequency(string Label,string Value){public override string ToString()=>Label;}

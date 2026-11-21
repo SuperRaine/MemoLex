@@ -12,13 +12,13 @@
 
 | 版本 | 使用方法 |
 | --- | --- |
-| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.10.0/MemoLex-1.10.0-Windows-x64-Setup.msi)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.10.0/MemoLex-1.10.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
-| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.10.0/MemoLex-1.10.0-Windows-x64.zip)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.10.0/MemoLex-1.10.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
-| [Mac 安装包](https://github.com/SuperRaine/MemoLex/releases/download/v1.10.0/MemoLex-1.10.0-macOS-universal.dmg)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.10.0/MemoLex-1.10.0-macOS-universal.dmg)） | 打开后将 `MemoLex` 拖到「应用程序」。 |
+| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.11.0/MemoLex-1.11.0-Windows-x64-Setup.msi)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.11.0/MemoLex-1.11.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
+| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.11.0/MemoLex-1.11.0-Windows-x64.zip)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.11.0/MemoLex-1.11.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
+| [Mac 安装包](https://github.com/SuperRaine/MemoLex/releases/download/v1.11.0/MemoLex-1.11.0-macOS-universal.dmg)（[备用下载](https://gh-proxy.com/https://github.com/SuperRaine/MemoLex/releases/download/v1.11.0/MemoLex-1.11.0-macOS-universal.dmg)） | 打开后将 `MemoLex` 拖到「应用程序」。 |
 
 Windows 登录和海词词典需要网页组件，缺少时按提示联网安装即可；Mac 使用系统网页组件。
 
-Windows 运行 `Uninstall.exe` 卸载，Mac 在「设置 → 关于与赞助」中卸载。默认删除本机资料，如需保留，请开启「保留用户资料」；正常更新会保留资料。
+在「设置 → 软件更新」中可以卸载。默认删除本机资料，如需保留，请开启「保留用户资料」。更新会保留资料。
 
 ## 可以做什么
 

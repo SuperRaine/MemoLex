@@ -175,31 +175,26 @@ struct Card<Content: View>: View {
 
 struct DialogHeader: View {
     var title: String
-    var nativeClose = false
     var close: () -> Void
     var body: some View {
         HStack(spacing: 12) {
-            if nativeClose { NativeCloseButton(action: close).frame(width: 16, height: 16) }
-            else { OwlImage().frame(width: 27, height: 27) }
+            NativeCloseButton(title: "关闭\(title)", action: close).frame(width: 16, height: 16)
             Text(title).font(.headline)
             Spacer()
-            if !nativeClose {
-                Button(action: close) { Image(systemName: "xmark").font(.system(size: 12, weight: .semibold)).frame(width: 28, height: 28) }
-                    .buttonStyle(.borderless).foregroundStyle(.secondary).help("关闭").accessibilityLabel("关闭")
-            }
         }.padding(.horizontal, 16).frame(height: 45).background(Palette.chrome).overlay(alignment: .bottom) { Palette.border.frame(height: 1) }
     }
 }
 
 private struct NativeCloseButton: NSViewRepresentable {
+    var title: String
     var action: () -> Void
     func makeNSView(context: Context) -> NSButton {
         let button = NSWindow.standardWindowButton(.closeButton, for: [.titled, .closable]) ?? NSButton()
         button.target = context.coordinator
         button.action = #selector(Coordinator.close)
         button.isHidden = false
-        button.toolTip = "关闭设置"
-        button.setAccessibilityLabel("关闭设置")
+        button.toolTip = title
+        button.setAccessibilityLabel(title)
         return button
     }
     func updateNSView(_ button: NSButton, context: Context) { context.coordinator.action = action }

@@ -54,7 +54,7 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
             && value.All(character=>char.IsAsciiLetter(character)||character is ' ' or '.' or '’' or '\'' or '-')&&!value.Equals(word,StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase).Select(value=>(Word:value,Entry:dictionary.Lookup(value)))
             .OrderBy(value=>string.IsNullOrWhiteSpace(value.Entry?.translation)?1:0).Take(12)
-            .Select(value=>new RelatedWord(value.Word,!string.IsNullOrWhiteSpace(value.Entry?.translation)?value.Entry.translation:Read(value.Word)?.gloss??"暂无释义")).ToArray();
+            .Select(value=>new RelatedWord(value.Word,!string.IsNullOrWhiteSpace(value.Entry?.translation)?value.Entry.translation:DictionaryEntry.NormalizeMeaning(Read(value.Word)?.gloss??"暂无释义"))).ToArray();
         var nearby=new List<(string Word,int Distance,int Rank)>();var normalized=word.ToLowerInvariant();
         if(word.Length is >=3 and <=24 && word.All(char.IsAsciiLetter))
             foreach(var item in _spellings)

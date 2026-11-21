@@ -10,10 +10,11 @@ internal sealed class StubbornWordRotation(Random? random = null)
     internal StubbornSortMode Mode { get; private set; }
     internal StubbornWord? Current => Words.Count == 0 ? null : Words[_position];
 
-    internal void Reset(IEnumerable<StubbornWord> words, StubbornSortMode mode, bool descending = false, bool preserveRandomRound = false)
+    internal void Reset(IEnumerable<StubbornWord> words, StubbornSortMode mode, bool descending = false, bool preserveCurrent = false)
     {
         var unique = words.DistinctBy(word => word.Spelling, StringComparer.OrdinalIgnoreCase).ToArray();
-        if (preserveRandomRound && Mode == StubbornSortMode.Random && mode == Mode && Words.Count == unique.Length)
+        var previous = preserveCurrent ? Current?.Spelling : null;
+        if (preserveCurrent && Mode == StubbornSortMode.Random && mode == Mode && Words.Count == unique.Length)
         {
             var updated = unique.ToDictionary(word => word.Spelling, StringComparer.OrdinalIgnoreCase);
             if (Words.All(word => updated.ContainsKey(word.Spelling)))
@@ -24,7 +25,7 @@ internal sealed class StubbornWordRotation(Random? random = null)
         }
         Mode = mode;
         _position = 0;
-        Words = mode switch
+        var ordered = mode switch
         {
             StubbornSortMode.Alphabetical when descending => unique.OrderByDescending(word => word.Spelling, StringComparer.OrdinalIgnoreCase).ToArray(),
             StubbornSortMode.Alphabetical => unique.OrderBy(word => word.Spelling, StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -32,6 +33,14 @@ internal sealed class StubbornWordRotation(Random? random = null)
             _ => unique.OrderBy(word => word.NextStudyDate ?? DateTimeOffset.MaxValue)
                 .ThenBy(word => word.Spelling, StringComparer.OrdinalIgnoreCase).ToArray()
         };
+        if (previous != null)
+        {
+            var index = Array.FindIndex(ordered, word => word.Spelling.Equals(previous, StringComparison.OrdinalIgnoreCase));
+            if (index > 0 && mode == StubbornSortMode.Random)
+                (ordered[0], ordered[index]) = (ordered[index], ordered[0]);
+            else _position = Math.Max(0, index);
+        }
+        Words = ordered;
     }
 
     internal void Advance()

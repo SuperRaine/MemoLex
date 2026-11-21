@@ -91,6 +91,8 @@ struct Notice: Identifiable {
     private var preferencesSave: Task<Void, Never>?
     private var lastStubbornFetch: Date?
     private var nextStubbornRetry: Date?
+    private var stubbornTask: Task<Void, Never>?
+    private var stubbornSnapshot: StubbornSnapshot?
     private var nextAccountCheck: Date?
     private let speaker = AVSpeechSynthesizer()
 
@@ -105,6 +107,7 @@ struct Notice: Identifiable {
     var activeAccount: SavedAccount? { accounts.first { $0.id == activeAccountID } }
     var titleAccount: String { activeAccount?.displayName ?? accountStatus }
     var stubbornCurrent: String { stubbornOrder.indices.contains(stubbornIndex) ? stubbornOrder[stubbornIndex]["spelling"].text : "" }
+    var canBrowseStubborn: Bool { loggedIn || stubbornSnapshot != nil }
     var selectedNotepadTitle: String { selectedPad["title"].text }
     func initialize() async {
         Task { await restoreAccount() }
@@ -264,6 +267,10 @@ struct Notice: Identifiable {
             }
             let credential = try token ?? CredentialVault.read(id)
             guard let credential else { expireAccount(); return }
+            if let name = stubbornCacheName(id), let snapshot = load(name, as: StubbornSnapshot.self),
+               snapshot.total >= snapshot.words.count {
+                installStubborn(snapshot)
+            }
             try await core.setAccount(token: credential)
             guard generation == accountVersion else { return }
             loggedIn = true
@@ -375,10 +382,17 @@ struct Notice: Identifiable {
         guard let index = accounts.firstIndex(where: { $0.id == id }), !name.trimmed.isEmpty else { return }
         accounts[index].name = String(name.trimmed.prefix(80)); save(accounts, "accounts.json")
     }
-    func removeAccount(_ id: String) async { if activeAccountID == id { await logout() }; CredentialVault.remove(id); accounts.removeAll { $0.id == id }; save(accounts, "accounts.json") }
+    func removeAccount(_ id: String) async {
+        if activeAccountID == id { await logout() }
+        CredentialVault.remove(id)
+        accounts.removeAll { $0.id == id }
+        save(accounts, "accounts.json")
+        if let name = stubbornCacheName(id) { try? FileManager.default.removeItem(at: AppPaths.profile.appendingPathComponent(name)) }
+    }
     private func clearCloudState() {
         notes = []; notepads = []; selectedPad = .null; notebookRows = []; notebookLoading = false
         membership = false; todayStatus = ""; writing = false
+        stubbornTask?.cancel(); stubbornTask = nil; stubbornSnapshot = nil
         stubbornWords = []; stubbornOrder = []; stubbornIndex = 0; stubbornTotal = 0; stubbornLoading = false
         stubbornHint = ""; lastStubbornFetch = nil; nextStubbornRetry = nil; nextAccountCheck = nil
     }
@@ -472,28 +486,63 @@ struct Notice: Identifiable {
         guard loggedIn, !stubbornLoading else { return }
         if !force, let retry = nextStubbornRetry, retry > Date() { return }
         if !force, let fetched = lastStubbornFetch, Date().timeIntervalSince(fetched) < 900 { return }
-        stubbornLoading = true; let generation = accountVersion
-        do {
-            let result = try await core.request("stubborn")
-            guard generation == accountVersion else { return }
-            let previous = stubbornOrder.map { $0["spelling"].text }; let current = stubbornCurrent
-            stubbornWords = result["words"].list; stubbornTotal = result["total"].integer; lastStubbornFetch = Date()
-            nextStubbornRetry = nil
-            stubbornHint = result["complete"].flag ? "" : "已获取 \(stubbornWords.count)/\(stubbornTotal)，部分记录受接口上限影响。"
-            if preferences.stubbornSort == "random", Set(previous) == Set(stubbornWords.map { $0["spelling"].text }) {
-                let updated = Dictionary(stubbornWords.map { ($0["spelling"].text, $0) }, uniquingKeysWith: { first, _ in first })
-                stubbornOrder = previous.compactMap { updated[$0] }; stubbornIndex = stubbornOrder.firstIndex { $0["spelling"].text == current } ?? 0
-            } else { reorderStubborn() }
-        } catch {
-            if generation == accountVersion, !Task.isCancelled {
+        let generation = accountVersion
+        let cacheName = stubbornCacheName(activeAccountID)
+        stubbornLoading = true
+        stubbornHint = ""
+        stubbornTask = Task {
+            defer {
+                if generation == accountVersion { stubbornLoading = false; stubbornTask = nil }
+            }
+            do {
+                let result = try await core.request("stubborn")
+                guard generation == accountVersion, !Task.isCancelled else { return }
+                guard case .array(let words) = result["words"], case .number(let count) = result["total"],
+                      let total = Int(exactly: count), total >= words.count,
+                      case .bool(let complete) = result["complete"] else {
+                    throw CoreFailure(code: "stubborn", message: "顽固单词数据不完整，请稍后刷新。")
+                }
+                lastStubbornFetch = Date()
+                nextStubbornRetry = nil
+                if !complete, stubbornSnapshot?.complete == true {
+                    stubbornHint = "本次只收到 \(words.count)/\(total) 个单词，仍显示上次的列表。"
+                    return
+                }
+                let snapshot = StubbornSnapshot(words: words, total: total, complete: complete)
+                if let cacheName { save(snapshot, cacheName) }
+                installStubborn(snapshot)
+            } catch {
+                guard generation == accountVersion, !Task.isCancelled else { return }
                 lastStubbornFetch = nil
                 nextStubbornRetry = Date().addingTimeInterval(65)
-                stubbornHint = error.localizedDescription
+                stubbornHint = stubbornSnapshot == nil ? error.localizedDescription : "刷新未完成，仍显示上次的列表。\(error.localizedDescription)"
             }
         }
-        if generation == accountVersion { stubbornLoading = false }
+        await stubbornTask?.value
     }
-    func reorderStubborn() {
+    private func stubbornCacheName(_ accountID: String) -> String? {
+        UUID(uuidString: accountID).map { "stubborn-\($0.uuidString).json" }
+    }
+    private func installStubborn(_ snapshot: StubbornSnapshot) {
+        let current = stubbornCurrent
+        let previous = stubbornOrder.map { $0["spelling"].text.lowercased() }
+        var seen = Set<String>()
+        stubbornSnapshot = snapshot
+        stubbornWords = snapshot.words.filter {
+            let word = $0["spelling"].text
+            return !word.isEmpty && word.count <= 100 && seen.insert(word.lowercased()).inserted
+        }
+        stubbornTotal = snapshot.total
+        stubbornHint = snapshot.complete ? "" : "已获取 \(stubbornWords.count)/\(stubbornTotal) 个单词。"
+        if preferences.stubbornSort == "random", Set(previous) == seen {
+            let updated = Dictionary(uniqueKeysWithValues: stubbornWords.map { ($0["spelling"].text.lowercased(), $0) })
+            stubbornOrder = previous.compactMap { updated[$0] }
+            stubbornIndex = stubbornOrder.firstIndex { $0["spelling"].text.caseInsensitiveCompare(current) == .orderedSame } ?? 0
+        } else {
+            reorderStubborn(keeping: current)
+        }
+    }
+    func reorderStubborn(keeping current: String = "") {
         stubbornIndex = 0
         switch preferences.stubbornSort {
         case "alphabetical": stubbornOrder = stubbornWords.sorted { preferences.alphabetDescending ? $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedDescending : $0["spelling"].text.localizedCaseInsensitiveCompare($1["spelling"].text) == .orderedAscending }
@@ -504,6 +553,10 @@ struct Notice: Identifiable {
                 if left.date != right.date { return left.date < right.date }
                 return left.word["spelling"].text.localizedCaseInsensitiveCompare(right.word["spelling"].text) == .orderedAscending
             }.map(\.word)
+        }
+        if let index = stubbornOrder.firstIndex(where: { $0["spelling"].text.caseInsensitiveCompare(current) == .orderedSame }) {
+            if preferences.stubbornSort == "random" { stubbornOrder.swapAt(0, index) }
+            else { stubbornIndex = index }
         }
     }
     func nextStubborn() {
@@ -534,4 +587,10 @@ struct Notice: Identifiable {
     func fail(_ error: Error) { if let coreError = error as? CoreFailure, coreError.code == "cancelled" { return }; status = error.localizedDescription; notice = .init(title: "操作未完成", message: error.localizedDescription) }
     private func load<T: Decodable>(_ name: String, as type: T.Type) -> T? { guard let data = try? Data(contentsOf: AppPaths.profile.appendingPathComponent(name)) else { return nil }; return try? JSONDecoder().decode(type, from: data) }
     private func save<T: Encodable>(_ value: T, _ name: String) { do { try FileManager.default.createDirectory(at: AppPaths.profile, withIntermediateDirectories: true); try JSONEncoder().encode(value).write(to: AppPaths.profile.appendingPathComponent(name), options: .atomic) } catch { status = "本地资料暂时无法保存。" } }
+}
+
+private struct StubbornSnapshot: Codable {
+    let words: [J]
+    let total: Int
+    let complete: Bool
 }

@@ -11,7 +11,7 @@ struct SettingsView: View {
     ]
     var body: some View {
         VStack(spacing: 0) {
-            DialogHeader(title: "设置", nativeClose: true) { model.sheet = nil }
+            DialogHeader(title: "设置") { model.sheet = nil }
             HStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: 3) {
@@ -78,9 +78,9 @@ struct SettingsView: View {
         case "鼠标取词": HoverSettings(preferences: model.preferences)
         case "系统权限": PermissionsSettings(model: model)
         case "快捷键": ShortcutSettings(preferences: model.preferences)
-        case "软件更新": UpdatesSettings(updates: model.updates)
+        case "软件更新": UpdatesSettings(model: model)
         case "反馈": FeedbackSettings(status: $status)
-        default: AboutSettings(model: model)
+        default: AboutSettings()
         }
     }
     private func open(_ value: String) { if let url = URL(string: value) { NSWorkspace.shared.open(url) } }
@@ -233,16 +233,11 @@ private struct FeedbackSettings: View {
 }
 
 private struct AboutSettings: View {
-    @ObservedObject var model: AppModel
-    @State private var keepData = false
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             Text("本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。").font(.system(size: 12)).foregroundStyle(Palette.muted).padding(10).frame(maxWidth: .infinity, alignment: .leading).background(Palette.wash, in: RoundedRectangle(cornerRadius: 8))
             Text("如果觉得好用，欢迎为开发者发电，支持后续维护。").font(.system(size: 12)).foregroundStyle(Palette.muted)
             HStack(spacing: 18) { payment("微信支付", asset: "sponsor-wechat.jpg", rect: CGRect(x: 354, y: 438, width: 568, height: 568)); payment("支付宝", asset: "sponsor-alipay.jpg", rect: CGRect(x: 216, y: 643, width: 742, height: 742)) }.frame(height: 300)
-            DisclosureGroup("卸载软件") {
-                VStack(alignment: .leading, spacing: 10) { Toggle("保留用户资料", isOn: $keepData); Text("默认删除本机账号、助记、查词历史和设置，云端数据不受影响。").font(.system(size: 12)).foregroundStyle(Palette.muted); Button("卸载墨墨搜词") { model.notice = .init(title: "卸载墨墨搜词？", message: keepData ? "软件会移到废纸篓，用户资料会保留。" : "软件会移到废纸篓，并删除本机账号、助记、历史和设置。", confirm: "卸载", destructive: true, action: { MacUninstaller.remove(keepData: keepData, model: model) }) }.buttonStyle(MemoButtonStyle()) }.padding(.top, 10)
-            }
         }
     }
     private func payment(_ title: String, asset: String, rect: CGRect) -> some View {

@@ -32,7 +32,12 @@ private final class MemoLexWindow: NSWindow {
         let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1400, height: 900)
         window = MemoLexWindow(contentRect: NSRect(x: 0, y: 0, width: min(1160, visible.width - 40), height: min(800, visible.height - 45)), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.collectionBehavior.insert(.fullScreenPrimary)
-        window.title = "墨墨搜词"; window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true; window.toolbar = nil
+        window.title = "墨墨搜词"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unifiedCompact
+        window.titlebarSeparatorStyle = .none
+        window.toolbar = NSToolbar(identifier: "MemoLex.Titlebar")
         window.isMovableByWindowBackground = true; window.isReleasedWhenClosed = false; window.delegate = self
         installContent(MainView(model: model), in: window)
         if !window.setFrameUsingName("MemoLex.Main") { window.center() }
@@ -178,7 +183,7 @@ private final class MemoLexWindow: NSWindow {
         let browser = HaiciBrowser(word: word); let browserWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         browserWindow.title = "海词词典"
         browserWindow.isReleasedWhenClosed = false
-        installContent(HaiciView(browser: browser, close: { [weak browserWindow] in browserWindow?.close() }), in: browserWindow)
+        installContent(HaiciView(browser: browser), in: browserWindow)
         browserWindow.contentMinSize = NSSize(width: 600, height: 450)
         browserWindow.center(); browserWindow.makeKeyAndOrderFront(nil); haici = browser; haiciWindow = browserWindow
     }
