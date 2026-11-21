@@ -6,6 +6,13 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     catch { exit(1) }
 }
 
+private final class MemoLexWindow: NSWindow {
+    override func toggleFullScreen(_ sender: Any?) {
+        if !styleMask.contains(.fullScreen) { level = .normal }
+        super.toggleFullScreen(sender)
+    }
+}
+
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let model = AppModel()
     var window: NSWindow!
@@ -23,7 +30,8 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update
     func applicationDidFinishLaunching(_ notification: Notification) {
         makeMenu()
         let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1400, height: 900)
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1160, visible.width - 40), height: min(800, visible.height - 45)), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window = MemoLexWindow(contentRect: NSRect(x: 0, y: 0, width: min(1160, visible.width - 40), height: min(800, visible.height - 45)), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.collectionBehavior.insert(.fullScreenPrimary)
         window.title = "墨墨搜词"; window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true; window.toolbar = nil
         window.isMovableByWindowBackground = true; window.isReleasedWhenClosed = false; window.delegate = self
         installContent(MainView(model: model), in: window)
