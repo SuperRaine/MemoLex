@@ -10,7 +10,7 @@ public partial class MainWindow
     private CancellationTokenSource? _translationCts;
     private int _translationVersion;
     private string _translatedText="",_translatedSource="";
-    private string _translatedProvider="DeepL";
+    private string _translatedProvider="";
     private string TranslationPair => (TranslationDirectionCombo.SelectedItem as ComboBoxItem)?.Tag as string??"en|zh-CN";
     private TranslationSnapshot CaptureTranslation()=>new(TranslationInput.Text,TranslationPair,_translatedText,_translatedSource,TranslationScroll.VerticalOffset,_translatedProvider);
     private void TranslationScroll_ScrollChanged(object sender,ScrollChangedEventArgs e)
@@ -44,7 +44,7 @@ public partial class MainWindow
             TranslationDirectionCombo.SelectedIndex=snapshot.Direction=="zh-CN|en"?1:0;
             _translatedText=snapshot.Output;_translatedSource=snapshot.Source;_translatedProvider=snapshot.Provider;
             RenderTranslationText();
-            TranslationHintText.Text=snapshot.Output.Length>0?_translatedProvider+" · 点击原文或译文中的英文单词可查看释义。":"优先使用 "+_translation.PreferredProvider+"，连接失败时切换备用翻译。";
+            TranslationHintText.Text=(snapshot.Output.Length>0?_translatedProvider+" · ":"")+"点击原文或译文中的英文单词可查看释义。";
             QueueViewRestore(_wordVersion,()=>{TranslationScroll.UpdateLayout();TranslationScroll.ScrollToVerticalOffset(snapshot.ScrollOffset);});
         }
         _navigating=false;UpdateNavigationButtons();

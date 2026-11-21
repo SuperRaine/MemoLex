@@ -282,7 +282,7 @@ private struct TranslationPage: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack { Text("段落翻译").font(.system(size: 23, weight: .semibold)); Spacer(); Picker("", selection: $model.translationDirection) { Text("英译中").tag("en|zh-CN"); Text("中译英").tag("zh-CN|en") }.labelsHidden().frame(width: 112); Button(model.translating ? "翻译中…" : "翻译") { Task { await model.translate() } }.buttonStyle(MemoButtonStyle(accent: true)).disabled(model.translating) }
             TextEditor(text: $model.translationInput).font(.system(size: 15)).padding(8).frame(height: 140).background(Palette.paper, in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.border)).tourTarget("translation")
-            Text("\(model.translationProvider) · 点击英文单词可查看释义。").font(.system(size: 11)).foregroundStyle(Palette.muted)
+            Text((model.translationProvider.isEmpty ? "" : "\(model.translationProvider) · ") + "点击英文单词可查看释义。").font(.system(size: 11)).foregroundStyle(Palette.muted)
             ScrollView { VStack(spacing: 14) { Card { VStack(alignment: .leading, spacing: 12) { Text("原文").sectionLabel(); LinkedText(text: model.translationSource.isEmpty ? "翻译后在这里阅读原文" : model.translationSource, size: 16) } }; Card { VStack(alignment: .leading, spacing: 12) { Text("译文").sectionLabel(); LinkedText(text: model.translationOutput.isEmpty ? "译文将在这里显示" : model.translationOutput, size: 16) } } } }
         }
     }

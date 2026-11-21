@@ -42,7 +42,7 @@ struct Notice: Identifiable {
     @Published var translationOutput = ""
     @Published var translationSource = ""
     @Published var translationDirection = "en|zh-CN"
-    @Published var translationProvider = "DeepL"
+    @Published var translationProvider = ""
     @Published var translating = false
     @Published var accounts: [SavedAccount] = []
     @Published var activeAccountID = ""
