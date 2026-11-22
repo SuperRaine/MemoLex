@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -7,6 +8,11 @@ using System.Text.RegularExpressions;
 namespace MemoLex.Core;
 public sealed class DictionaryEntry
 {
+    private const string PartOfSpeech = @"(?:adj|adv|prep|pron|conj|interj|int|n|v|vt|vi|aux|art|det|num|a|ad|s|abbr|pref|suf|comb|vbl|phr|un|na|pl|pp)\.";
+    private static readonly Regex ListPartOfSpeech = new(
+        $@"^{PartOfSpeech}(?:\s*[/&,]\s*{PartOfSpeech})*(?![a-z])",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     private string _translation = "";
     public string word { get; set; } = "";
     public string phonetic { get; set; } = "";
@@ -25,6 +31,37 @@ public sealed class DictionaryEntry
         set => _translation = NormalizeMeaning(value);
     }
     internal static string NormalizeMeaning(string? value) => value?.Replace(';', '；') ?? "";
+
+    internal static string FormatListMeaning(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+
+        var senses = value.Replace(@"\r\n", "\n").Replace(@"\r", "\n").Replace(@"\n", "\n")
+            .Split(['\r', '\n', ';', '；'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var result = new StringBuilder();
+        string? partOfSpeech = null;
+        var lineHasMeaning = false;
+        foreach (var sense in senses)
+        {
+            var label = ListPartOfSpeech.Match(sense);
+            if (label.Success && !string.Equals(label.Value, partOfSpeech, StringComparison.OrdinalIgnoreCase))
+            {
+                if (result.Length > 0) result.Append('\n');
+                partOfSpeech = label.Value;
+                result.Append(partOfSpeech);
+                lineHasMeaning = false;
+            }
+
+            var meaning = sense[label.Length..].TrimStart();
+            if (meaning.Length == 0) continue;
+            if (lineHasMeaning) result.Append('；');
+            else if (partOfSpeech != null) result.Append(' ');
+            result.Append(meaning);
+            lineHasMeaning = true;
+        }
+        return result.ToString();
+    }
+
     public string pos { get; set; } = "";
     public string collins { get; set; } = "";
     public string oxford { get; set; } = "";

@@ -54,7 +54,11 @@ struct StubbornView: View {
                     Spacer()
                     Toggle("遮住释义", isOn: $preferences.concealMeanings).toggleStyle(.switch).controlSize(.small).onChange(of: preferences.concealMeanings) { _ in revealed = []; preferences.save() }
                 }
-                HStack { Text("单词").frame(width: 180, alignment: .leading); Text("释义"); Spacer() }.font(.system(size: 11)).foregroundStyle(Palette.muted).padding(10).background(Palette.wash)
+                HStack(spacing: 10) {
+                    Text("单词").frame(width: 180, alignment: .leading)
+                    Text("释义").padding(.leading, 8)
+                    Spacer()
+                }.font(.system(size: 11)).foregroundStyle(Palette.muted).padding(10).background(Palette.wash)
                 ScrollView {
                     LazyVStack(spacing: 2) { ForEach(visible, id: \.spellingText) { value in
                         let word = value["spelling"].text
@@ -62,7 +66,17 @@ struct StubbornView: View {
                             Button(word) { model.sheet = nil; model.lookup(word) }.buttonStyle(.plain).foregroundStyle(Palette.deep).frame(width: 180, alignment: .leading)
                             Button { if model.preferences.concealMeanings { if revealed.contains(word) { revealed.remove(word) } else { revealed.insert(word) } } } label: {
                                 let hidden = model.preferences.concealMeanings && !revealed.contains(word)
-                                Text(hidden ? "点击查看释义" : meanings[word, default: "正在读取…"]).font(.system(size: 13)).foregroundStyle(hidden ? Palette.muted : Palette.ink).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8).padding(.vertical, 7).background(hidden ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 5))
+                                let meaning = hidden ? "点击查看释义" : meanings[word, default: "正在读取…"]
+                                let lines = meaning.components(separatedBy: "\n")
+                                VStack(alignment: .leading, spacing: 2) {
+                                    ForEach(lines.indices, id: \.self) { index in
+                                        Text(lines[index]).lineLimit(1)
+                                    }
+                                }.font(.system(size: 13)).foregroundStyle(hidden ? Palette.muted : Palette.ink)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 8).padding(.vertical, 7)
+                                    .background(hidden ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 5))
+                                    .help(meaning)
                             }.buttonStyle(.plain)
                         }.padding(.horizontal, 10).frame(minHeight: 35)
                     } }
@@ -77,6 +91,7 @@ struct StubbornView: View {
             }
     }
     private var stubbornStatus: String {
+        if model.keychainAuthorizationNeeded { return "在账号设置中授权钥匙串后，即可刷新顽固单词。" }
         if !model.canBrowseStubborn { return "登录墨墨账号后可查看顽固单词。" }
         if !model.stubbornHint.isEmpty { return model.stubbornHint }
         return "点击单词查词。手机端同步学习数据后可刷新。"
@@ -152,8 +167,16 @@ struct NotebookView: View {
             HStack { Button("全选当前结果") { selected = Set(visible.filter { !$0["isChapter"].flag }.map { $0["word"].text }) }; Button("清除选择") { selected = [] }; Button("删除选中") { Task { await removeSelected() } }.disabled(selected.isEmpty); Spacer(); Text("已选 \(selected.count) 个").font(.system(size: 11)).foregroundStyle(Palette.muted) }.buttonStyle(MemoButtonStyle(compact: true))
             List(selection: $selected) {
                 ForEach(Array(visible.enumerated()), id: \.offset) { _, row in
-                    if row["isChapter"].flag { Text(row["word"].text).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.muted).padding(.vertical, 5) }
-                    else { HStack(spacing: 14) { Button(row["word"].text) { model.sheet = nil; model.lookup(row["word"].text) }.buttonStyle(.plain).foregroundStyle(Palette.deep).frame(width: 170, alignment: .leading); Text(row["meaning"].text).lineLimit(2).font(.system(size: 12)).frame(maxWidth: .infinity, alignment: .leading) }.padding(.vertical, 5).tag(row["word"].text) }
+                    if row["isChapter"].flag {
+                        Text(row["word"].text).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.muted).padding(.vertical, 5)
+                    } else {
+                        HStack(alignment: .firstTextBaseline, spacing: 14) {
+                            Button(row["word"].text) { model.sheet = nil; model.lookup(row["word"].text) }
+                                .buttonStyle(.plain).foregroundStyle(Palette.deep).frame(width: 170, alignment: .leading)
+                            Text(row["meaning"].text).font(.system(size: 12)).multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                        }.padding(.vertical, 5).tag(row["word"].text)
+                    }
                 }
             }.listStyle(.inset).frame(maxHeight: .infinity).overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border))
             DisclosureGroup("添加 / 编辑词条与分组", isExpanded: $editing) {

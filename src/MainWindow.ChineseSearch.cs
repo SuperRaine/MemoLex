@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Threading;
@@ -58,21 +59,27 @@ public partial class MainWindow
     private void ApplyChinesePage(ChineseSearchPage page)
     {
         _chineseItems=page.Items.ToArray();_chineseTotal=page.Total;ChineseResultsPanel.Children.Clear();
-        ChineseSearchHint.Text=page.Total==0?"没有找到贴近该含义的词。可尝试更简洁的中文词义，如“快乐”“管理”“健谈”。":$"已显示 {page.Items.Count} 条 · 共 {page.Total} 条相关结果 · 点击英文词查看完整释义";
+        ChineseSearchHint.Text=page.Total==0?"没有找到贴近该含义的词。可尝试更简洁的中文词义，如“快乐”“管理”“健谈”。":$"已显示 {page.Items.Count} 条 · 共 {page.Total} 条相关结果 · 点击一行查看完整释义";
         MoreChineseResultsButton.Visibility=page.Total>page.Items.Count&&page.Items.Count<120?Visibility.Visible:Visibility.Collapsed;
         MoreChineseResultsButton.IsEnabled=true;
         foreach(var item in page.Items)
         {
             var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(145)});body.ColumnDefinitions.Add(new ColumnDefinition());body.ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
-            var heading=new TextBlock {FontSize=16,FontFamily=new System.Windows.Media.FontFamily("Segoe UI"),Margin=new Thickness(0,0,12,0),TextTrimming=TextTrimming.CharacterEllipsis,VerticalAlignment=VerticalAlignment.Center,ToolTip=item.Word};
-            var link=new Hyperlink(new Run(item.Word)){Foreground=Brush("#087FAF"),TextDecorations=null,FontWeight=FontWeights.SemiBold,ToolTip="查询 "+item.Word};
-            link.ContextMenu=HaiciWordMenu(item.Word);
-            link.Click+=async(_,_)=>await LoadWordAsync(item.Word);heading.Inlines.Add(link);body.Children.Add(heading);
+            var heading=new TextBlock {Text=item.Word,FontSize=16,FontFamily=new System.Windows.Media.FontFamily("Segoe UI"),Foreground=Brush("#087FAF"),FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,12,0),TextTrimming=TextTrimming.CharacterEllipsis,VerticalAlignment=VerticalAlignment.Center,ToolTip=item.Word};
+            body.Children.Add(heading);
             var meaning=new TextBlock {FontSize=13,LineHeight=22,TextTrimming=TextTrimming.CharacterEllipsis,Foreground=Brush("#4F6D85"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0),ToolTip=item.Meaning};Grid.SetColumn(meaning,1);
             foreach(var part in TextHighlights.Split(item.MatchedMeaning,new[]{ChineseReverseSearch.Normalize(_chineseQuery)}))
                 meaning.Inlines.Add(new Run(part.Text){Background=part.Highlighted?Brush("#E1F4FF"):System.Windows.Media.Brushes.Transparent,FontWeight=part.Highlighted?FontWeights.SemiBold:FontWeights.Normal});
             body.Children.Add(meaning);var kind=new TextBlock {Text=item.Kind,FontSize=10,Foreground=Brush(item.IsExactMatch?"#1688B7":"#99ACBA"),VerticalAlignment=VerticalAlignment.Center};Grid.SetColumn(kind,2);body.Children.Add(kind);
-            ChineseResultsPanel.Children.Add(new Border {Child=body,Background=System.Windows.Media.Brushes.White,BorderBrush=Brush("#E2EBF3"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(7),Padding=new Thickness(13,8,13,8),Margin=new Thickness(0,0,0,4)});
+            var row=new Button
+            {
+                Content=body, HorizontalContentAlignment=HorizontalAlignment.Stretch,
+                BorderBrush=Brush("#E2EBF3"), Padding=new Thickness(13,8,13,8),
+                Margin=new Thickness(0,0,0,4), ContextMenu=HaiciWordMenu(item.Word)
+            };
+            AutomationProperties.SetName(row,$"{item.Word}，{item.MatchedMeaning}");
+            row.Click+=async(_,_)=>await LoadWordAsync(item.Word);
+            ChineseResultsPanel.Children.Add(row);
         }
     }
     private async void MoreChineseResultsButton_Click(object sender,RoutedEventArgs e)

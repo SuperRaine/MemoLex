@@ -62,6 +62,11 @@ private final class MemoLexWindow: NSWindow {
         model.updates.onAvailable = { [weak self] in self?.updatePending = true; self?.promptUpdate() }
         updateTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in Task { @MainActor in self?.promptUpdate() } }
         show()
+        MacUpdateInstaller.confirmLaunch()
+        if let message = MacUpdateInstaller.takeFailure() {
+            model.updates.status = message
+            model.notice = .init(title: "软件更新未完成", message: message)
+        }
         model.updates.start()
         Task { await model.initialize() }
     }
@@ -202,8 +207,8 @@ private final class MemoLexWindow: NSWindow {
         updatePending = false
         let alert = NSAlert()
         alert.messageText = "发现新版 \(model.updates.latestVersion)"
-        alert.informativeText = model.updates.downloaded != nil ? "新版已下载，可前往设置安装。" : "可以现在更新，也可以稍后在设置中查看。"
-        let action = !model.updates.hasUpdate ? "前往下载页面" : model.updates.busy || model.updates.downloaded != nil ? "查看更新" : "下载更新"
+        alert.informativeText = model.updates.downloaded != nil ? "新版已下载，安装后软件会重新打开。" : "可以现在更新，也可以稍后在设置中查看。"
+        let action = !model.updates.hasUpdate ? "前往下载页面" : model.updates.busy ? "查看更新" : model.updates.downloaded != nil ? "更新并重启" : "下载并安装"
         alert.addButton(withTitle: action)
         alert.addButton(withTitle: "稍后")
         alert.accessoryView = NSHostingView(rootView: UpdatePromptOptions(preferences: model.preferences).frame(width: 290, height: 32))
@@ -218,7 +223,7 @@ private final class MemoLexWindow: NSWindow {
                 }
                 self.model.settingsPage = "软件更新"
                 self.model.sheet = .settings
-                if !self.model.updates.busy && self.model.updates.downloaded == nil { await self.model.updates.download() }
+                if !self.model.updates.busy { await self.model.updates.install() }
             }
         }
     }

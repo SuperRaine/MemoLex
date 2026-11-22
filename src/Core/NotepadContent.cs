@@ -53,8 +53,8 @@ public static class NotepadContent
             if(line.StartsWith('#'))rows.Add(new(line.TrimStart('#').Trim(),"",true));
             else
             {
-                var translation=meaning(line);
-                rows.Add(new(line,string.IsNullOrWhiteSpace(translation)?"本地词库暂无中文释义":translation.Replace('\n',' ')));
+                var translation=DictionaryEntry.FormatListMeaning(meaning(line));
+                rows.Add(new(line,translation.Length==0?"本地词库暂无中文释义":translation));
             }
         }
         return rows;

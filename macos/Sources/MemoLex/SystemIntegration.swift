@@ -346,7 +346,8 @@ private struct ShortcutRecorder: NSViewRepresentable {
             try FileManager.default.trashItem(at: bundle, resultingItemURL: nil)
             if !keepData {
                 if FileManager.default.fileExists(atPath: profile.path) { try FileManager.default.removeItem(at: profile) }
-                CredentialVault.removeAll(); UserDefaults.standard.removePersistentDomain(forName: "com.superraine.MemoLex")
+                await CredentialVault.shared.removeAll()
+                UserDefaults.standard.removePersistentDomain(forName: "com.superraine.MemoLex")
             }
             model.removingApplication = true
             NSApp.terminate(nil)

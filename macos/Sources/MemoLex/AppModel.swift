@@ -48,6 +48,7 @@ struct Notice: Identifiable {
     @Published var activeAccountID = ""
     @Published var loggedIn = false
     @Published var accountStatus = "未登录"
+    @Published private(set) var keychainAuthorizationNeeded = false
     @Published var showLogin = false
     @Published var loginTarget: SavedAccount?
     @Published var notepads: [J] = []
@@ -249,7 +250,7 @@ struct Notice: Identifiable {
     func removeHistory(_ ids: Set<String>) { history.removeAll { ids.contains($0.id) }; save(history, "history.json") }
     func clearHistory() { history = []; save(history, "history.json") }
 
-    func activate(_ id: String, token: String? = nil, verified: Bool = false) async {
+    func activate(_ id: String, token: String? = nil, verified: Bool = false, authorizeKeychain: Bool = false) async {
         guard let account = accounts.first(where: { $0.id == id }) else { return }
         accountVersion += 1
         let generation = accountVersion
@@ -265,12 +266,15 @@ struct Notice: Identifiable {
                 else { accountStatus = "请重新登录"; try await core.setAccount(token: nil) }
                 return
             }
-            let credential = try token ?? CredentialVault.read(id)
-            guard let credential else { expireAccount(); return }
             if let name = stubbornCacheName(id), let snapshot = load(name, as: StubbornSnapshot.self),
                snapshot.total >= snapshot.words.count {
                 installStubborn(snapshot)
             }
+            let credential: String?
+            if let token { credential = token }
+            else { credential = try await CredentialVault.shared.read(account.keychainAccount, allowPrompt: authorizeKeychain) }
+            guard generation == accountVersion else { return }
+            guard let credential else { expireAccount(); return }
             try await core.setAccount(token: credential)
             guard generation == accountVersion else { return }
             loggedIn = true
@@ -284,6 +288,12 @@ struct Notice: Identifiable {
             checkAccountConnection(generation, verified: verified)
         } catch {
             guard generation == accountVersion else { return }
+            if let failure = error as? CoreFailure, failure.code == "keychain" {
+                keychainAuthorizationNeeded = true
+                accountStatus = "需要授权钥匙串"
+                await clearWorkerAccount(generation)
+                return
+            }
             accountStatus = "连接未完成"
             status = error.localizedDescription
             nextAccountCheck = Date().addingTimeInterval(45)
@@ -315,13 +325,26 @@ struct Notice: Identifiable {
         if !fromOfficialPage { _ = try await core.request("login.validate", ["token": .string(token)]) }
         let identity = identity.trimmed.lowercased()
         let sameIdentity = identity.isEmpty ? nil : accounts.first { $0.identity == identity }
-        let sameCredential = accounts.first { (try? CredentialVault.read($0.id)) == token }
+        var sameCredential: SavedAccount?
+        for account in accounts where !account.needsLogin {
+            try Task.checkCancellation()
+            if (try? await CredentialVault.shared.read(account.keychainAccount)) == token {
+                sameCredential = account
+                break
+            }
+        }
+        try Task.checkCancellation()
         if let sameCredential, !sameCredential.identity.isEmpty, !identity.isEmpty, sameCredential.identity != identity {
             throw CoreFailure(code: "login", message: "本次授权属于另一个已保存账号，请重新登录对应账号。")
         }
         let existing = sameIdentity ?? sameCredential
         let id = existing?.id ?? UUID().uuidString
-        try CredentialVault.save(token, account: id)
+        let credentialID = UUID().uuidString
+        try await CredentialVault.shared.add(token, account: credentialID)
+        if Task.isCancelled {
+            await CredentialVault.shared.remove(credentialID)
+            throw CancellationError()
+        }
         let resolvedIdentity = identity.isEmpty ? (existing?.identity ?? "") : identity
         let isPlaceholder = existing?.name.range(of: "^墨墨账号 [0-9]+$", options: .regularExpression) != nil
         let name: String
@@ -330,10 +353,19 @@ struct Notice: Identifiable {
         } else {
             name = resolvedIdentity.isEmpty ? "墨墨账号 \(accounts.count + 1)" : SavedAccount.displayIdentity(resolvedIdentity)
         }
-        let account = SavedAccount(id: id, name: name, identity: resolvedIdentity, expiresAt: parseISODate(authorization["expiresAt"].text))
-        if let index = accounts.firstIndex(where: { $0.id == id }) { accounts[index] = account } else { accounts.append(account) }
-        save(accounts, "accounts.json")
+        let account = SavedAccount(id: id, name: name, identity: resolvedIdentity,
+                                   expiresAt: parseISODate(authorization["expiresAt"].text), credentialID: credentialID)
+        var updatedAccounts = accounts
+        if let index = updatedAccounts.firstIndex(where: { $0.id == id }) { updatedAccounts[index] = account }
+        else { updatedAccounts.append(account) }
+        do { try writeProfile(updatedAccounts, "accounts.json") }
+        catch {
+            await CredentialVault.shared.remove(credentialID)
+            throw CoreFailure(code: "keychain", message: "无法保存账号，请检查本机资料目录后重试。")
+        }
+        accounts = updatedAccounts
         showLogin = false
+        if let existing { Task { await CredentialVault.shared.remove(existing.keychainAccount) } }
         Task { await activate(id, token: token, verified: !fromOfficialPage) }
     }
     func logout() async {
@@ -349,9 +381,9 @@ struct Notice: Identifiable {
     }
     func expireAccount() {
         guard let index = accounts.firstIndex(where: { $0.id == activeAccountID }), !accounts[index].needsLogin else { return }
-        let id = accounts[index].id
+        let keychainAccount = accounts[index].keychainAccount
         accounts[index].needsLogin = true
-        CredentialVault.remove(id)
+        Task { await CredentialVault.shared.remove(keychainAccount) }
         save(accounts, "accounts.json")
         accountVersion += 1
         let generation = accountVersion
@@ -383,13 +415,16 @@ struct Notice: Identifiable {
         accounts[index].name = String(name.trimmed.prefix(80)); save(accounts, "accounts.json")
     }
     func removeAccount(_ id: String) async {
+        guard let account = accounts.first(where: { $0.id == id }) else { return }
         if activeAccountID == id { await logout() }
-        CredentialVault.remove(id)
         accounts.removeAll { $0.id == id }
         save(accounts, "accounts.json")
+        await CredentialVault.shared.remove(account.keychainAccount)
         if let name = stubbornCacheName(id) { try? FileManager.default.removeItem(at: AppPaths.profile.appendingPathComponent(name)) }
     }
     private func clearCloudState() {
+        core.invalidateAccount()
+        keychainAuthorizationNeeded = false
         notes = []; notepads = []; selectedPad = .null; notebookRows = []; notebookLoading = false
         membership = false; todayStatus = ""; writing = false
         stubbornTask?.cancel(); stubbornTask = nil; stubbornSnapshot = nil
@@ -586,7 +621,14 @@ struct Notice: Identifiable {
     }
     func fail(_ error: Error) { if let coreError = error as? CoreFailure, coreError.code == "cancelled" { return }; status = error.localizedDescription; notice = .init(title: "操作未完成", message: error.localizedDescription) }
     private func load<T: Decodable>(_ name: String, as type: T.Type) -> T? { guard let data = try? Data(contentsOf: AppPaths.profile.appendingPathComponent(name)) else { return nil }; return try? JSONDecoder().decode(type, from: data) }
-    private func save<T: Encodable>(_ value: T, _ name: String) { do { try FileManager.default.createDirectory(at: AppPaths.profile, withIntermediateDirectories: true); try JSONEncoder().encode(value).write(to: AppPaths.profile.appendingPathComponent(name), options: .atomic) } catch { status = "本地资料暂时无法保存。" } }
+    private func save<T: Encodable>(_ value: T, _ name: String) {
+        do { try writeProfile(value, name) }
+        catch { status = "本地资料暂时无法保存。" }
+    }
+    private func writeProfile<T: Encodable>(_ value: T, _ name: String) throws {
+        try FileManager.default.createDirectory(at: AppPaths.profile, withIntermediateDirectories: true)
+        try JSONEncoder().encode(value).write(to: AppPaths.profile.appendingPathComponent(name), options: .atomic)
+    }
 }
 
 private struct StubbornSnapshot: Codable {

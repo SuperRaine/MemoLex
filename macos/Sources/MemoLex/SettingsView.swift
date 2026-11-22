@@ -198,7 +198,17 @@ private struct AccountSettings: View {
             }.buttonStyle(MemoButtonStyle(compact: true))
             HStack { TextField("账号名称", text: $name).inputFrame(); Button("保存账号名称") { model.renameAccount(selected, name) }.buttonStyle(MemoButtonStyle()).disabled(selected.isEmpty) }
             Text(model.accountStatus).font(.system(size: 12)).foregroundStyle(Palette.muted)
-            Text("登录信息保存在 Mac 钥匙串中，过期后请重新登录。").font(.system(size: 12)).foregroundStyle(Palette.muted)
+            if model.keychainAuthorizationNeeded {
+                HStack {
+                    Text("macOS 需要确认本版本可读取已保存的登录信息。").font(.footnote).foregroundStyle(Palette.muted)
+                    Button("授权钥匙串") {
+                        let account = model.activeAccountID
+                        Task { await model.activate(account, authorizeKeychain: true) }
+                    }.buttonStyle(MemoButtonStyle(compact: true))
+                }
+            } else {
+                Text("登录信息保存在 Mac 钥匙串中，过期后请重新登录。").font(.system(size: 12)).foregroundStyle(Palette.muted)
+            }
             DisclosureGroup("导入已有的 API 授权") {
                 Text("可从墨墨 App 的「开放 API」复制授权，在你自己的电脑上分别导入同一份有效授权。").font(.footnote).foregroundStyle(.secondary)
                 SecureField("墨墨 API 授权", text: $token).inputFrame().padding(.vertical, 8)

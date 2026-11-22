@@ -75,9 +75,14 @@ struct CoreFailure: LocalizedError {
         }, onCancel: { [weak self] in Task { @MainActor in self?.cancel(id) } })
     }
 
-    func setAccount(token: String?) async throws {
-        accountGeneration += 1; let generation = accountGeneration
+    func invalidateAccount() {
+        accountGeneration += 1
         accountKey = ""
+    }
+
+    func setAccount(token: String?) async throws {
+        invalidateAccount()
+        let generation = accountGeneration
         let result = try await request("account.set", ["token": token.map(J.string) ?? .null])
         if generation == accountGeneration { accountKey = result["accountKey"].text }
     }

@@ -178,16 +178,18 @@ private struct MainTitlebar: View {
 
     private var stubbornBar: some View {
         HStack(spacing: compact ? 5 : 8) {
-            if !compact && !model.stubbornCurrent.isEmpty { Text("顽固单词").font(.caption).foregroundStyle(Palette.muted).fixedSize() }
+            if !compact && !model.stubbornCurrent.isEmpty {
+                Button("顽固单词") { model.sheet = .stubborn }
+                    .font(.caption).buttonStyle(.plain).foregroundStyle(Palette.muted).fixedSize()
+            }
             Button(model.stubbornCurrent.isEmpty ? (model.stubbornLoading ? "刷新中…" : "顽固单词") : model.stubbornCurrent) {
-                if !model.canBrowseStubborn { model.openAccountSettings() }
-                else if !model.stubbornCurrent.isEmpty { model.lookup(model.stubbornCurrent) }
+                if !model.stubbornCurrent.isEmpty { model.lookup(model.stubbornCurrent) }
                 else { model.sheet = .stubborn }
             }.font(.system(size: model.stubbornCurrent.isEmpty ? 12 : 15, weight: .semibold))
                 .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading).buttonStyle(.plain)
                 .help(model.stubbornCurrent.isEmpty ? "顽固单词" : model.stubbornCurrent)
             Button(model.stubbornLoading && !model.stubbornCurrent.isEmpty ? "刷新中…" : "全部") {
-                if model.canBrowseStubborn { model.sheet = .stubborn } else { model.openAccountSettings() }
+                model.sheet = .stubborn
             }
                 .font(.caption).buttonStyle(.plain).fixedSize().foregroundStyle(Palette.deep)
                 .help("查看全部顽固单词")
@@ -369,8 +371,28 @@ private struct ChinesePage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("中文反查 · \(model.search)").font(.system(size: 25, weight: .semibold))
-            Text("找到 \(model.chineseTotal) 个相关结果，点击单词查看释义。").font(.system(size: 12)).foregroundStyle(Palette.muted)
-            ScrollView { LazyVStack(spacing: 5) { ForEach(model.chineseResults, id: \.wordText) { row in Button { model.lookup(row["word"].text) } label: { HStack(alignment: .top, spacing: 15) { Text(row["word"].text).font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.deep).frame(width: 138, alignment: .leading); Text(row["meaning"].text.decodedLines).font(.system(size: 12)).lineLimit(3).frame(maxWidth: .infinity, alignment: .leading) }.padding(.horizontal, 14).padding(.vertical, 10).background(Palette.paper, in: RoundedRectangle(cornerRadius: 8)) }.buttonStyle(.plain) }; if model.chineseResults.count < model.chineseTotal { Button("显示更多结果") { Task { await model.moreChinese() } }.buttonStyle(MemoButtonStyle()) } } }
+            Text("找到 \(model.chineseTotal) 个相关结果，点击一行查看完整释义。").font(.system(size: 12)).foregroundStyle(Palette.muted)
+            ScrollView {
+                LazyVStack(spacing: 5) {
+                    ForEach(model.chineseResults, id: \.wordText) { row in
+                        Button { model.lookup(row["word"].text) } label: {
+                            HStack(alignment: .top, spacing: 15) {
+                                Text(row["word"].text).font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Palette.deep).frame(width: 138, alignment: .leading)
+                                Text(row["meaning"].text.decodedLines).font(.system(size: 12))
+                                    .lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Palette.paper, in: RoundedRectangle(cornerRadius: 8))
+                            .contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                    }
+                    if model.chineseResults.count < model.chineseTotal {
+                        Button("显示更多结果") { Task { await model.moreChinese() } }.buttonStyle(MemoButtonStyle())
+                    }
+                }
+            }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

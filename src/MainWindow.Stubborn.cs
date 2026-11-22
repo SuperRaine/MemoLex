@@ -41,7 +41,7 @@ public partial class MainWindow
         ApplyStubbornOrder();
     }
 
-    private string StubbornMeaning(string word)=>string.Join("；",(_dictionary.Lookup(word)?.translation??"").Replace("\\n","\n").Split('\n',StringSplitOptions.RemoveEmptyEntries));
+    private string StubbornMeaning(string word)=>DictionaryEntry.FormatListMeaning(_dictionary.Lookup(word)?.translation);
     private StubbornSortMode StubbornMode=>_preferences.StubbornSort switch{"alphabetical"=>StubbornSortMode.Alphabetical,"random"=>StubbornSortMode.Random,_=>StubbornSortMode.Review};
     private void ApplyStubbornOrder(bool preserveCurrent=false)
     {
