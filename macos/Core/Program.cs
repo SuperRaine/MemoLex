@@ -85,6 +85,7 @@ internal sealed class CoreService : IDisposable
     private readonly MaiMemoClient _api;
     private readonly ExampleSentenceClient _examples = new();
     private readonly TranslationClient _translation = new();
+    private readonly OnlineDictionaryClient _onlineDictionary;
     private readonly Lazy<Task> _ready;
     private readonly object _accountGate = new();
 
@@ -96,6 +97,7 @@ internal sealed class CoreService : IDisposable
         _related = new(_dictionary, data); _chinese = new(_dictionary, data);
         _notes = new(Path.Combine(profile, "mnemonics.user.json"), Path.Combine(data, "mnemonics.json"));
         _api = new(_tokens);
+        _onlineDictionary = new(_translation);
         _ready = new(async () => { await _dictionary.LoadAsync(); await Task.WhenAll(_related.LoadAsync(), _chinese.LoadAsync(), _notes.LoadAsync()); });
     }
     internal async Task<object?> Handle(string method, JsonElement p, CancellationToken cancellation)
@@ -133,6 +135,9 @@ internal sealed class CoreService : IDisposable
             case "dictionary.lookup":
                 word = ExampleText.ResolveLookupWord(word, candidate => _dictionary.Lookup(candidate) != null);
                 return new { entry = _dictionary.Lookup(word), word, notes = _notes.Get(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24) };
+            case "dictionary.online":
+                return string.IsNullOrWhiteSpace(_dictionary.Lookup(word)?.translation)
+                    ? await _onlineDictionary.LookupAsync(word, cancellation) : null;
             case "dictionary.suggest": return _dictionary.Suggest(word, 30);
             case "dictionary.related": return await _related.LookupAsync(word, cancellation);
             case "dictionary.reverse": return await _chinese.SearchAsync(T(p, "query"), Number(p, "limit", 160, 1, 3000), cancellation);
@@ -194,5 +199,5 @@ internal sealed class CoreService : IDisposable
     private static string T(JsonElement value, string name, string fallback = "") => Program.Text(value, name, fallback);
     private static string? Null(string value) => value.Length == 0 ? null : value;
     private static int Number(JsonElement value, string name, int fallback, int minimum, int maximum) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var field) && field.TryGetInt32(out var number) ? Math.Clamp(number, minimum, maximum) : fallback;
-    public void Dispose() { _api.Dispose(); _examples.Dispose(); _translation.Dispose(); _related.Dispose(); _chinese.Dispose(); _dictionary.Dispose(); }
+    public void Dispose() { _api.Dispose(); _examples.Dispose(); _onlineDictionary.Dispose(); _translation.Dispose(); _related.Dispose(); _chinese.Dispose(); _dictionary.Dispose(); }
 }

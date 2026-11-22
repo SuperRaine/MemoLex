@@ -23,6 +23,8 @@ struct Notice: Identifiable {
     @Published var search = ""
     @Published var suggestions: [String] = []
     @Published var entry = J.null
+    @Published private(set) var onlineDefinition = J.null
+    @Published private(set) var definitionLoading = false
     @Published var word = ""
     @Published var notes: [J] = []
     @Published var relations = J.null
@@ -161,13 +163,16 @@ struct Notice: Identifiable {
                     status = "找到 \(chineseTotal) 个相关结果。"
                 } else {
                     page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = loggedIn ? "Loading" : ""; membership = false
+                    onlineDefinition = .null
+                    definitionLoading = true
                     let result = try await core.request("dictionary.lookup", ["word": .string(query)])
-                    guard version == wordVersion else { return }
+                    guard version == wordVersion, !Task.isCancelled else { return }
                     word = result["word"].text
                     entry = result["entry"]
                     if account == accountVersion { notes = result["notes"].list }
                     suggestions = result["suggestions"].list.map(\.text)
-                    recordHistory(word); status = entry == .null ? "本地词库未收录这个单词。" : "查词完成。"
+                    definitionLoading = entry["translation"].text.trimmed.isEmpty
+                    recordHistory(word); status = definitionLoading ? "正在联网查找释义…" : "查词完成。"
                     Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }
                     Task { await loadExamples(reset: true) }
                     if loggedIn {
@@ -176,7 +181,16 @@ struct Notice: Identifiable {
                     }
                 }
                 if navigate { appendLocation(.init(page: page, query: query)) }
-            } catch { if version == wordVersion { fail(error) } }
+                if !chinese && definitionLoading {
+                    let result = try? await core.request("dictionary.online", ["word": .string(word)], timeout: 17)
+                    guard version == wordVersion, page == .word, !Task.isCancelled else { return }
+                    onlineDefinition = result ?? .null
+                    definitionLoading = false
+                    status = onlineDefinition == .null ? "暂未找到中文释义。" : "已补充联网释义。"
+                }
+            } catch {
+                if version == wordVersion, !Task.isCancelled { definitionLoading = false; fail(error) }
+            }
         }
     }
     func moreChinese() async {
@@ -215,7 +229,11 @@ struct Notice: Identifiable {
         speaker.stopSpeaking(at: .immediate)
         let utterance = AVSpeechUtterance(string: text); utterance.voice = AVSpeechSynthesisVoice(language: "en-US"); utterance.rate = 0.42; speaker.speak(utterance)
     }
-    func enterTranslation() { page = .translation; appendLocation(.init(page: .translation, query: "段落翻译", input: translationInput, translated: translationOutput, direction: translationDirection)) }
+    func enterTranslation() {
+        lookupTask?.cancel()
+        page = .translation
+        appendLocation(.init(page: .translation, query: "段落翻译", input: translationInput, translated: translationOutput, direction: translationDirection))
+    }
     func translate() async {
         guard !translationInput.trimmed.isEmpty else { return }
         translationVersion += 1; let version = translationVersion
@@ -247,7 +265,10 @@ struct Notice: Identifiable {
     func move(_ direction: Int) {
         let target = navigationIndex + direction; guard navigation.indices.contains(target) else { return }
         navigationIndex = target; let location = navigation[target]; page = location.page
-        if page == .translation { translationInput = location.input; translationSource = location.input; translationOutput = location.translated; translationDirection = location.direction }
+        if page == .translation {
+            lookupTask?.cancel()
+            translationInput = location.input; translationSource = location.input; translationOutput = location.translated; translationDirection = location.direction
+        }
         else { lookup(location.query, navigate: false) }
         navigationFlags()
     }

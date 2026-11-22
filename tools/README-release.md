@@ -5,8 +5,8 @@
 1. 从已解压的便携包复制完整 `app/data` 文件夹到仓库根目录的 `data`，也可构建时通过 `-DataDirectory` 指定其路径。确认 `src/Bootstrapper` 中保留已校验的微软网页组件安装引导程序。
 2. 执行 `powershell -File tools/build_release.ps1`，生成 `dist/MemoLex`。使用 Windows 自带的 .NET Framework 编译启动与卸载入口，将 .NET 8.0.34 和 WPF 运行组件合并到 `app/MemoLex.exe`。
 3. 在仓库根目录执行 `dotnet tool install wix --version 5.0.2 --tool-path .tools/wix`，然后 `.tools/wix/wix.exe extension add WixToolset.UI.wixext/5.0.2`。
-4. 执行 `powershell -File installer/build.ps1 -PayloadDirectory dist/MemoLex -OutputFile dist/MemoLex-1.13.0-Windows-x64-Setup.msi -WixCommand .tools/wix/wix.exe`。
-5. 执行 `python tools/package_portable.py dist/MemoLex dist/MemoLex-1.13.0-Windows-x64.zip`，生成便携包。
+4. 执行 `powershell -File installer/build.ps1 -PayloadDirectory dist/MemoLex -OutputFile dist/MemoLex-1.14.0-Windows-x64-Setup.msi -WixCommand .tools/wix/wix.exe`。
+5. 执行 `python tools/package_portable.py dist/MemoLex dist/MemoLex-1.14.0-Windows-x64.zip`，生成便携包。
 
 安装包与便携包使用同一份文件。主目录仅保留 `MemoLex.exe`、`MemoLex.dll`、`Uninstall.exe` 和 `app` 文件夹。离线词库、助记及许可证均位于 `app`；运行组件首次启动时解压到 `%LOCALAPPDATA%/MemoLex/runtime`。
 
@@ -15,6 +15,8 @@ MSI 为当前 Windows 用户安装，默认目录为 `%LOCALAPPDATA%/Programs/Me
 默认使用电脑共享的网页运行环境，包内包含小型安装引导程序。若需要可选的完整网页引擎，把运行时放在 `webview2`，并在构建、MSI 验证中都传入 `-IncludeBrowserRuntime`，打包时传入 `--include-browser-runtime`。默认安装包和便携包使用相同的文件筛选规则，不包含整个 `webview2` 目录。
 
 GitHub Releases 只上传软件包。Windows 提供 `.msi` 和 `-Windows-x64.zip`；Mac 只提供 `.dmg`。验证报告和校验清单不放入源码或发布附件。
+
+每个发布页的「备用下载（GHFast）」列出该版本的实际附件，链接是在官方附件地址前加 `https://ghfast.top/`。
 
 Windows 如使用可信的代码签名证书，在构建应用文件和 MSI 时传入同一个 `-SigningThumbprint`。若 Windows SDK 的 SignTool 未加入 PATH，另传 `-SignToolCommand` 指定其路径。脚本会添加时间戳并核验签名。
 

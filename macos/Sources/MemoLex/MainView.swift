@@ -264,13 +264,10 @@ private struct WordPage: View {
                         Button("海词词典") { model.openHaici?(model.word) }.disabled(model.word.isEmpty)
                     }.buttonStyle(MemoButtonStyle(compact: true)).padding(.top, 8).padding(.bottom, 14)
                     wordTags
-                    if !model.word.isEmpty {
-                        Text("内置词库 · 离线可用" + (model.entry["bnc"].text.isEmpty ? "" : "  /  BNC 词频 #\(model.entry["bnc"].text)"))
-                            .font(.caption).foregroundStyle(Palette.muted).padding(.top, 8)
-                    }
+                    definitionSource.font(.caption).padding(.top, 8)
                     rule
                     Text("中文释义").sectionLabel().padding(.bottom, 8)
-                    LinkedText(text: model.word.isEmpty ? "在左侧输入单词，即可查看释义。" : (model.entry == .null ? "本地词库暂无释义，可打开海词词典查看。" : model.entry["translation"].text.decodedLines), size: 17)
+                    LinkedText(text: definitionText, size: 17)
                     if !model.entry["exchange"].text.isEmpty { ExchangeView(exchange: model.entry["exchange"].text, word: model.word).padding(.top, 20) }
                     RelationsView(model: model).padding(.top, 16)
                     rule
@@ -291,6 +288,27 @@ private struct WordPage: View {
                     ExamplesView(model: model)
                 }
             }.padding(.trailing, 5)
+        }
+    }
+    private var definitionText: String {
+        if model.word.isEmpty { return "在左侧输入单词，即可查看释义。" }
+        let local = model.entry["translation"].text.decodedLines
+        if !local.trimmed.isEmpty { return local }
+        if model.definitionLoading { return "正在查找释义…" }
+        let online = model.onlineDefinition["meaning"].text
+        return online.isEmpty ? "暂未找到中文释义，可打开海词词典继续查找。" : online
+    }
+    @ViewBuilder private var definitionSource: some View {
+        if !model.entry["translation"].text.trimmed.isEmpty {
+            Text("内置词库 · 离线可用" + (model.entry["bnc"].text.isEmpty ? "" : "  /  BNC 词频 #\(model.entry["bnc"].text)"))
+                .foregroundStyle(Palette.muted)
+        } else if model.onlineDefinition != .null {
+            if let source = URL(string: model.onlineDefinition["sourceUrl"].text), source.scheme == "https" {
+                Link("维基词典译文", destination: source).foregroundStyle(Palette.deep)
+                    .help("查看原词条（CC BY-SA 4.0）")
+            } else {
+                Text("联网翻译").foregroundStyle(Palette.muted)
+            }
         }
     }
     private var wordTags: some View {

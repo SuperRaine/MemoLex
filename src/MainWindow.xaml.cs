@@ -1,5 +1,6 @@
 using System.IO;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -34,6 +35,7 @@ public partial class MainWindow : Window
     private readonly ExampleSentenceClient _examples;
     private readonly RelatedWords _related;
     private readonly TranslationClient _translation;
+    private readonly OnlineDictionaryClient _onlineDictionary;
     private CancellationTokenSource? _examplesCts;
     private readonly List<ExampleSentence> _shownExamples = [];
     private int _exampleVersion, _exampleOffset, _exampleTotal;
@@ -55,6 +57,7 @@ public partial class MainWindow : Window
         _accountCredentialKey=_tokens.CredentialKey;_api.ExpectedCredentialKey=_accountCredentialKey;_api.AuthenticationResult+=OnApiAuthenticationResult;
         _related=related??new RelatedWords(_dictionary);
         _translation=translation??new TranslationClient();
+        _onlineDictionary = new OnlineDictionaryClient(_translation);
         _chinese=chinese??new ChineseReverseSearch(_dictionary);
         _mnemonics=mnemonics??new MnemonicStore();
         InitializeComponent();
@@ -113,6 +116,7 @@ public partial class MainWindow : Window
             _examples.Dispose();
             _related.Dispose();
             _translationCts?.Cancel();
+            _onlineDictionary.Dispose();
             _translation.Dispose();
             _chineseCts?.Cancel();_suggestionCts?.Cancel();_chinese.Dispose();
         };
@@ -229,14 +233,18 @@ public partial class MainWindow : Window
         HaiciButton.IsEnabled=true;
         WordText.ContextMenu=HaiciWordMenu(word);
         var entry = _dictionary.Lookup(word);
+        var localMeaning = entry?.translation ?? "";
+        var hasLocalMeaning = !string.IsNullOrWhiteSpace(localMeaning);
+        var lookOnline = !hasLocalMeaning && _allowCloud;
         WordText.Text = entry?.word ?? word;
         PhoneticText.Text = string.IsNullOrWhiteSpace(entry?.phonetic) ? "" : $"/{entry.phonetic.Trim('/')}/";
-        FillWordLinks(DefinitionText, string.IsNullOrWhiteSpace(entry?.translation) ? "离线词典未收录这个词，可尝试左侧的相近拼写。" : entry.translation, EmptyMatches, word, skipPartOfSpeech: true);
+        FillWordLinks(DefinitionText, hasLocalMeaning ? localMeaning : lookOnline ? "正在联网查找释义…" : "内置词库暂无释义。",
+            EmptyMatches, word, skipPartOfSpeech: true);
         var exchange = FormatExchange(entry?.exchange);
         FillWordLinks(ExchangeText, exchange, EmptyMatches, word);
         ExchangeCard.Visibility = exchange.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        WordMetaText.Text = entry == null ? "本地未收录，正在查询墨墨词库…" : "内置词库 · 离线可用";
-        if (int.TryParse(entry?.bnc, out var frequency) && frequency > 0) WordMetaText.Text += $"  /  BNC 词频 #{frequency:N0}";
+        WordMetaText.Text = hasLocalMeaning ? "内置词库 · 离线可用" : "";
+        if (hasLocalMeaning && int.TryParse(entry?.bnc, out var frequency) && frequency > 0) WordMetaText.Text += $"  /  BNC 词频 #{frequency:N0}";
         RenderTags(entry);
         ResultScroll.ScrollToTop();
         ResetExampleView();
@@ -253,7 +261,8 @@ public partial class MainWindow : Window
         var relationsTask=LoadRelationsAsync(word,wordVersion,cancellation);
         var membershipTask=UpdateMembershipAsync();
         var examplesTask = restore?.Examples.Ready == true ? RestoreExamplesAsync(restore.Examples) : LoadExamplesAsync(reset: true);
-        await Task.WhenAll(notesTask, examplesTask,relationsTask,membershipTask);
+        var definitionTask = lookOnline ? LoadOnlineDefinitionAsync(word, wordVersion, cancellation) : Task.CompletedTask;
+        await Task.WhenAll(notesTask, examplesTask,relationsTask,membershipTask,definitionTask);
         if (wordVersion != _wordVersion) return;
         if (restore != null)
             QueueViewRestore(wordVersion, () =>
@@ -262,6 +271,30 @@ public partial class MainWindow : Window
                 ResultScroll.ScrollToVerticalOffset(restore.ScrollOffset);
             });
         else RememberCurrentView();
+    }
+
+    private async Task LoadOnlineDefinitionAsync(string word, int version, CancellationToken cancellation)
+    {
+        OnlineDefinition? definition;
+        try { definition = await _onlineDictionary.LookupAsync(word, cancellation); }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return; }
+        if (version != _wordVersion || cancellation.IsCancellationRequested) return;
+
+        FillWordLinks(DefinitionText, definition?.Meaning ?? "暂未找到中文释义，可打开海词词典继续查找。",
+            EmptyMatches, word, skipPartOfSpeech: true);
+        if (definition == null) return;
+
+        WordMetaText.Text = "联网翻译";
+        if (!Uri.TryCreate(definition.SourceUrl, UriKind.Absolute, out var source)) return;
+        var link = new Hyperlink(new Run("维基词典译文")) { NavigateUri = source, ToolTip = "查看原词条（CC BY-SA 4.0）" };
+        link.RequestNavigate += (_, args) =>
+        {
+            try { Process.Start(new ProcessStartInfo(args.Uri.AbsoluteUri) { UseShellExecute = true }); }
+            catch (Win32Exception) { StatusText.Text = "暂时无法打开浏览器。"; }
+            args.Handled = true;
+        };
+        WordMetaText.Inlines.Clear();
+        WordMetaText.Inlines.Add(link);
     }
 
     private Task LoadNotesAsync(string word,CancellationToken cancellation)=>LoadLocalAndCloudNotesAsync(word,cancellation);
