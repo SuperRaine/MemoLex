@@ -45,7 +45,7 @@ public partial class MainWindow
         }
         // 新增用户功能时同步补充页面聚焦引导，说明保持简短。
         _onboardingTour=new([
-            new("查词与阅读","在左侧输入英文或中文，按 Enter 查词。右侧可听发音、看释义、助记和例句；点击英文单词可查看对应释义。",()=>MainPage(false,BodyGrid)),
+            new("查词与阅读","输入英文或中文，按 Enter 查词。点击英文单词可查看释义。内置词库缺少释义时会自动联网补查。",()=>MainPage(false,BodyGrid)),
             new("登录与切换账号","在这里登录墨墨，也可切换已保存的账号。",()=>SettingsPage("墨墨账号","OfficialLoginButton")),
             new("顽固单词","点击顶部单词查词，右侧箭头可换词。在“全部”中选择排序，也可遮住释义，点击揭示答案。",()=>MainPage(false,StubbornCard)),
             new("收藏与管理云词本","选择云词本后，点击“加入云词本”收藏；点击“查看 / 编辑”管理单词。",()=>MainPage(false,CloudNotepadCard)),

@@ -15,7 +15,7 @@ struct TourStep {
 }
 @MainActor extension AppModel {
     static let tourSteps: [TourStep] = [
-        .init(title: "查词与阅读", text: "输入英文或中文，按回车查词。点击英文单词可查看释义。", target: "search"),
+        .init(title: "查词与阅读", text: "输入英文或中文，按回车查词。点击英文单词可查看释义。内置词库缺少释义时会自动联网补查。", target: "search"),
         .init(title: "登录与切换账号", text: "在这里登录墨墨，也可切换已保存的账号。", target: "login", settings: "墨墨账号"),
         .init(title: "顽固单词", text: "点击顶部单词查词。在“全部”中选择排序，或遮住释义自测。", target: "stubborn"),
         .init(title: "收藏与管理云词本", text: "选择云词本后收藏单词，点击“查看 / 编辑”管理词表。", target: "cloud"),
