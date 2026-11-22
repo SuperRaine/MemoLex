@@ -12,22 +12,25 @@ import SwiftUI
 
         var title: String { self == .accessibility ? "辅助功能" : "屏幕录制" }
         var icon: String { self == .accessibility ? "hand.tap" : "rectangle.dashed" }
+        var service: String { self == .accessibility ? "Accessibility" : "ScreenCapture" }
     }
     struct Snapshot: Equatable {
         var accessibility = false
         var screen = false
+
+        func allows(_ kind: Kind) -> Bool { kind == .accessibility ? accessibility : screen }
     }
     private static var cached = Snapshot()
     private static var lastProbe = -Double.infinity
     private static var uptime: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     static var accessibility: Bool { AXIsProcessTrusted() || snapshot().accessibility }
-    static var screen: Bool { CGPreflightScreenCaptureAccess() || snapshot().screen }
+    static var screen: Bool { CGPreflightScreenCaptureAccess() }
 
     static func snapshot(refresh: Bool = false) -> Snapshot {
         if refresh || uptime - lastProbe >= 2 {
             cached = Snapshot(accessibility: AXIsProcessTrusted() || canReadOtherApplication(),
-                              screen: CGPreflightScreenCaptureAccess() || canReadOtherWindowTitles())
+                              screen: screen)
             lastProbe = uptime
         }
         return cached
@@ -46,28 +49,37 @@ import SwiftUI
         }
     }
 
-    private static func canReadOtherWindowTitles() -> Bool {
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        let pids = Set(NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && $0.processIdentifier != ownPID }.map(\.processIdentifier))
-        guard !pids.isEmpty,
-              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return false }
-        // Quartz withholds other applications' window titles when recording is unauthorized.
-        return windows.contains { window in
-            guard let pid = window[kCGWindowOwnerPID as String] as? NSNumber, pids.contains(pid.int32Value),
-                  let title = window[kCGWindowName as String] as? String else { return false }
-            return !title.isEmpty
-        }
-    }
-
     static func openSettings(for kind: Kind) {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(kind.rawValue)")!
         NSWorkspace.shared.open(url)
+    }
+
+    static func resetAuthorization(for kind: Kind) async throws -> Bool {
+        guard !snapshot(refresh: true).allows(kind) else { return false }
+        let failure = CoreFailure(code: "permissions", message: "无法重置\(kind.title)授权。")
+        let bundleID = "com.superraine.MemoLex"
+        guard Bundle.main.bundleIdentifier == bundleID, Bundle.main.bundleURL.pathExtension == "app" else { throw failure }
+        let service = kind.service
+        try await Task.detached(priority: .utility) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            process.arguments = ["reset", service, bundleID]
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { throw failure }
+        }.value
+        return true
     }
 }
 
 struct PermissionsSettings: View {
     @ObservedObject var model: AppModel
     @State private var permissions = PermissionCenter.Snapshot()
+    @State private var resetting: PermissionCenter.Kind?
+    @State private var message = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             permission(.accessibility, enabled: permissions.accessibility,
@@ -80,8 +92,8 @@ struct PermissionsSettings: View {
                     NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL.resolvingSymlinksInPath()])
                 }
             }.buttonStyle(MemoButtonStyle())
-            if !permissions.accessibility || !permissions.screen {
-                Text("在系统设置中允许墨墨搜词。列表里找不到时，可用「＋」添加当前 App。若 macOS 提示重新打开，请按系统提示操作。")
+            if !message.isEmpty || !permissions.accessibility || !permissions.screen {
+                Text(message.isEmpty ? "用「＋」添加当前 App。若刚开启权限，请退出并重新打开墨墨搜词。更新后仍无法授权时，可以重置旧授权。" : message)
                     .font(.callout).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
             }
         }.tourTarget("permissions")
@@ -98,11 +110,39 @@ struct PermissionsSettings: View {
                 Label(enabled ? "已允许" : "待系统确认", systemImage: enabled ? "checkmark.circle.fill" : kind.icon)
                     .font(.callout).foregroundStyle(enabled ? Palette.deep : Palette.muted)
                 Spacer()
+                if !enabled {
+                    Button(resetting == kind ? "正在重置…" : "重置旧授权") { confirmReset(kind) }
+                        .buttonStyle(MemoButtonStyle(compact: true)).disabled(resetting != nil)
+                }
                 Button("前往系统设置") { PermissionCenter.openSettings(for: kind) }
-                    .buttonStyle(MemoButtonStyle(compact: true))
+                    .buttonStyle(MemoButtonStyle(compact: true)).disabled(resetting != nil)
             }
             Text(detail).font(.callout).foregroundStyle(Palette.muted)
         }
+    }
+
+    private func confirmReset(_ kind: PermissionCenter.Kind) {
+        model.notice = .init(title: "重置\(kind.title)授权？",
+                             message: "重置后，需要在系统设置里为当前版本开启这项权限。若刚授权，请先退出并重新打开墨墨搜词。",
+                             confirm: "重置旧授权", action: { Task { await reset(kind) } })
+    }
+
+    @MainActor private func reset(_ kind: PermissionCenter.Kind) async {
+        guard resetting == nil else { return }
+        resetting = kind
+        defer { resetting = nil }
+        do {
+            guard try await PermissionCenter.resetAuthorization(for: kind) else {
+                refresh()
+                message = "\(kind.title)已允许。"
+                return
+            }
+            message = "旧授权已清除。请在系统设置中用「＋」添加当前的墨墨搜词，再开启\(kind.title)。"
+        } catch {
+            message = "无法重置\(kind.title)授权。请在系统设置里用「−」移除旧条目，再用「＋」添加当前版本。"
+        }
+        refresh()
+        PermissionCenter.openSettings(for: kind)
     }
 }
 

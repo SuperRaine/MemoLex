@@ -37,8 +37,8 @@ struct MacUpdatePackage: Equatable {
     }
 }
 
-private enum MacUpdateSource: String, CaseIterable {
-    case automatic = "auto", proxy = "gh-proxy", fast = "ghfast", github = "official"
+enum MacUpdateSource: String, CaseIterable {
+    case fast = "ghfast", automatic = "auto", proxy = "gh-proxy", github = "official"
 
     var label: String {
         switch self {
@@ -65,7 +65,7 @@ private enum MacUpdateSource: String, CaseIterable {
     }
     func candidates(verified: Bool) -> [Self] {
         switch self {
-        case .automatic: return verified ? [.proxy, .fast, .github] : [.github]
+        case .automatic: return verified ? [.fast, .proxy, .github] : [.github]
         case .github: return [.github]
         default: return verified ? [self] : []
         }
@@ -147,7 +147,7 @@ private enum MacUpdateSource: String, CaseIterable {
     }
     @discardableResult func download() async -> Bool {
         guard !busy, let package else { return false }
-        let selected = MacUpdateSource(rawValue: preferences.updateSource) ?? .automatic
+        let selected = MacUpdateSource(rawValue: preferences.updateSource) ?? .fast
         return await perform(.downloading, message: "正在准备下载…") { [self] id in
             try await download(package, selected: selected, operation: id)
         }

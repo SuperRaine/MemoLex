@@ -26,7 +26,7 @@ struct TourStep {
         .init(title: "剪贴板查词", text: "开启后，选中文字连按两次 ⌘C，唤起软件查词或翻译。", target: "clipboard", settings: "常规"),
         .init(title: "考试倒计时", text: "设置考试名称，分别选择或输入年、月、日。开启后可在标题栏看到剩余天数。", target: "countdown", settings: "常规"),
         .init(title: "软件更新", text: "在这里检查新版。下载完成后，点击“更新并重启”安装。", target: "updates", settings: "软件更新"),
-        .init(title: "系统权限", text: "取词和截图需要 Mac 授权，可在这里查看并设置。", target: "permissions", settings: "系统权限")
+        .init(title: "系统权限", text: "在这里查看取词和截图权限。更新后若无法授权，可重置对应的旧授权。", target: "permissions", settings: "系统权限")
     ]
     func startTour() { showWindow?(); setTourStep(0) }
     func setTourStep(_ index: Int) {

@@ -29,7 +29,7 @@ public sealed class Preferences
     public bool AutomaticUpdates {get;set;}=true;
     public bool AutomaticUpdateDownloads {get;set;}
     public string UpdateFrequency {get;set;}="daily";
-    public string UpdateSource {get;set;}="auto";
+    public string UpdateSource {get;set;}="ghfast";
     public DateTimeOffset? LastUpdateCheck {get;set;}
     public string? LastPublicVersion {get;set;}
     public DateTimeOffset? LastSuccessfulUpdateCheck {get;set;}
@@ -52,6 +52,7 @@ public sealed class Preferences
         if(result.ExamName.Length>40)result.ExamName=result.ExamName[..40];
         result.ExamDate=result.ExamDate?.Date;
         if(result.StubbornSort is not ("review" or "alphabetical" or "random"))result.StubbornSort="review";
+        if(result.UpdateSource is not ("ghfast" or "auto" or "ghproxy" or "github"))result.UpdateSource="ghfast";
         result.ConfirmedLearnedWords=(result.ConfirmedLearnedWords??[])
             .Where(item=>!string.IsNullOrWhiteSpace(item.Key)&&item.Key.Length<=100&&item.Value!=null)
             .ToDictionary(item=>item.Key,item=>item.Value.Where(UsableWord).Select(word=>word.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),StringComparer.Ordinal);

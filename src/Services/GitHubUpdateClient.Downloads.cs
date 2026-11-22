@@ -16,9 +16,9 @@ public sealed partial class GitHubUpdateClient
 {
     internal static IReadOnlyList<UpdateDownloadSource> DownloadSources {get;}=System.Array.AsReadOnly(new[]
     {
+        new UpdateDownloadSource("ghfast","GHFast","https://ghfast.top/"),
         new UpdateDownloadSource("auto","自动选择",""),
         new UpdateDownloadSource("ghproxy","GH-Proxy","https://gh-proxy.com/"),
-        new UpdateDownloadSource("ghfast","GHFast","https://ghfast.top/"),
         new UpdateDownloadSource("github","GitHub 官方","")
     });
     internal TimeSpan ConnectionTimeout {get;init;}=TimeSpan.FromSeconds(8);
@@ -140,7 +140,7 @@ public sealed partial class GitHubUpdateClient
         return fastest==null?sources:new[]{fastest}.Concat(sources.Where(s=>s.Id!=fastest.Id)).ToArray();
     }
 
-    public async Task<string> DownloadAsync(UpdateAsset asset,string directory,IProgress<DownloadProgress>? progress=null,CancellationToken token=default,string source="auto",IProgress<string>? status=null)
+    public async Task<string> DownloadAsync(UpdateAsset asset,string directory,IProgress<DownloadProgress>? progress=null,CancellationToken token=default,string source="ghfast",IProgress<string>? status=null)
     {
         if(!Regex.IsMatch(asset.Sha256,"^[0-9a-fA-F]{64}$")||Path.GetFileName(asset.Name)!=asset.Name
             ||asset.Name.IndexOfAny(Path.GetInvalidFileNameChars())>=0||asset.Size is <=0 or >MaxPackage||!CanonicalDownload(asset))

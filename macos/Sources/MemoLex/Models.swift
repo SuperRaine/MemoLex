@@ -134,7 +134,7 @@ struct NativeShortcut: Codable, Equatable {
     @Published var automaticUpdates = true
     @Published var automaticDownloads = false
     @Published var updateFrequency = "daily"
-    @Published var updateSource = "auto"
+    @Published var updateSource = MacUpdateSource.fast.rawValue
     @Published var selectedNotepad = ""
     @Published var onboardingCompleted = false
     @Published var shortcuts = NativeShortcut.defaults
@@ -152,7 +152,10 @@ struct NativeShortcut: Codable, Equatable {
         stubbornSort = defaults.string(forKey: "stubbornSort") ?? "review"; if !["review", "alphabetical", "random"].contains(stubbornSort) { stubbornSort = "review" }
         alphabetDescending = bool("alphabetDescending"); concealMeanings = bool("concealMeanings")
         automaticUpdates = bool("automaticUpdates", true); automaticDownloads = bool("automaticDownloads")
-        updateFrequency = defaults.string(forKey: "updateFrequency") ?? "daily"; updateSource = defaults.string(forKey: "updateSource") ?? "auto"
+        updateFrequency = defaults.string(forKey: "updateFrequency") ?? "daily"
+        if let savedSource = defaults.string(forKey: "updateSource"), let source = MacUpdateSource(rawValue: savedSource) {
+            updateSource = source.rawValue
+        }
         selectedNotepad = defaults.string(forKey: "selectedNotepad") ?? ""; onboardingCompleted = bool("onboardingCompleted")
         if let data = defaults.data(forKey: "shortcuts"), let saved = try? JSONDecoder().decode([String: NativeShortcut].self, from: data) { shortcuts.merge(saved) { _, new in new } }
     }
@@ -176,7 +179,7 @@ struct NativeShortcut: Codable, Equatable {
 enum AppPaths {
     static let profile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MemoLex", isDirectory: true)
     static var resources: URL { Bundle.main.resourceURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath) }
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.14.0" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.14.1" }
     static let repository = "https://github.com/SuperRaine/MemoLex"
 }
 
