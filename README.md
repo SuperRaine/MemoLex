@@ -12,9 +12,9 @@
 
 | 版本 | 使用方法 |
 | --- | --- |
-| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-Windows-x64-Setup.msi)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
-| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-Windows-x64.zip)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
-| [Mac 安装包](https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-macOS-universal.dmg)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-macOS-universal.dmg)） | 打开后将 `MemoLex` 拖到「应用程序」。 |
+| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-Windows-x64-Setup.msi)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
+| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-Windows-x64.zip)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
+| [Mac 安装包](https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-macOS-universal.dmg)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-macOS-universal.dmg)） | 打开后将 `MemoLex` 拖到「应用程序」。 |
 
 Windows 登录和海词词典需要网页组件，缺少时按提示联网安装即可；Mac 使用系统网页组件。
 
@@ -33,7 +33,7 @@ Windows 登录和海词词典需要网页组件，缺少时按提示联网安装
 
 在搜索框输入英文或中文，按 Enter 查词。需要使用云词本或今日新学时，在「设置 → 墨墨账号」中登录。
 
-内置词库缺少释义时，软件会联网补查并标注来源。
+内置词库缺少释义时，查词页、云词本和顽固单词会联网补查。段落翻译优先使用 DeepL，服务不可用时会切换到 MyMemory。
 
 首次打开可跟随新手引导了解常用功能，也可随时跳过。更多操作见[使用说明](使用说明.md)。
 

@@ -31,7 +31,7 @@ internal sealed class OnlineDictionaryClient : IDisposable
             Timeout = TimeSpan.FromSeconds(3),
             MaxResponseContentBufferSize = 256 * 1024
         };
-        var version = typeof(OnlineDictionaryClient).Assembly.GetName().Version?.ToString(3) ?? "1.15.1";
+        var version = typeof(OnlineDictionaryClient).Assembly.GetName().Version?.ToString(3) ?? "1.16.0";
         _http.DefaultRequestHeaders.UserAgent.ParseAdd($"MemoLex/{version} (https://github.com/SuperRaine/MemoLex)");
     }
 

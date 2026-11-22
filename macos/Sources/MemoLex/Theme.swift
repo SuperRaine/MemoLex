@@ -19,6 +19,30 @@ struct MemoButtonStyle: ButtonStyle {
     }
 }
 
+struct LookupButtonStyle: ButtonStyle {
+    var primary = false
+    var small = false
+    var expands = false
+    var fixedWidth: CGFloat?
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        let fill = primary ? Palette.accent : Palette.wash
+        return configuration.label
+            .font(.system(size: small ? 11 : 12, weight: primary ? .semibold : .regular))
+            .lineLimit(1)
+            .padding(.horizontal, primary ? 15 : 10)
+            .frame(maxWidth: expands ? .infinity : nil)
+            .frame(width: fixedWidth, height: small ? 27 : 34)
+            .foregroundStyle(primary ? Palette.accentInk : Palette.deep)
+            .background(fill.opacity(configuration.isPressed ? 0.76 : 1), in: shape)
+            .overlay(shape.strokeBorder(primary ? Palette.accent : Palette.border, lineWidth: 0.75))
+            .contentShape(shape)
+            .opacity(enabled ? 1 : 0.43)
+    }
+}
+
 struct MemoPicker<Value: Hashable>: View {
     var title: String
     @Binding var selection: Value

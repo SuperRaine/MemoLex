@@ -89,9 +89,9 @@ struct MainView: View {
                     .controlSurface()
                     .tourTarget("search")
                 HStack(spacing: 7) {
-                    Button("段落翻译") { model.enterTranslation() }.buttonStyle(MemoButtonStyle(compact: true)).frame(maxWidth: .infinity)
-                    Button("截图翻译") { model.captureScreen?() }.buttonStyle(MemoButtonStyle(compact: true)).frame(maxWidth: .infinity).tourTarget("screenshot")
-                }
+                    Button("段落翻译") { model.enterTranslation() }
+                    Button("截图翻译") { model.captureScreen?() }.tourTarget("screenshot")
+                }.buttonStyle(LookupButtonStyle(small: true, expands: true))
             }
             VStack(alignment: .leading, spacing: 7) {
                 Text("单词建议").sectionLabel()
@@ -324,8 +324,11 @@ private struct WordPage: View {
         }
     }
     @ViewBuilder private var actions: some View {
-        Button(model.membership ? "✓ 已加入云词本" : "＋ 加入云词本") { Task { await model.toggleMembership() } }.buttonStyle(MemoButtonStyle(accent: true)).disabled(model.word.isEmpty || model.writing)
-        Button(todayLabel) { model.addToday() }.buttonStyle(MemoButtonStyle())
+        let width: CGFloat? = compact ? 118 : nil
+        Button(model.membership ? "✓ 已加入云词本" : "＋ 加入云词本") { Task { await model.toggleMembership() } }
+            .buttonStyle(LookupButtonStyle(primary: true, fixedWidth: width))
+            .disabled(model.word.isEmpty || model.writing)
+        Button(todayLabel) { model.addToday() }.buttonStyle(LookupButtonStyle(fixedWidth: width))
             .disabled(model.word.isEmpty || model.writing || ["AlreadyLearned", "AlreadyToday", "Planned", "Added", "Loading", "Missing"].contains(model.todayStatus))
             .tourTarget("today")
     }
