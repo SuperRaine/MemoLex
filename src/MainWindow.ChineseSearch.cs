@@ -67,8 +67,9 @@ public partial class MainWindow
             var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(145)});body.ColumnDefinitions.Add(new ColumnDefinition());body.ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
             var heading=new TextBlock {Text=item.Word,FontSize=16,FontFamily=new System.Windows.Media.FontFamily("Segoe UI"),Foreground=Brush("#087FAF"),FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,12,0),TextTrimming=TextTrimming.CharacterEllipsis,VerticalAlignment=VerticalAlignment.Center,ToolTip=item.Word};
             body.Children.Add(heading);
-            var meaning=new TextBlock {FontSize=13,LineHeight=22,TextTrimming=TextTrimming.CharacterEllipsis,Foreground=Brush("#4F6D85"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0),ToolTip=item.Meaning};Grid.SetColumn(meaning,1);
-            foreach(var part in TextHighlights.Split(item.MatchedMeaning,new[]{ChineseReverseSearch.Normalize(_chineseQuery)}))
+            var matchedMeaning = item.DisplayMatchedMeaning;
+            var meaning=new TextBlock {FontSize=13,LineHeight=22,TextTrimming=TextTrimming.CharacterEllipsis,Foreground=Brush("#4F6D85"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0),ToolTip=item.DisplayMeaning};Grid.SetColumn(meaning,1);
+            foreach(var part in TextHighlights.Split(matchedMeaning,new[]{ChineseReverseSearch.Normalize(_chineseQuery)}))
                 meaning.Inlines.Add(new Run(part.Text){Background=part.Highlighted?Brush("#E1F4FF"):System.Windows.Media.Brushes.Transparent,FontWeight=part.Highlighted?FontWeights.SemiBold:FontWeights.Normal});
             body.Children.Add(meaning);var kind=new TextBlock {Text=item.Kind,FontSize=10,Foreground=Brush(item.IsExactMatch?"#1688B7":"#99ACBA"),VerticalAlignment=VerticalAlignment.Center};Grid.SetColumn(kind,2);body.Children.Add(kind);
             var row=new Button
@@ -77,7 +78,7 @@ public partial class MainWindow
                 BorderBrush=Brush("#E2EBF3"), Padding=new Thickness(13,8,13,8),
                 Margin=new Thickness(0,0,0,4), ContextMenu=HaiciWordMenu(item.Word)
             };
-            AutomationProperties.SetName(row,$"{item.Word}，{item.MatchedMeaning}");
+            AutomationProperties.SetName(row,$"{item.Word}，{matchedMeaning}");
             row.Click+=async(_,_)=>await LoadWordAsync(item.Word);
             ChineseResultsPanel.Children.Add(row);
         }

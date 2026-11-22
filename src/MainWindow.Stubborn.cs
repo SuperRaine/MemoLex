@@ -40,7 +40,7 @@ public partial class MainWindow
         ApplyStubbornOrder();
     }
 
-    private string StubbornMeaning(string word)=>DictionaryEntry.FormatListMeaning(_dictionary.Lookup(word)?.translation);
+    private string StubbornMeaning(string word)=>_dictionary.Lookup(word)?.DisplayMeaning??"";
     private StubbornSortMode StubbornMode=>_preferences.StubbornSort switch{"alphabetical"=>StubbornSortMode.Alphabetical,"random"=>StubbornSortMode.Random,_=>StubbornSortMode.Review};
     private void ApplyStubbornOrder(bool preserveCurrent=false)
     {

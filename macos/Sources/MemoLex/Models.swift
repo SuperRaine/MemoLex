@@ -67,9 +67,7 @@ struct SavedAccount: Codable, Identifiable, Equatable {
     var identity: String
     var expiresAt: Date?
     var needsLogin = false
-    var credentialID: String? = nil
-
-    var keychainAccount: String { credentialID ?? id }
+    var localCredentialID: UUID? = nil
 
     static func displayIdentity(_ value: String) -> String {
         if value.contains("@") { return value }
@@ -179,7 +177,7 @@ struct NativeShortcut: Codable, Equatable {
 enum AppPaths {
     static let profile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MemoLex", isDirectory: true)
     static var resources: URL { Bundle.main.resourceURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath) }
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.16.0" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.17.0" }
     static let repository = "https://github.com/SuperRaine/MemoLex"
 }
 

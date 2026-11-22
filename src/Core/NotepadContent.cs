@@ -53,7 +53,7 @@ public static class NotepadContent
             if(line.StartsWith('#'))rows.Add(new(line.TrimStart('#').Trim(),"",true));
             else
             {
-                var translation=DictionaryEntry.FormatListMeaning(meaning(line));
+                var translation=DictionaryEntry.FormatDisplayMeaning(meaning(line));
                 rows.Add(new(line,translation));
             }
         }

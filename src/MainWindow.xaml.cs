@@ -1,6 +1,5 @@
 using System.IO;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -233,8 +232,8 @@ public partial class MainWindow : Window
         HaiciButton.IsEnabled=true;
         WordText.ContextMenu=HaiciWordMenu(word);
         var entry = _dictionary.Lookup(word);
-        var localMeaning = entry?.translation ?? "";
-        var hasLocalMeaning = !string.IsNullOrWhiteSpace(localMeaning);
+        var localMeaning = entry?.DisplayMeaning ?? "";
+        var hasLocalMeaning = localMeaning.Length > 0;
         var lookOnline = !hasLocalMeaning && _allowCloud;
         WordText.Text = entry?.word ?? word;
         PhoneticText.Text = string.IsNullOrWhiteSpace(entry?.phonetic) ? "" : $"/{entry.phonetic.Trim('/')}/";
@@ -244,6 +243,7 @@ public partial class MainWindow : Window
         FillWordLinks(ExchangeText, exchange, EmptyMatches, word);
         ExchangeCard.Visibility = exchange.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         WordMetaText.Text = hasLocalMeaning ? "内置词库 · 离线可用" : "";
+        WordMetaText.ToolTip = null;
         if (hasLocalMeaning && int.TryParse(entry?.bnc, out var frequency) && frequency > 0) WordMetaText.Text += $"  /  BNC 词频 #{frequency:N0}";
         RenderTags(entry);
         ResultScroll.ScrollToTop();
@@ -285,18 +285,8 @@ public partial class MainWindow : Window
         StatusText.Text = definition == null ? "暂未找到中文释义。" : "已补充联网释义。";
         if (definition == null) return;
 
-        WordMetaText.Text = "联网翻译 · " + definition.Provider;
-        if (!Uri.TryCreate(definition.SourceUrl, UriKind.Absolute, out var source)) return;
-        var link = new Hyperlink(new Run("维基词典译文")) { NavigateUri = source, ToolTip = "查看原词条（CC BY-SA 4.0）" };
-        link.RequestNavigate += (_, args) =>
-        {
-            try { Process.Start(new ProcessStartInfo(args.Uri.AbsoluteUri) { UseShellExecute = true }); }
-            catch (Win32Exception) { StatusText.Text = "暂时无法打开浏览器。"; }
-            args.Handled = true;
-        };
-        WordMetaText.Inlines.Clear();
-        WordMetaText.Inlines.Add(link);
-        WordMetaText.Inlines.Add(new Run(" · " + definition.Provider));
+        WordMetaText.Text = definition.SourceLabel;
+        WordMetaText.ToolTip = definition.SourceAttribution;
     }
 
     private Task LoadNotesAsync(string word,CancellationToken cancellation)=>LoadLocalAndCloudNotesAsync(word,cancellation);

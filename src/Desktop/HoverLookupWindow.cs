@@ -52,7 +52,8 @@ internal sealed class HoverLookupWindow : Window
     {
         _currentWord=entry.word;_word.Text=entry.word;
         _pronunciation.Text=entry.word.Equals(hit.Word,StringComparison.OrdinalIgnoreCase)?(entry.phonetic.Length>0?entry.phonetic+" · ":"")+"离线释义 · "+hit.Method:"未找到 “"+hit.Word+"”，相近单词："+entry.word+" · 离线释义";
-        _meaning.Text=entry.translation.Length<=600?entry.translation:entry.translation[..600]+"…";
+        var meaning = entry.DisplayMeaning;
+        _meaning.Text = meaning.Length <= 600 ? meaning : meaning[..600] + "…";
         _mnemonic.Text=notes.FirstOrDefault()?.Text??"";if(_mnemonic.Text.Length>280)_mnemonic.Text=_mnemonic.Text[..280]+"…";
         _mnemonic.Visibility=_mnemonic.Text.Length>0?Visibility.Visible:Visibility.Collapsed;
     }

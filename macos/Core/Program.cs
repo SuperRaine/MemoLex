@@ -135,10 +135,14 @@ internal sealed class CoreService : IDisposable
         {
             case "initialize": return new { version = typeof(CoreService).Assembly.GetName().Version?.ToString(3), wordCount = _dictionary.Count, localMnemonicCount = _notes.BundledCount, warning = _notes.LoadWarning, mnemonicTypes = MnemonicTypes.All, translationProvider = _translation.PreferredProvider };
             case "dictionary.lookup":
+            {
                 word = ExampleText.ResolveLookupWord(word, candidate => _dictionary.Lookup(candidate) != null);
-                return new { entry = _dictionary.Lookup(word), word, notes = _notes.Get(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24) };
+                var entry = _dictionary.Lookup(word);
+                if (entry != null) entry.translation = entry.DisplayMeaning;
+                return new { entry, word, notes = _notes.Get(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24) };
+            }
             case "dictionary.online":
-                return string.IsNullOrWhiteSpace(_dictionary.Lookup(word)?.translation)
+                return string.IsNullOrEmpty(_dictionary.Lookup(word)?.DisplayMeaning)
                     ? await _onlineDictionary.LookupAsync(word, cancellation) : null;
             case "dictionary.suggest": return _dictionary.Suggest(word, 30);
             case "dictionary.related": return await _related.LookupAsync(word, cancellation);

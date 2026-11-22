@@ -128,6 +128,7 @@ internal sealed class RelatedPhrases(LocalDictionary dictionary)
             described.Add((new RelatedWord(entry!.word,meaning),item.Match,item.Particle,meaning.TrimStart().StartsWith('[')?1:0,item.Start,item.Tokens,item.Length));
         }
         return described.OrderBy(item=>item.Match).ThenBy(item=>CommonIdioms.Contains(item.Phrase.Word)?0:1).ThenBy(item=>item.Particle).ThenBy(item=>item.Technical).ThenBy(item=>item.Start).ThenBy(item=>item.Tokens).ThenBy(item=>item.Length)
-            .ThenBy(item=>item.Phrase.Word,StringComparer.OrdinalIgnoreCase).Take(24).Select(item=>item.Phrase).ToArray();
+            .ThenBy(item=>item.Phrase.Word,StringComparer.OrdinalIgnoreCase).Take(24)
+            .Select(item => item.Phrase with { Meaning = DictionaryEntry.FormatDisplayMeaning(item.Phrase.Meaning) }).ToArray();
     }
 }

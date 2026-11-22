@@ -10,7 +10,13 @@ public sealed class DictionaryEntry
 {
     private const string PartOfSpeech = @"(?:adj|adv|prep|pron|conj|interj|int|n|v|vt|vi|aux|art|det|num|a|ad|s|abbr|pref|suf|comb|vbl|phr|un|na|pl|pp)\.";
     private static readonly Regex ListPartOfSpeech = new(
-        $@"^{PartOfSpeech}(?:\s*[/&,]\s*{PartOfSpeech})*(?![a-z])",
+        $@"^{PartOfSpeech}(?:(?:\s*[/&,]\s*|\s+){PartOfSpeech})*(?![a-z])",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex PartOfSpeechSeparators = new(@"\s*[/&,]\s*|\s+");
+    private static readonly Regex MeaningWhitespace = new(@"\s+");
+    // Keep punctuation that spells an English word or represents part of a number.
+    private static readonly Regex MeaningPunctuation = new(
+        @"(?<token>(?<=[a-z])['’.-](?=[a-z])|(?<=\d)[,./:](?=\d)|(?<=\d)%)|(?<separator>[,，、.。．:：/／!?！？])|(?<label>[\[\]［］【】·])|\p{P}",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private string _translation = "";
@@ -32,7 +38,9 @@ public sealed class DictionaryEntry
     }
     internal static string NormalizeMeaning(string? value) => value?.Replace(';', '；') ?? "";
 
-    internal static string FormatListMeaning(string? value)
+    internal string DisplayMeaning => FormatDisplayMeaning(translation);
+
+    internal static string FormatDisplayMeaning(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return "";
 
@@ -40,24 +48,29 @@ public sealed class DictionaryEntry
             .Split(['\r', '\n', ';', '；'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var result = new StringBuilder();
         string? partOfSpeech = null;
-        var lineHasMeaning = false;
+        string? displayedPartOfSpeech = null;
         foreach (var sense in senses)
         {
             var label = ListPartOfSpeech.Match(sense);
-            if (label.Success && !string.Equals(label.Value, partOfSpeech, StringComparison.OrdinalIgnoreCase))
+            if (label.Success) partOfSpeech = PartOfSpeechSeparators.Replace(label.Value, " ");
+            var text = MeaningPunctuation.Replace(sense[label.Length..], match =>
+            {
+                if (match.Groups["token"].Success) return match.Value;
+                if (match.Groups["separator"].Success) return "；";
+                return match.Groups["label"].Success ? " " : "";
+            });
+            var meanings = MeaningWhitespace.Replace(text, " ")
+                .Split('；', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (meanings.Length == 0) continue;
+
+            if (!string.Equals(partOfSpeech, displayedPartOfSpeech, StringComparison.OrdinalIgnoreCase))
             {
                 if (result.Length > 0) result.Append('\n');
-                partOfSpeech = label.Value;
-                result.Append(partOfSpeech);
-                lineHasMeaning = false;
+                result.Append(partOfSpeech).Append(' ');
+                displayedPartOfSpeech = partOfSpeech;
             }
-
-            var meaning = sense[label.Length..].TrimStart();
-            if (meaning.Length == 0) continue;
-            if (lineHasMeaning) result.Append('；');
-            else if (partOfSpeech != null) result.Append(' ');
-            result.Append(meaning);
-            lineHasMeaning = true;
+            else if (result.Length > 0) result.Append('；');
+            result.AppendJoin('；', meanings);
         }
         return result.ToString();
     }

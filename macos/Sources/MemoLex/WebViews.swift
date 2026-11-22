@@ -47,10 +47,16 @@ import WebKit
     }
     func retry() {
         guard completion == nil else { return }
+        browser.stopLoading()
         identity = ""
         showsLoginForm = false
         status = "正在打开墨墨官方登录页…"
-        browser.load(URLRequest(url: startURL))
+        browser.configuration.websiteDataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { [weak self] in
+            Task { @MainActor in
+                guard let self, self.model.showLogin else { return }
+                self.browser.load(URLRequest(url: self.startURL))
+            }
+        }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
@@ -149,7 +155,8 @@ struct LoginView: View {
     var body: some View {
         VStack(spacing: 0) {
             DialogHeader(title: "登录墨墨官方账号") { model.showLogin = false }
-            Text("墨墨官方登录 · https://accounts.maimemo.com").font(.system(size: 12)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading).padding(14)
+            Text(model.loginTarget.map { "请使用 \($0.displayName) 登录墨墨" } ?? "墨墨官方登录 · https://accounts.maimemo.com")
+                .font(.system(size: 12)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading).padding(14)
             ZStack {
                 BrowserHost(browser: login.browser, hidden: !login.showsLoginForm)
                 if !login.showsLoginForm { Text(login.status).foregroundStyle(.secondary) }

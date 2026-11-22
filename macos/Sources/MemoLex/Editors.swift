@@ -142,7 +142,6 @@ struct StubbornView: View {
             }
     }
     private var stubbornStatus: String {
-        if model.keychainAuthorizationNeeded { return "在账号设置中授权钥匙串后，即可刷新顽固单词。" }
         if !model.canBrowseStubborn { return "登录墨墨账号后可查看顽固单词。" }
         if !model.loggedIn { return "可点击缓存中的单词查词。登录墨墨账号后可刷新列表。" }
         if !model.stubbornHint.isEmpty { return model.stubbornHint }

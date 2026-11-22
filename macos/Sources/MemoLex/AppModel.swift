@@ -50,7 +50,6 @@ struct Notice: Identifiable {
     @Published var activeAccountID = ""
     @Published var loggedIn = false
     @Published var accountStatus = "未登录"
-    @Published private(set) var keychainAuthorizationNeeded = false
     @Published var showLogin = false
     @Published var loginTarget: SavedAccount?
     @Published var notepads: [J] = []
@@ -91,6 +90,7 @@ struct Notice: Identifiable {
     private var suggestionTask: Task<Void, Never>?
     private var lookupTask: Task<Void, Never>?
     private var accountTask: Task<Void, Never>?
+    private var savingLogin = false
     private var preferencesObserver: AnyCancellable?
     private var preferencesSave: Task<Void, Never>?
     private var lastStubbornFetch: Date?
@@ -101,7 +101,11 @@ struct Notice: Identifiable {
     private let speaker = AVSpeechSynthesizer()
 
     init() {
-        accounts = load("accounts.json", as: [SavedAccount].self) ?? []
+        accounts = (load("accounts.json", as: [SavedAccount].self) ?? []).map { saved in
+            var account = saved
+            if account.localCredentialID == nil { account.needsLogin = true }
+            return account
+        }
         history = load("history.json", as: [SearchRecord].self) ?? []
         activeAccountID = UserDefaults.standard.string(forKey: "activeAccount") ?? ""
         core.onUnauthorized = { [weak self] in self?.expireAccount() }
@@ -114,10 +118,10 @@ struct Notice: Identifiable {
     var canBrowseStubborn: Bool { loggedIn || stubbornSnapshot != nil }
     var showingCachedStubborn: Bool { stubbornSnapshot != nil && (!loggedIn || lastStubbornFetch == nil) }
     var notepadConnectionHint: String? {
-        if keychainAuthorizationNeeded { return "请在墨墨账号设置中授权钥匙串。" }
-        if activeAccount?.needsLogin == true { return "登录已失效，请重新登录墨墨账号。" }
+        if activeAccount?.needsLogin == true { return "请重新登录墨墨账号。" }
         switch accountStatus {
         case "正在连接": return "正在连接墨墨账号…"
+        case "本机凭证读取失败": return "无法读取本机登录凭证，请在账号设置中重试。"
         case "暂时离线", "连接未完成": return "暂时无法连接墨墨，可稍后刷新云词本。"
         default: return loggedIn ? nil : "登录墨墨账号后即可使用。"
         }
@@ -293,7 +297,7 @@ struct Notice: Identifiable {
     func removeHistory(_ ids: Set<String>) { history.removeAll { ids.contains($0.id) }; save(history, "history.json") }
     func clearHistory() { history = []; save(history, "history.json") }
 
-    func activate(_ id: String, token: String? = nil, verified: Bool = false, authorizeKeychain: Bool = false) async {
+    func activate(_ id: String, verified: Bool = false) async {
         guard let account = accounts.first(where: { $0.id == id }) else { return }
         accountVersion += 1
         let generation = accountVersion
@@ -308,16 +312,15 @@ struct Notice: Identifiable {
                snapshot.total >= snapshot.words.count {
                 installStubborn(snapshot)
             }
-            if account.needsLogin || (account.expiresAt.map { $0 <= Date() } ?? false) {
-                if !account.needsLogin { expireAccount() }
-                else { accountStatus = "请重新登录"; try await core.setAccount(token: nil) }
+            guard let credentialID = account.localCredentialID, !account.needsLogin else {
+                accountStatus = "请重新登录"
+                await clearWorkerAccount(generation)
                 return
             }
-            let credential: String?
-            if let token { credential = token }
-            else { credential = try await CredentialVault.shared.read(account.keychainAccount, allowPrompt: authorizeKeychain) }
+            if let expiry = account.expiresAt, expiry <= Date() { expireAccount(); return }
+            let credential = try await CredentialVault.shared.read(credentialID)
             guard generation == accountVersion else { return }
-            guard let credential else { expireAccount(); return }
+            guard let credential else { expireAccount(missingCredential: true); return }
             try await core.setAccount(token: credential)
             guard generation == accountVersion else { return }
             loggedIn = true
@@ -331,9 +334,9 @@ struct Notice: Identifiable {
             checkAccountConnection(generation, verified: verified)
         } catch {
             guard generation == accountVersion else { return }
-            if let failure = error as? CoreFailure, failure.code == "keychain" {
-                keychainAuthorizationNeeded = true
-                accountStatus = "需要授权钥匙串"
+            if error is CredentialStoreError {
+                accountStatus = "本机凭证读取失败"
+                status = error.localizedDescription
                 await clearWorkerAccount(generation)
                 return
             }
@@ -365,27 +368,46 @@ struct Notice: Identifiable {
     func finishLogin(_ authorization: J, identity: String, fromOfficialPage: Bool = false) async throws {
         let token = authorization["token"].text
         guard !token.isEmpty else { throw CoreFailure(code: "login", message: "未能获取登录信息，请重新登录。") }
+        guard !savingLogin else { throw CoreFailure(code: "login", message: "正在保存墨墨账号，请稍候。") }
+        savingLogin = true
+        defer { savingLogin = false }
+        let targetID = fromOfficialPage ? loginTarget?.id : nil
         if !fromOfficialPage { _ = try await core.request("login.validate", ["token": .string(token)]) }
         let identity = identity.trimmed.lowercased()
-        let sameIdentity = identity.isEmpty ? nil : accounts.first { $0.identity == identity }
         var sameCredential: SavedAccount?
         for account in accounts where !account.needsLogin {
             try Task.checkCancellation()
-            if (try? await CredentialVault.shared.read(account.keychainAccount)) == token {
+            if let credentialID = account.localCredentialID,
+               (try? await CredentialVault.shared.read(credentialID)) == token {
                 sameCredential = account
                 break
             }
         }
         try Task.checkCancellation()
-        if let sameCredential, !sameCredential.identity.isEmpty, !identity.isEmpty, sameCredential.identity != identity {
-            throw CoreFailure(code: "login", message: "本次授权属于另一个已保存账号，请重新登录对应账号。")
+        let sameIdentity = identity.isEmpty ? nil : accounts.first { $0.identity == identity }
+        let matched = sameIdentity ?? sameCredential
+        let target = targetID.flatMap { id in accounts.first { $0.id == id } }
+        if let sameCredential, let sameIdentity, sameCredential.id != sameIdentity.id {
+            throw CoreFailure(code: "login", message: "本次登录与另一个已保存的账号冲突，请重新登录对应账号。")
         }
-        let existing = sameIdentity ?? sameCredential
+        if let sameCredential, !sameCredential.identity.isEmpty, !identity.isEmpty, sameCredential.identity != identity {
+            throw CoreFailure(code: "login", message: "本次登录与另一个已保存的账号冲突，请重新登录对应账号。")
+        }
+        if targetID != nil {
+            guard let target else { throw CoreFailure(code: "login", message: "原账号已移除，请重新添加账号。") }
+            if let matched, matched.id != target.id {
+                throw CoreFailure(code: "login", message: "当前登录的墨墨账号与所选账号不同，请重新登录对应账号。")
+            }
+            if matched == nil, !target.identity.isEmpty {
+                throw CoreFailure(code: "login", message: "暂时无法确认是所选账号，请使用该账号重新登录。")
+            }
+        }
+        let existing = matched ?? target
         let id = existing?.id ?? UUID().uuidString
-        let credentialID = UUID().uuidString
+        let credentialID = UUID()
         try await CredentialVault.shared.add(token, account: credentialID)
         if Task.isCancelled {
-            await CredentialVault.shared.remove(credentialID)
+            try? await CredentialVault.shared.remove(credentialID)
             throw CancellationError()
         }
         let resolvedIdentity = identity.isEmpty ? (existing?.identity ?? "") : identity
@@ -397,19 +419,24 @@ struct Notice: Identifiable {
             name = resolvedIdentity.isEmpty ? "墨墨账号 \(accounts.count + 1)" : SavedAccount.displayIdentity(resolvedIdentity)
         }
         let account = SavedAccount(id: id, name: name, identity: resolvedIdentity,
-                                   expiresAt: parseISODate(authorization["expiresAt"].text), credentialID: credentialID)
+                                   expiresAt: parseISODate(authorization["expiresAt"].text), localCredentialID: credentialID)
         var updatedAccounts = accounts
         if let index = updatedAccounts.firstIndex(where: { $0.id == id }) { updatedAccounts[index] = account }
+        else if existing != nil {
+            try? await CredentialVault.shared.remove(credentialID)
+            throw CoreFailure(code: "login", message: "原账号已移除，请重新添加账号。")
+        }
         else { updatedAccounts.append(account) }
         do { try writeProfile(updatedAccounts, "accounts.json") }
         catch {
-            await CredentialVault.shared.remove(credentialID)
-            throw CoreFailure(code: "keychain", message: "无法保存账号，请检查本机资料目录后重试。")
+            try? await CredentialVault.shared.remove(credentialID)
+            throw CredentialStoreError.save
         }
         accounts = updatedAccounts
+        loginTarget = nil
         showLogin = false
-        if let existing { Task { await CredentialVault.shared.remove(existing.keychainAccount) } }
-        Task { await activate(id, token: token, verified: !fromOfficialPage) }
+        if let previous = existing?.localCredentialID { Task { try? await CredentialVault.shared.remove(previous) } }
+        Task { await activate(id, verified: !fromOfficialPage) }
     }
     func logout() async {
         accountVersion += 1
@@ -422,20 +449,21 @@ struct Notice: Identifiable {
         UserDefaults.standard.removeObject(forKey: "activeAccount")
         await clearWorkerAccount(generation)
     }
-    func expireAccount() {
+    func expireAccount(missingCredential: Bool = false) {
         guard let index = accounts.firstIndex(where: { $0.id == activeAccountID }), !accounts[index].needsLogin else { return }
-        let keychainAccount = accounts[index].keychainAccount
+        let credentialID = accounts[index].localCredentialID
         accounts[index].needsLogin = true
-        Task { await CredentialVault.shared.remove(keychainAccount) }
+        if let credentialID, !missingCredential { Task { try? await CredentialVault.shared.remove(credentialID) } }
         save(accounts, "accounts.json")
         accountVersion += 1
         let generation = accountVersion
         accountTask?.cancel()
         loggedIn = false
-        accountStatus = "登录已失效"
+        accountStatus = missingCredential ? "请重新登录" : "登录已失效"
         clearCloudState(keepStubborn: true)
         Task { await clearWorkerAccount(generation) }
-        notice = .init(title: "墨墨登录已失效", message: "请重新登录或导入有效的墨墨 API 授权。登录后，云词本和顽固单词会自动刷新。", confirm: "账号设置", action: { [weak self] in self?.openAccountSettings() })
+        let title = missingCredential ? "请重新登录墨墨账号" : "墨墨登录已失效"
+        notice = .init(title: title, message: "请重新登录或导入有效的墨墨 API 授权。登录后，云词本和顽固单词会自动刷新。", confirm: "账号设置", action: { [weak self] in self?.openAccountSettings() })
     }
     private func clearWorkerAccount(_ generation: Int) async {
         guard generation == accountVersion else { return }
@@ -459,16 +487,19 @@ struct Notice: Identifiable {
     }
     func removeAccount(_ id: String) async {
         guard let account = accounts.first(where: { $0.id == id }) else { return }
-        if activeAccountID == id { await logout() }
+        if let credentialID = account.localCredentialID {
+            do { try await CredentialVault.shared.remove(credentialID) }
+            catch { fail(error); return }
+        }
+        guard accounts.contains(where: { $0.id == id && $0.localCredentialID == account.localCredentialID }) else { return }
         accounts.removeAll { $0.id == id }
         save(accounts, "accounts.json")
-        await CredentialVault.shared.remove(account.keychainAccount)
         if let name = stubbornCacheName(id) { try? FileManager.default.removeItem(at: AppPaths.profile.appendingPathComponent(name)) }
+        if activeAccountID == id { await logout() }
     }
     private func clearCloudState(keepStubborn: Bool = false) {
         core.invalidateAccount()
         if sheet == .notepad { sheet = nil }
-        keychainAuthorizationNeeded = false
         notes = []; notepads = []; selectedPad = .null; notebookRows = []; notebookLoading = false
         membership = false; todayStatus = ""; writing = false
         stubbornTask?.cancel(); stubbornTask = nil; stubbornLoading = false

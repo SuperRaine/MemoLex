@@ -7,7 +7,12 @@ using MemoLex.Core;
 
 namespace MemoLex.Services;
 
-internal sealed record OnlineDefinition(string Meaning, string? SourceUrl, string Provider);
+internal sealed record OnlineDefinition(string Meaning, string? SourceUrl, string Provider)
+{
+    public string SourceLabel => (SourceUrl == null ? "联网翻译" : "维基词典译文") + " · " + Provider;
+
+    public string? SourceAttribution => SourceUrl == null ? null : $"维基词典（CC BY-SA 4.0）\n{SourceUrl}";
+}
 
 internal sealed class OnlineDictionaryClient : IDisposable
 {
@@ -31,7 +36,7 @@ internal sealed class OnlineDictionaryClient : IDisposable
             Timeout = TimeSpan.FromSeconds(3),
             MaxResponseContentBufferSize = 256 * 1024
         };
-        var version = typeof(OnlineDictionaryClient).Assembly.GetName().Version?.ToString(3) ?? "1.16.0";
+        var version = typeof(OnlineDictionaryClient).Assembly.GetName().Version?.ToString(3) ?? "1.17.0";
         _http.DefaultRequestHeaders.UserAgent.ParseAdd($"MemoLex/{version} (https://github.com/SuperRaine/MemoLex)");
     }
 
@@ -82,7 +87,7 @@ internal sealed class OnlineDictionaryClient : IDisposable
             var lines = translated.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (senses.Count == lines.Length && senses.Count > 0)
                 translated = string.Join('\n', lines.Select((line, index) => (senses[index].PartOfSpeech + " " + line).TrimStart()));
-            translated = DictionaryEntry.FormatListMeaning(translated);
+            translated = DictionaryEntry.FormatDisplayMeaning(translated);
             var source = senses.Count == 0 ? null : Wiki + "wiki/" + Uri.EscapeDataString(title.Replace(' ', '_')) + "#English";
             var definition = new OnlineDefinition(translated, source, result.Provider);
             if (_cache.Count >= 256 && _cache.Keys.FirstOrDefault() is { } previous) _cache.TryRemove(previous, out _);

@@ -1,61 +1,86 @@
+import Darwin
 import Foundation
-import Security
+
+enum CredentialStoreError: LocalizedError {
+    case read, save, remove
+
+    var errorDescription: String? {
+        switch self {
+        case .read: return "无法读取本机登录凭证，请检查本机资料目录后重试。"
+        case .save: return "无法保存本机登录凭证，请检查本机资料目录后重试。"
+        case .remove: return "无法移除本机登录凭证，请检查本机资料目录后重试。"
+        }
+    }
+}
 
 actor CredentialVault {
-    static let shared = CredentialVault()
-    private let service = "com.superraine.MemoLex.accounts"
+    static let shared = CredentialVault(profile: AppPaths.profile)
+    private static let maximumTokenBytes = 4096
+    private let directory: URL
 
-    func read(_ account: String, allowPrompt: Bool = false) throws -> String? {
-        try withInteraction(allowed: allowPrompt) {
-            var query = attributes(account)
-            query[kSecReturnData as String] = true
-            query[kSecMatchLimit as String] = kSecMatchLimitOne
-            var result: CFTypeRef?
-            let status = SecItemCopyMatching(query as CFDictionary, &result)
-            if status == errSecItemNotFound { return nil }
-            guard status == errSecSuccess, let data = result as? Data,
-                  let token = String(data: data, encoding: .utf8), !token.isEmpty else {
-                throw CoreFailure(code: "keychain", message: "请在账号设置中授权钥匙串，或重新登录墨墨账号。")
-            }
-            return token
+    init(profile: URL) {
+        directory = profile.appendingPathComponent("credentials", isDirectory: true)
+    }
+
+    func read(_ account: UUID) throws -> String? {
+        guard let folder = try openDirectory(onError: .read) else { return nil }
+        defer { close(folder) }
+        let descriptor = openat(folder, account.uuidString, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        if descriptor < 0 && errno == ENOENT { return nil }
+        guard descriptor >= 0 else { throw CredentialStoreError.read }
+        let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? file.close() }
+
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_uid == geteuid(),
+              info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG), info.st_mode & 0o777 == 0o600,
+              info.st_size > 0, info.st_size <= Self.maximumTokenBytes,
+              let data = try? file.read(upToCount: Self.maximumTokenBytes + 1), data.count == info.st_size,
+              let token = String(data: data, encoding: .utf8), !token.isEmpty
+        else { throw CredentialStoreError.read }
+        return token
+    }
+
+    func add(_ token: String, account: UUID) throws {
+        let data = Data(token.utf8)
+        guard !data.isEmpty, data.count <= Self.maximumTokenBytes else { throw CredentialStoreError.save }
+        do {
+            try FileManager.default.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+        } catch { throw CredentialStoreError.save }
+        guard mkdir(directory.path, 0o700) == 0 || errno == EEXIST,
+              let folder = try openDirectory(onError: .save)
+        else { throw CredentialStoreError.save }
+        defer { close(folder) }
+
+        let descriptor = openat(folder, account.uuidString, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode_t(0o600))
+        guard descriptor >= 0 else { throw CredentialStoreError.save }
+        let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        // The account index is updated only after the new credential is fully written.
+        do {
+            try file.write(contentsOf: data)
+            try file.synchronize()
+            try file.close()
+        } catch {
+            unlinkat(folder, account.uuidString, 0)
+            throw CredentialStoreError.save
         }
     }
 
-    func add(_ token: String, account: String) throws {
-        try withInteraction(allowed: false) {
-            var query = attributes(account)
-            query[kSecValueData as String] = Data(token.utf8)
-            query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            query[kSecAttrLabel as String] = "墨墨搜词登录信息"
-            guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else {
-                throw CoreFailure(code: "keychain", message: "无法保存登录信息。请在「钥匙串访问」中解锁登录钥匙串，再试一次。")
-            }
+    func remove(_ account: UUID) throws {
+        guard let folder = try openDirectory(onError: .remove) else { return }
+        defer { close(folder) }
+        guard unlinkat(folder, account.uuidString, 0) == 0 || errno == ENOENT else { throw CredentialStoreError.remove }
+    }
+
+    private func openDirectory(onError error: CredentialStoreError) throws -> Int32? {
+        let descriptor = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        if descriptor < 0 && errno == ENOENT { return nil }
+        guard descriptor >= 0 else { throw error }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_uid == geteuid(), info.st_mode & 0o777 == 0o700 else {
+            close(descriptor)
+            throw error
         }
-    }
-
-    func remove(_ account: String) {
-        try? withInteraction(allowed: false) { _ = SecItemDelete(attributes(account) as CFDictionary) }
-    }
-
-    func removeAll() {
-        try? withInteraction(allowed: false) { _ = SecItemDelete(attributes(nil) as CFDictionary) }
-    }
-
-    private func attributes(_ account: String?) -> [String: Any] {
-        var attributes: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
-        attributes[kSecAttrAccount as String] = account
-        return attributes
-    }
-
-    private func withInteraction<Value>(allowed: Bool, _ request: () throws -> Value) throws -> Value {
-        // Existing items live in the file-based login keychain. Its ACL prompts use this
-        // process-wide setting, so all vault operations run serially on this actor.
-        var previous = DarwinBoolean(true)
-        guard SecKeychainGetUserInteractionAllowed(&previous) == errSecSuccess,
-              SecKeychainSetUserInteractionAllowed(allowed) == errSecSuccess else {
-            throw CoreFailure(code: "keychain", message: "暂时无法访问登录钥匙串，请在账号设置中重试。")
-        }
-        defer { _ = SecKeychainSetUserInteractionAllowed(previous.boolValue) }
-        return try request()
+        return descriptor
     }
 }

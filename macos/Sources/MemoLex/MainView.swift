@@ -303,12 +303,9 @@ private struct WordPage: View {
             Text("内置词库 · 离线可用" + (model.entry["bnc"].text.isEmpty ? "" : "  /  BNC 词频 #\(model.entry["bnc"].text)"))
                 .foregroundStyle(Palette.muted)
         } else if model.onlineDefinition != .null {
-            if let source = URL(string: model.onlineDefinition["sourceUrl"].text), source.scheme == "https" {
-                Link("维基词典译文 · " + model.onlineDefinition["provider"].text, destination: source).foregroundStyle(Palette.deep)
-                    .help("查看原词条（CC BY-SA 4.0）")
-            } else {
-                Text("联网翻译 · " + model.onlineDefinition["provider"].text).foregroundStyle(Palette.muted)
-            }
+            let label = Text(verbatim: model.onlineDefinition["sourceLabel"].text).foregroundStyle(Palette.muted)
+            let attribution = model.onlineDefinition["sourceAttribution"].text
+            if attribution.isEmpty { label } else { label.help(attribution) }
         }
     }
     private var wordTags: some View {
@@ -409,7 +406,7 @@ private struct ChinesePage: View {
                             HStack(alignment: .top, spacing: 15) {
                                 Text(row["word"].text).font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(Palette.deep).frame(width: 138, alignment: .leading)
-                                Text(row["meaning"].text.decodedLines).font(.system(size: 12))
+                                Text(row["displayMeaning"].text).font(.system(size: 12))
                                     .lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .padding(.horizontal, 14).padding(.vertical, 10)

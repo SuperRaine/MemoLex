@@ -12,6 +12,8 @@ public sealed record ChineseSearchResult(string Word,string Meaning,string Match
     public bool IsExactMatch {get;init;}
     public string Source {get;init;}="ecdict";
     public bool IsPreferredSource=>Source=="local-brief";
+    public string DisplayMeaning => DictionaryEntry.FormatDisplayMeaning(Meaning);
+    public string DisplayMatchedMeaning => DictionaryEntry.FormatDisplayMeaning(MatchedMeaning);
     public override string ToString()=>Word;
 }
 public sealed record ChineseSearchPage(string Query,IReadOnlyList<ChineseSearchResult> Items,int Total);

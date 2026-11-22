@@ -11,7 +11,7 @@
         <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="7" GlassFrameThickness="0" CornerRadius="12" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
     <Window.Resources>
-        <DataTemplate DataType="{x:Type core:ChineseSearchResult}"><StackPanel><TextBlock Text="{Binding Word}" FontSize="14" Foreground="#087FAF" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding MatchedMeaning}" FontFamily="Microsoft YaHei UI" FontSize="10" Foreground="#8AA0B3" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/></StackPanel></DataTemplate>
+        <DataTemplate DataType="{x:Type core:ChineseSearchResult}"><StackPanel><TextBlock Text="{Binding Word}" FontSize="14" Foreground="#087FAF" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding DisplayMatchedMeaning}" FontFamily="Microsoft YaHei UI" FontSize="10" Foreground="#8AA0B3" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/></StackPanel></DataTemplate>
         <Style x:Key="StubbornWordButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
                 <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5" Padding="{TemplateBinding Padding}">
@@ -120,15 +120,12 @@
                                         <TextBlock x:Name="DefinitionText" Text="在左侧输入单词，即可查看释义。" FontSize="17" LineHeight="31" TextWrapping="Wrap"/>
                                         <Border x:Name="ExchangeCard" Background="#F3F9FE" CornerRadius="9" Padding="13,10" Margin="0,23,0,0"><TextBlock x:Name="ExchangeText" FontSize="12" LineHeight="25" TextWrapping="Wrap" Foreground="#718EA5"/></Border>
                                         <StackPanel x:Name="RelatedSection" Margin="0,16,0,0">
-                                          <Grid x:Name="RelationsHeader"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <WrapPanel>
-                                              <ToggleButton x:Name="SynonymsToggle" Content="近义词" Style="{StaticResource RelationToggle}" Checked="RelationsExpansion_Changed" Unchecked="RelationsExpansion_Changed"/>
-                                              <ToggleButton x:Name="SimilarToggle" Content="形近词" Style="{StaticResource RelationToggle}" Checked="RelationsExpansion_Changed" Unchecked="RelationsExpansion_Changed"/>
-                                              <ToggleButton x:Name="DerivativesToggle" Content="派生词" Style="{StaticResource RelationToggle}" Checked="RelationsExpansion_Changed" Unchecked="RelationsExpansion_Changed"/>
-                                              <ToggleButton x:Name="PhrasesToggle" Content="常用短语" Style="{StaticResource RelationToggle}" Checked="RelationsExpansion_Changed" Unchecked="RelationsExpansion_Changed" ToolTip="显示常用固定短语、动词短语和介词搭配，排除普通名词组合。包含词形变化，最多显示 24 条；点击可查看完整释义。"/>
-                                            </WrapPanel>
-                                            <TextBlock x:Name="RelatedHintText" Grid.Column="1" Text="离线词库" FontSize="10" Foreground="#8CA3B5" VerticalAlignment="Center" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" ToolTip="近义词与派生关系来自 WordNet。形近词按拼写相似度列出，短语释义来自内置词库。"/>
-                                          </Grid>
+                                          <WrapPanel>
+                                            <ToggleButton x:Name="SynonymsToggle" Content="近义词" Style="{StaticResource RelationToggle}" Checked="RelationsExpansion_Changed" Unchecked="RelationsExpansion_Changed"/>
+                                            <ToggleButton x:Name="SimilarToggle" Content="形近词" Style="{StaticResource RelationToggle}" Checked="RelationsExpansion_Changed" Unchecked="RelationsExpansion_Changed"/>
+                                            <ToggleButton x:Name="DerivativesToggle" Content="派生词" Style="{StaticResource RelationToggle}" Checked="RelationsExpansion_Changed" Unchecked="RelationsExpansion_Changed"/>
+                                            <ToggleButton x:Name="PhrasesToggle" Content="常用短语" Style="{StaticResource RelationToggle}" Checked="RelationsExpansion_Changed" Unchecked="RelationsExpansion_Changed" ToolTip="显示常用固定短语、动词短语和介词搭配，排除普通名词组合。包含词形变化，最多显示 24 条；点击可查看完整释义。"/>
+                                          </WrapPanel>
                                           <Border Style="{StaticResource RelationDetails}" DataContext="{Binding ElementName=SynonymsToggle}"><StackPanel><TextBlock Text="近义词" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="SynonymsPanel"/></StackPanel></Border>
                                           <Border Style="{StaticResource RelationDetails}" DataContext="{Binding ElementName=SimilarToggle}"><StackPanel><TextBlock Text="形近词" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="SimilarPanel"/></StackPanel></Border>
                                           <Border Style="{StaticResource RelationDetails}" DataContext="{Binding ElementName=DerivativesToggle}"><StackPanel><TextBlock Text="派生词" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="DerivativesPanel"/></StackPanel></Border>

@@ -12,9 +12,9 @@
 
 | 版本 | 使用方法 |
 | --- | --- |
-| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-Windows-x64-Setup.msi)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
-| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-Windows-x64.zip)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
-| [Mac 安装包](https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-macOS-universal.dmg)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.16.0/MemoLex-1.16.0-macOS-universal.dmg)） | 打开后将 `MemoLex` 拖到「应用程序」。 |
+| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.17.0/MemoLex-1.17.0-Windows-x64-Setup.msi)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.17.0/MemoLex-1.17.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
+| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.17.0/MemoLex-1.17.0-Windows-x64.zip)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.17.0/MemoLex-1.17.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
+| [Mac 安装包](https://github.com/SuperRaine/MemoLex/releases/download/v1.17.0/MemoLex-1.17.0-macOS-universal.dmg)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.17.0/MemoLex-1.17.0-macOS-universal.dmg)） | 打开后将 `MemoLex` 拖到「应用程序」。 |
 
 Windows 登录和海词词典需要网页组件，缺少时按提示联网安装即可；Mac 使用系统网页组件。
 
@@ -49,4 +49,4 @@ Mac 的首次打开、权限和快捷键说明见 [Mac 使用说明](macos/使�
 
 应用代码采用 [MIT 许可](LICENSE)。词典、词网和助记遵循各自的数据许可，来源及许可说明随软件附带。自行构建请参阅[构建说明](tools/README-release.md)。
 
-联网补查使用[维基词典](https://en.wiktionary.org/)。其中的词义及中文译文遵循 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)，可从词条页的「维基词典译文」打开原文。
+联网补查使用[维基词典](https://en.wiktionary.org/)。其中的词义及中文译文遵循 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)，将鼠标停在词条页的来源文字上可查看原文地址。

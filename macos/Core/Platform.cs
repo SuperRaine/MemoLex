@@ -11,7 +11,7 @@ namespace MemoLex.Core
 
 namespace MemoLex.Services
 {
-    // Credentials are held in the macOS Keychain by the native app. The worker
+    // Credentials are stored locally by the native app. The worker
     // receives only the currently selected credential through its private pipe.
     public sealed class TokenStore
     {
