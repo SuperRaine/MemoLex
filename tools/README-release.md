@@ -5,8 +5,8 @@
 1. 从已解压的便携包复制完整 `app/data` 文件夹到仓库根目录的 `data`，也可构建时通过 `-DataDirectory` 指定其路径。确认 `src/Bootstrapper` 中保留已校验的微软网页组件安装引导程序。
 2. 执行 `powershell -File tools/build_release.ps1`，生成 `dist/MemoLex`。使用 Windows 自带的 .NET Framework 编译启动与卸载入口，将 .NET 8.0.34 和 WPF 运行组件合并到 `app/MemoLex.exe`。
 3. 在仓库根目录执行 `dotnet tool install wix --version 5.0.2 --tool-path .tools/wix`，然后 `.tools/wix/wix.exe extension add WixToolset.UI.wixext/5.0.2`。
-4. 执行 `powershell -File installer/build.ps1 -PayloadDirectory dist/MemoLex -OutputFile dist/MemoLex-1.17.0-Windows-x64-Setup.msi -WixCommand .tools/wix/wix.exe`。
-5. 执行 `python tools/package_portable.py dist/MemoLex dist/MemoLex-1.17.0-Windows-x64.zip`，生成便携包。
+4. 执行 `powershell -File installer/build.ps1 -PayloadDirectory dist/MemoLex -OutputFile dist/MemoLex-1.18.0-Windows-x64-Setup.msi -WixCommand .tools/wix/wix.exe`。
+5. 执行 `python tools/package_portable.py dist/MemoLex dist/MemoLex-1.18.0-Windows-x64.zip`，生成便携包。
 
 安装包与便携包使用同一份文件。主目录仅保留 `MemoLex.exe`、`MemoLex.dll`、`Uninstall.exe` 和 `app` 文件夹。离线词库、助记及许可证均位于 `app`；运行组件首次启动时解压到 `%LOCALAPPDATA%/MemoLex/runtime`。
 

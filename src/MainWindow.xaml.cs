@@ -393,7 +393,6 @@ public partial class MainWindow : Window
             CornerRadius = new CornerRadius(11), Padding = new Thickness(20, 17, 20, 18), Margin = new Thickness(0, 0, 0, 12) });
     }
     private static readonly IReadOnlySet<string> EmptyMatches = new HashSet<string>();
-    private static readonly HashSet<string> PartOfSpeechLabels = new(StringComparer.OrdinalIgnoreCase) { "n", "v", "vt", "vi", "adj", "adv", "prep", "pron", "conj", "art", "aux", "abbr", "pl" };
     private TextBlock BuildSentenceText(string text, IReadOnlySet<string> matches, string sourceWord, double fontSize = 16)
     {
         var block = new TextBlock { TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Segoe UI"), FontSize = fontSize, LineHeight = 28, Foreground = Brush("#426B89") };
@@ -407,7 +406,8 @@ public partial class MainWindow : Window
         for (var index = 0; index < parts.Count; index++)
         {
             var part = parts[index];
-            var isLabel = skipPartOfSpeech && part.LookupWord != null && PartOfSpeechLabels.Contains(part.LookupWord) && index + 1 < parts.Count && parts[index + 1].Text.StartsWith('.');
+            var isLabel = skipPartOfSpeech && part.LookupWord != null && index + 1 < parts.Count
+                && parts[index + 1].Text.StartsWith('.') && DictionaryEntry.IsPartOfSpeechLabel(part.LookupWord);
             if (part.LookupWord == null || isLabel) { block.Inlines.Add(new Run(part.Text)); continue; }
             var word = part.LookupWord;
             var highlighted = matches.Contains(word);

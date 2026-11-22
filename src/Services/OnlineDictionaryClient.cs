@@ -17,8 +17,12 @@ internal sealed record OnlineDefinition(string Meaning, string? SourceUrl, strin
 internal sealed class OnlineDictionaryClient : IDisposable
 {
     private const string Wiki = "https://en.wiktionary.org/";
+    private const int MaximumSenses = 3;
+    private const int GlossCharacterBudget = 420;
     private static readonly Regex LookupWord = new(@"^[a-zA-Z][a-zA-Z .'’\-]{0,99}$");
     private static readonly Regex Spaces = new(@"\s+");
+    private static readonly Regex NonDefinitionMarkup = new(@"<(style|script)\b[^>]*>.*?</\1\s*>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
     private readonly HttpClient _http;
     private readonly TranslationClient _translation;
     private readonly ConcurrentDictionary<string, OnlineDefinition> _cache = new(StringComparer.Ordinal);
@@ -36,7 +40,7 @@ internal sealed class OnlineDictionaryClient : IDisposable
             Timeout = TimeSpan.FromSeconds(3),
             MaxResponseContentBufferSize = 256 * 1024
         };
-        var version = typeof(OnlineDictionaryClient).Assembly.GetName().Version?.ToString(3) ?? "1.17.0";
+        var version = typeof(OnlineDictionaryClient).Assembly.GetName().Version?.ToString(3) ?? "1.18.0";
         _http.DefaultRequestHeaders.UserAgent.ParseAdd($"MemoLex/{version} (https://github.com/SuperRaine/MemoLex)");
     }
 
@@ -77,17 +81,19 @@ internal sealed class OnlineDictionaryClient : IDisposable
                 break;
             }
 
-            var text = senses.Count == 0 ? word : string.Join('\n', senses.Select(sense => sense.Text));
+            Gloss[] groups = senses.Count == 0
+                ? [new("", word)]
+                : senses.GroupBy(sense => sense.PartOfSpeech)
+                    .Select(group => new Gloss(group.Key, string.Join('\n', group.Select(sense => sense.Text))))
+                    .ToArray();
+            var result = await _translation.TranslateBatchAsync(groups.Select(group => group.Text).ToArray(),
+                cancellationToken: token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
-            var result = await _translation.TranslateAsync(text, cancellationToken: token).ConfigureAwait(false);
-            var translated = result.Text.Trim();
-            token.ThrowIfCancellationRequested();
-            if (!ChineseReverseSearch.ContainsChinese(translated)) return null;
-
-            var lines = translated.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (senses.Count == lines.Length && senses.Count > 0)
-                translated = string.Join('\n', lines.Select((line, index) => (senses[index].PartOfSpeech + " " + line).TrimStart()));
-            translated = DictionaryEntry.FormatDisplayMeaning(translated);
+            // A translation can merge or split lines, so keep each category tied to its own request item.
+            var pieces = groups.Zip(result.Texts, (group, text) => ChineseReverseSearch.ContainsChinese(text)
+                ? DictionaryEntry.FormatDisplayMeaning($"{group.PartOfSpeech} {text}") : "");
+            var translated = string.Join('\n', pieces.Where(piece => piece.Length > 0));
+            if (translated.Length == 0) return null;
             var source = senses.Count == 0 ? null : Wiki + "wiki/" + Uri.EscapeDataString(title.Replace(' ', '_')) + "#English";
             var definition = new OnlineDefinition(translated, source, result.Provider);
             if (_cache.Count >= 256 && _cache.Keys.FirstOrDefault() is { } previous) _cache.TryRemove(previous, out _);
@@ -118,7 +124,6 @@ internal sealed class OnlineDictionaryClient : IDisposable
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("en", out var english) || english.ValueKind != JsonValueKind.Array)
             return senses;
 
-        var remaining = 420;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in english.EnumerateArray())
         {
@@ -130,17 +135,31 @@ internal sealed class OnlineDictionaryClient : IDisposable
             {
                 if (definition.ValueKind != JsonValueKind.Object || !definition.TryGetProperty("definition", out var html)
                     || html.ValueKind != JsonValueKind.String) continue;
-                var text = Spaces.Replace(ExampleText.CleanMarkup(html.GetString()), " ");
-                if (text.Length < 2 || text.Length > remaining || !text.Any(char.IsAsciiLetter) || !seen.Add(text)) continue;
+                var markup = NonDefinitionMarkup.Replace(html.GetString()!, "");
+                var text = Spaces.Replace(ExampleText.CleanMarkup(markup), " ");
+                if (text.Length < 2 || text.Length > GlossCharacterBudget || !text.Any(char.IsAsciiLetter)
+                    || !seen.Add(part + "\n" + text)) continue;
                 senses.Add(new Gloss(part, text));
-                remaining -= text.Length + 1;
-                if (senses.Count == 3) return senses;
             }
         }
-        return senses;
+
+        var groups = senses.GroupBy(sense => sense.PartOfSpeech).ToArray();
+        // Use the first definition of each known part of speech before filling in additional meanings.
+        var preferred = groups.Where(group => group.Key.Length > 0).Select(group => group.First())
+            .Concat(groups.SelectMany(group => group.Key.Length > 0 ? group.Skip(1) : group));
+        var selected = new List<Gloss>();
+        var remaining = GlossCharacterBudget;
+        foreach (var sense in preferred)
+        {
+            if (sense.Text.Length > remaining) continue;
+            selected.Add(sense);
+            remaining -= sense.Text.Length + 1;
+            if (selected.Count == MaximumSenses) break;
+        }
+        return selected;
     }
 
-    private static string Abbreviate(string? part) => part?.ToLowerInvariant() switch
+    private static string Abbreviate(string? part) => part?.Trim().ToLowerInvariant() switch
     {
         "noun" or "proper noun" => "n.",
         "verb" => "v.",
@@ -151,6 +170,15 @@ internal sealed class OnlineDictionaryClient : IDisposable
         "conjunction" => "conj.",
         "interjection" => "int.",
         "determiner" => "det.",
+        "numeral" => "num.",
+        "article" => "art.",
+        "participle" => "ptcp.",
+        "particle" => "part.",
+        "abbreviation" or "acronym" or "initialism" => "abbr.",
+        "contraction" => "contr.",
+        "phrase" or "idiom" or "proverb" => "phr.",
+        "prefix" => "pref.",
+        "suffix" => "suf.",
         _ => ""
     };
 

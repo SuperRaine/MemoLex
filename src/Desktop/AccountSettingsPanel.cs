@@ -16,7 +16,7 @@ internal static class AccountSettingsPanel
         var accounts=new ComboBox {MinHeight=34,Margin=new Thickness(0,0,0,8)};panel.Children.Add(accounts);
         var actions=new WrapPanel();panel.Children.Add(actions);
         Button Add(string text){var b=new Button {Content=text,Margin=new Thickness(0,0,8,10)};actions.Children.Add(b);return b;}
-        var use=Add("切换账号");var relogin=Add("重新登录");var logout=Add("退出登录");var remove=Add("移除账号");
+        var relogin=Add("重新登录");var logout=Add("退出登录");var remove=Add("移除账号");
         var nameRow=new DockPanel {Margin=new Thickness(0,2,0,6)};var rename=new Button {Content="保存账号名称",Margin=new Thickness(10,0,0,0),Height=36,VerticalAlignment=VerticalAlignment.Center};DockPanel.SetDock(rename,Dock.Right);nameRow.Children.Add(rename);
         var name=new TextBox {MaxLength=80,Padding=new Thickness(9,6,9,6),Height=36,VerticalAlignment=VerticalAlignment.Center,ToolTip="给账号起一个方便区分的名称"};nameRow.Children.Add(name);panel.Children.Add(nameRow);
         var status=InputDialog.Text("");status.Margin=new Thickness(0,4,0,4);panel.Children.Add(status);
@@ -31,7 +31,7 @@ internal static class AccountSettingsPanel
         void Enable()
         {
             var selected=Selected();login.IsEnabled=!busy;accounts.IsEnabled=!busy;
-            use.IsEnabled=!busy&&selected is {NeedsLogin:false,Active:false};relogin.IsEnabled=!busy&&selected!=null;
+            relogin.IsEnabled=!busy&&selected!=null;
             logout.IsEnabled=!busy&&store.HasToken;remove.IsEnabled=!busy&&selected!=null;rename.IsEnabled=!busy&&selected!=null;import.IsEnabled=!busy;
         }
         void Refresh(bool force=false)
@@ -39,17 +39,22 @@ internal static class AccountSettingsPanel
             try
             {
                 var saved=store.GetAccounts();var key=string.Join(";",saved.Select(a=>$"{a.Id}:{a.Name}:{a.Active}:{a.NeedsLogin}"));
+                var active=saved.FirstOrDefault(a=>a.Active);
                 if(force||state!=key)
                 {
                     var prior=Selected()?.Id;state=key;refreshing=true;
-                    try{accounts.ItemsSource=saved;accounts.SelectedItem=saved.FirstOrDefault(a=>a.Active)??saved.FirstOrDefault(a=>a.Id==prior)??saved.FirstOrDefault();}
+                    try
+                    {
+                        accounts.ItemsSource=saved;
+                        // Leave a signed-out account available to choose, even when it is the only one.
+                        accounts.SelectedItem=active??saved.FirstOrDefault(a=>a.Id==prior&&a.NeedsLogin);
+                    }
                     finally{refreshing=false;}
                 }
-                var active=saved.FirstOrDefault(a=>a.Active);
                 headline.Text=active!=null?"当前账号："+active.Name:store.HasExpiredSession?"登录已失效，请重新登录":"还未登录墨墨账号";
                 Enable();
             }
-            catch{status.Text="无法加载已保存的账号，请稍后重试。";use.IsEnabled=relogin.IsEnabled=remove.IsEnabled=rename.IsEnabled=false;}
+            catch{status.Text="无法加载已保存的账号，请稍后重试。";relogin.IsEnabled=remove.IsEnabled=rename.IsEnabled=false;}
         }
         accounts.SelectionChanged+=async(_,_)=>
         {
@@ -76,7 +81,6 @@ internal static class AccountSettingsPanel
         }
         login.Click+=async(_,_)=>await Login(null);
         relogin.Click+=async(_,_)=>await Login(Selected());
-        use.Click+=async(_,_)=>{if(Selected() is {} account)await Change(()=>store.SwitchAccount(account.Id));};
         logout.Click+=async(_,_)=>await Change(store.LogoutActive);
         rename.Click+=async(_,_)=>{if(Selected() is {} account)await Change(()=>store.RenameAccount(account.Id,name.Text));};
         remove.Click+=async(_,_)=>
@@ -98,7 +102,7 @@ internal static class AccountSettingsPanel
         };
         var timer=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromSeconds(2)};timer.Tick+=(_,_)=>{if(!busy)Refresh();};
         panel.Loaded+=(_,_)=>timer.Start();panel.Unloaded+=(_,_)=>timer.Stop();Refresh(true);
-        foreach(var (key,element) in new (string,FrameworkElement)[]{("AccountList",accounts),("OfficialLoginButton",login),("SwitchAccountButton",use),("ReloginButton",relogin),("LogoutAccountButton",logout),("AccountStatus",headline)})owner.RegisterName(key,element);
+        foreach(var (key,element) in new (string,FrameworkElement)[]{("AccountList",accounts),("OfficialLoginButton",login),("ReloginButton",relogin),("LogoutAccountButton",logout),("AccountStatus",headline)})owner.RegisterName(key,element);
         return panel;
     }
 }

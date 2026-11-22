@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 namespace MemoLex.Core;
 public sealed class DictionaryEntry
 {
-    private const string PartOfSpeech = @"(?:adj|adv|prep|pron|conj|interj|int|n|v|vt|vi|aux|art|det|num|a|ad|s|abbr|pref|suf|comb|vbl|phr|un|na|pl|pp)\.";
+    private const string PartOfSpeech = @"(?:adj|adv|prep|pron|conj|interj|int|n|v|vt|vi|aux|art|det|num|part|ptcp|contr|a|ad|s|abbr|pref|suf|comb|vbl|phr|un|na|pl|pp)\.";
     private static readonly Regex ListPartOfSpeech = new(
         $@"^{PartOfSpeech}(?:(?:\s*[/&,]\s*|\s+){PartOfSpeech})*(?![a-z])",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -39,6 +39,8 @@ public sealed class DictionaryEntry
     internal static string NormalizeMeaning(string? value) => value?.Replace(';', '；') ?? "";
 
     internal string DisplayMeaning => FormatDisplayMeaning(translation);
+
+    internal static bool IsPartOfSpeechLabel(string word) => ListPartOfSpeech.IsMatch(word + ".");
 
     internal static string FormatDisplayMeaning(string? value)
     {

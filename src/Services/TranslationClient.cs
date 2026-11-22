@@ -10,6 +10,7 @@ namespace MemoLex.Services;
 
 public class TranslationException(string message) : Exception(message);
 public sealed record TranslationResult(string Text, string Provider);
+internal sealed record TranslationBatchResult(IReadOnlyList<string> Texts, string Provider);
 
 public sealed class TranslationClient : IDisposable
 {
@@ -21,7 +22,7 @@ public sealed class TranslationClient : IDisposable
     private readonly HttpClient _http;
     private readonly object _state = new();
     private readonly SemaphoreSlim _backupSlots = new(BackupConcurrency);
-    private readonly Dictionary<CacheKey, TranslationResult> _cache = new();
+    private readonly Dictionary<CacheKey, TranslationBatchResult> _cache = new();
     private readonly Func<string?> _deepLKey;
     private readonly TimeSpan _deepLTimeout, _retryCooldown;
     private DateTimeOffset _retryAfter;
@@ -52,24 +53,32 @@ public sealed class TranslationClient : IDisposable
     public async Task<TranslationResult> TranslateAsync(string text, string pair = "en|zh-CN",
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(text) || text.Length > 5000)
+        var result = await TranslateBatchAsync([text], pair, cancellationToken).ConfigureAwait(false);
+        return new TranslationResult(result.Texts[0], result.Provider);
+    }
+
+    internal async Task<TranslationBatchResult> TranslateBatchAsync(IReadOnlyList<string> texts, string pair = "en|zh-CN",
+        CancellationToken cancellationToken = default)
+    {
+        if (texts.Count is 0 or > 50 || texts.Any(string.IsNullOrWhiteSpace) || texts.Sum(text => (long)text.Length) > 5000)
             throw new ArgumentException("请输入 1–5000 个字符的段落。");
         if (pair is not ("en|zh-CN" or "zh-CN|en"))
             throw new ArgumentException("请选择英译中或中译英。");
         cancellationToken.ThrowIfCancellationRequested();
 
+        var content = texts.Count == 1 ? texts[0] : JsonSerializer.Serialize(texts);
         var secret = _deepLKey();
         if (!string.IsNullOrEmpty(secret))
         {
             var credential = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(secret)));
-            var primary = new CacheKey(pair, text, credential);
+            var primary = new CacheKey(pair, content, texts.Count, credential);
             if (Cached(primary) is { } previous) return previous;
             if (CanUseDeepL(credential))
             {
                 try
                 {
-                    var translated = await TranslateDeepLAsync(text, pair, secret, cancellationToken).ConfigureAwait(false);
-                    return Remember(primary, new TranslationResult(translated, DeepL));
+                    var translated = await TranslateDeepLAsync(texts, pair, secret, cancellationToken).ConfigureAwait(false);
+                    return Remember(primary, new TranslationBatchResult(translated, DeepL));
                 }
                 catch (DeepLUnavailable error)
                 {
@@ -79,18 +88,19 @@ public sealed class TranslationClient : IDisposable
             }
         }
 
-        var fallback = new CacheKey(pair, text, "");
+        var fallback = new CacheKey(pair, content, texts.Count, "");
         if (Cached(fallback) is { } remembered) return remembered;
-        var backupText = await TranslateBackupAsync(text, pair, cancellationToken).ConfigureAwait(false);
-        return Remember(fallback, new TranslationResult(backupText, Backup));
+        var backupTexts = await Task.WhenAll(texts.Select(text => TranslateBackupAsync(text, pair, cancellationToken)))
+            .ConfigureAwait(false);
+        return Remember(fallback, new TranslationBatchResult(backupTexts, Backup));
     }
 
-    private TranslationResult? Cached(CacheKey key)
+    private TranslationBatchResult? Cached(CacheKey key)
     {
         lock (_state) return _cache.GetValueOrDefault(key);
     }
 
-    private TranslationResult Remember(CacheKey key, TranslationResult result)
+    private TranslationBatchResult Remember(CacheKey key, TranslationBatchResult result)
     {
         lock (_state)
         {
@@ -115,7 +125,7 @@ public sealed class TranslationClient : IDisposable
         }
     }
 
-    private async Task<string> TranslateDeepLAsync(string text, string pair, string secret,
+    private async Task<string[]> TranslateDeepLAsync(IReadOnlyList<string> texts, string pair, string secret,
         CancellationToken cancellation)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
@@ -128,7 +138,7 @@ public sealed class TranslationClient : IDisposable
             request.Headers.Authorization = new AuthenticationHeaderValue("DeepL-Auth-Key", secret);
             request.Content = new StringContent(JsonSerializer.Serialize(new
             {
-                text = new[] { text },
+                text = texts,
                 source_lang = pair == "en|zh-CN" ? "EN" : "ZH",
                 target_lang = pair == "en|zh-CN" ? "ZH-HANS" : "EN-US",
                 preserve_formatting = true
@@ -151,13 +161,20 @@ public sealed class TranslationClient : IDisposable
             using var json = await ReadJsonAsync(response, timeout.Token).ConfigureAwait(false);
             if (json.RootElement.ValueKind != JsonValueKind.Object
                 || !json.RootElement.TryGetProperty("translations", out var results)
-                || results.ValueKind != JsonValueKind.Array || results.GetArrayLength() != 1
-                || results[0].ValueKind != JsonValueKind.Object || !results[0].TryGetProperty("text", out var value)
-                || value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
+                || results.ValueKind != JsonValueKind.Array || results.GetArrayLength() != texts.Count)
                 throw new DeepLUnavailable();
 
+            var translations = new string[texts.Count];
+            var index = 0;
+            foreach (var item in results.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("text", out var value)
+                    || value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
+                    throw new DeepLUnavailable();
+                translations[index++] = value.GetString()!;
+            }
             cancellation.ThrowIfCancellationRequested();
-            return value.GetString()!;
+            return translations;
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
         {
@@ -292,6 +309,6 @@ public sealed class TranslationClient : IDisposable
         internal TimeSpan? RetryAfter { get; } = retryAfter;
     }
 
-    private readonly record struct CacheKey(string Pair, string Text, string Credential);
+    private readonly record struct CacheKey(string Pair, string Text, int TextCount, string Credential);
     public void Dispose() => _http.Dispose();
 }

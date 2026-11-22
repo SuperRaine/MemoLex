@@ -187,14 +187,18 @@ private struct AccountSettings: View {
             Text(model.activeAccount.map { "当前账号：\($0.displayName)" } ?? "还未登录墨墨账号").font(.headline)
             Button("登录或添加账号") { model.loginTarget = nil; model.showLogin = true }.buttonStyle(MemoButtonStyle(accent: true)).tourTarget("login")
             Text("选择账号即可切换").font(.system(size: 12, weight: .semibold))
-            MemoPicker(title: "切换账号", selection: $selected, options: model.accounts.map { account in
+            MemoPicker(title: "切换账号", selection: Binding(get: { selected }, set: { id in
+                selected = id
+                guard let account = model.accounts.first(where: { $0.id == id }), !account.needsLogin else { return }
+                if id != model.activeAccountID || (!model.loggedIn && model.accountStatus != "正在连接") {
+                    Task { await model.activate(id) }
+                }
+            }), options: model.accounts.map { account in
                 (account.id, account.displayName + (account.needsLogin ? " · 需要登录" : ""))
             }, placeholder: "请选择账号").onChange(of: selected) { id in
                 name = model.accounts.first { $0.id == id }?.displayName ?? ""
-                if id != model.activeAccountID, model.accounts.contains(where: { $0.id == id && !$0.needsLogin }) { Task { await model.activate(id) } }
             }
             HStack {
-                Button("切换账号") { Task { await model.activate(selected) } }.disabled(selected.isEmpty)
                 Button("重新登录") { model.loginTarget = model.accounts.first { $0.id == selected }; model.showLogin = true }.disabled(selected.isEmpty)
                 Button("退出登录") { Task { await model.logout() } }.disabled(!model.loggedIn)
                 Button("移除账号") { model.notice = .init(title: "移除账号？", message: "只移除本机登录信息，助记与查词历史会保留。", confirm: "移除", destructive: true, action: { Task { await model.removeAccount(selected); selected = "" } }) }.disabled(selected.isEmpty)
