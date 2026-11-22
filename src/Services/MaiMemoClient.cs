@@ -149,6 +149,7 @@ public sealed partial class MaiMemoClient : IDisposable
         using var accountScope=BeginAccountOperation();
         var data = await SendAsync(HttpMethod.Get, "notepads/" + Uri.EscapeDataString(id), null, cancellationToken);
         if (!data.TryGetProperty("notepad", out var pad)) throw new MaiMemoException("未能加载完整词本，请刷新后重试。");
+        if (Text(pad, "id") != id) throw new MaiMemoException("返回的云词本与所选词本不一致，请刷新后重试。");
         if (pad.ValueKind != JsonValueKind.Object || !pad.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.String
             || !pad.TryGetProperty("title", out var title) || title.ValueKind != JsonValueKind.String
             || !pad.TryGetProperty("brief", out var brief) || brief.ValueKind != JsonValueKind.String
@@ -191,8 +192,7 @@ public sealed partial class MaiMemoClient : IDisposable
             var current = await GetNotepadAsync(id, cancellationToken);
             EnsureEditable(current);
             if (!ContainsWord(current, word)) return new(current, true);
-            var pattern = @"(?im)^[\t ]*" + Regex.Escape(word) + @"[\t ]*(?:\r\n|\n|\r|$)";
-            var content = Regex.Replace(current.Content, pattern, "", RegexOptions.CultureInvariant);
+            var content = NotepadContent.RemoveWords(current.Content, [word]);
             if (content == current.Content) throw new MaiMemoException("这个单词位于词组或说明中，请在「单词与释义」中编辑词表后移除。");
             if(NotepadContent.Words(content).Count==0)throw new EmptyNotepadException(current);
             return new(await SaveNotepadAsync(current, current.Title, current.Brief, content, cancellationToken), false);
@@ -458,16 +458,21 @@ public sealed partial class MaiMemoClient : IDisposable
 
     private static CloudNotepad ParseNotepad(JsonElement item)
     {
+        var content = Text(item, "content");
+        var hasContent = item.TryGetProperty("content", out var value) && value.ValueKind == JsonValueKind.String;
         var words = new List<string>();
-        foreach (var entry in Array(item, "list"))
+        if (!hasContent)
         {
-            if (Text(entry, "type") != "WORD" || !entry.TryGetProperty("data", out var data)) continue;
-            var word = Text(data, "word");
-            if (word.Length > 0) words.Add(word);
+            foreach (var entry in Array(item, "list"))
+            {
+                if (Text(entry, "type") != "WORD" || !entry.TryGetProperty("data", out var data)) continue;
+                var word = Text(data, "word");
+                if (word.Length > 0) words.Add(word);
+            }
         }
         return new CloudNotepad(Text(item, "id"), Text(item, "title", "未命名云词本"), Text(item, "brief"),
-            Strings(item, "tags"), Text(item, "status", "PUBLISHED"), Text(item, "content"), Text(item, "type", "NOTEPAD"), words,
-            item.TryGetProperty("content",out var content)&&content.ValueKind==JsonValueKind.String);
+            Strings(item, "tags"), Text(item, "status", "PUBLISHED"), content, Text(item, "type", "NOTEPAD"),
+            hasContent ? NotepadContent.Words(content) : words, hasContent);
     }
 
     private static IEnumerable<JsonElement> Array(JsonElement source, string key) =>

@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>MemoLex</AssemblyName>
     <RootNamespace>MemoLex</RootNamespace>
-    <Version>1.18.0</Version>
+    <Version>1.19.0</Version>
     <Product>墨墨搜词 MemoLex</Product>
     <Description>离线英汉查词与墨墨云词本</Description>
     <ApplicationIcon>app.ico</ApplicationIcon>

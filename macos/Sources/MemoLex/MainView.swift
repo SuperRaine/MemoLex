@@ -324,9 +324,10 @@ private struct WordPage: View {
         let width: CGFloat? = compact ? 118 : nil
         Button(model.membership ? "✓ 已加入云词本" : "＋ 加入云词本") { Task { await model.toggleMembership() } }
             .buttonStyle(LookupButtonStyle(primary: true, fixedWidth: width))
-            .disabled(model.word.isEmpty || model.writing)
+            .disabled(model.word.isEmpty || model.writing || model.selectingNotepad)
         Button(todayLabel) { model.addToday() }.buttonStyle(LookupButtonStyle(fixedWidth: width))
             .disabled(model.word.isEmpty || model.writing || ["AlreadyLearned", "AlreadyToday", "Planned", "Added", "Loading", "Missing"].contains(model.todayStatus))
+            .help(model.todayStatusError)
             .tourTarget("today")
     }
     private var todayLabel: String {

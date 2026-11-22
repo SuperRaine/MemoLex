@@ -52,6 +52,7 @@ struct CoreFailure: LocalizedError {
     }
 
     func request(_ method: String, _ parameters: [String: J] = [:], timeout: UInt64 = 240) async throws -> J {
+        try Task.checkCancellation()
         if !started { try start() }
         let id = UUID().uuidString
         var parameters = parameters
@@ -78,13 +79,21 @@ struct CoreFailure: LocalizedError {
     func invalidateAccount() {
         accountGeneration += 1
         accountKey = ""
+        for id in Array(accountRequests.keys) { cancel(id) }
     }
 
     func setAccount(token: String?) async throws {
         invalidateAccount()
         let generation = accountGeneration
         let result = try await request("account.set", ["token": token.map(J.string) ?? .null])
-        if generation == accountGeneration { accountKey = result["accountKey"].text }
+        guard generation == accountGeneration else { throw CancellationError() }
+        let key = result["accountKey"].text
+        if token != nil {
+            guard result["authenticated"].flag, !key.isEmpty else {
+                throw CoreFailure(code: "account", message: "未能载入墨墨账号，稍后会自动重试。")
+            }
+            accountKey = key
+        }
     }
     private func receive(_ data: Data) {
         guard !data.isEmpty else { return }

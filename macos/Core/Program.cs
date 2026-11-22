@@ -40,7 +40,11 @@ internal static class Program
                 var id = Text(root, "id"); var method = Text(root, "method");
                 if (id.Length is 0 or > 128 || method.Length is 0 or > 80) continue;
                 var parameters = root.TryGetProperty("params", out var value) ? value.Clone() : default;
-                if (method == "cancel") { if (running.TryGetValue(Text(parameters, "id"), out var old)) old.Cancel(); continue; }
+                if (method == "cancel")
+                {
+                    if (running.TryGetValue(Text(parameters, "id"), out var previous)) Cancel(previous);
+                    continue;
+                }
                 var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(4));
                 if (!running.TryAdd(id, cancellation)) { cancellation.Dispose(); continue; }
                 var task = Run(id, method, parameters, cancellation);
@@ -48,7 +52,7 @@ internal static class Program
                 _ = task.ContinueWith(completed => { tasks.TryRemove(id, out _); }, TaskScheduler.Default);
             }
         }
-        foreach (var cancellation in running.Values) cancellation.Cancel();
+        foreach (var cancellation in running.Values) Cancel(cancellation);
         await Task.WhenAll(tasks.Values);
 
         async Task Run(string id, string method, JsonElement parameters, CancellationTokenSource cancellation)
@@ -58,11 +62,22 @@ internal static class Program
             catch (Exception error)
             {
                 var message = error is MaiMemoException or TranslationException or ExampleLookupException or ArgumentException or IOException or InvalidOperationException ? error.Message : "操作未完成，请重试。";
-                var code = error is MaiMemoException { StatusCode: HttpStatusCode.Unauthorized } ? "unauthorized" : error is EmptyNotepadException ? "empty_notepad" : "operation_failed";
+                var code = error switch
+                {
+                    MaiMemoException { StatusCode: HttpStatusCode.Unauthorized } => "unauthorized",
+                    MaiMemoException { StatusCode: HttpStatusCode.Forbidden } => "permission_denied",
+                    EmptyNotepadException => "empty_notepad",
+                    _ => "operation_failed"
+                };
                 await Write(new { id, error = new { code, message, accountKey = Text(parameters, "accountKey") } });
             }
             finally { running.TryRemove(id, out _); cancellation.Dispose(); }
         }
+    }
+    private static void Cancel(CancellationTokenSource source)
+    {
+        try { source.Cancel(); }
+        catch (ObjectDisposedException) { /* The request completed concurrently. */ }
     }
     private static async Task Write(object value)
     {

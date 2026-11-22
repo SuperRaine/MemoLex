@@ -42,8 +42,8 @@ private struct WordListMeaning: View {
     }
     private var tooltip: String {
         guard !concealed, local == "", let result, !result["meaning"].text.isEmpty else { return display }
-        let source = result["sourceUrl"].text
-        return display + "\n" + result["provider"].text + (source.isEmpty ? " · 联网翻译" : " · 维基词典译文（CC BY-SA 4.0）\n" + source)
+        return [display, result["sourceLabel"].text, result["sourceAttribution"].text]
+            .filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
     var body: some View {
@@ -263,7 +263,15 @@ struct NotebookView: View {
         do { let result = try await model.core.request("notepads.edit", ["content": .string(content), "words": .string(selected.joined(separator: "\n")), "action": .string("remove")]); content = result["content"].text; await save(infoOnly: false) }
         catch { self.error = error.localizedDescription }
     }
-    private func removeWhole() async { if confirm("将删除整个云词本", "云词本至少需要保留一个单词。当前选择会清空词本，是否删除整个词本？", action: "删除词本") { await model.deleteNotebook() } }
+    private func removeWhole() async {
+        let snapshot = original, account = model.activeAccountID
+        guard confirm("删除「\(snapshot["title"].text)」？", "这次编辑会清空词本。确认后将删除整个云词本。", action: "删除词本"),
+              account == model.activeAccountID else { return }
+        busy = true
+        defer { busy = false }
+        do { try await model.deleteNotebook(original: snapshot) }
+        catch { self.error = error.localizedDescription }
+    }
 }
 
 @MainActor func confirm(_ title: String, _ message: String, action: String) -> Bool {

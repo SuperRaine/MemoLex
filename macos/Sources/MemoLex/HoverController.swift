@@ -57,9 +57,10 @@ import SwiftUI
                 if value["entry"] == .null, !model.preferences.hoverNearest { return }
                 self.fingerprint = capturedFingerprint; self.captureRect = crop
                 self.show(value, bounds: candidate.bounds, cursor: point)
-                if value["entry"] != .null, model.preferences.hoverAutoAdd, model.loggedIn, model.selectedPad != .null {
+                if value["entry"] != .null, model.preferences.hoverAutoAdd, model.loggedIn,
+                   !model.selectingNotepad, !model.writing, model.selectedPad != .null {
                     let saved = try? await model.core.request("notepads.add", ["id": model.selectedPad["id"], "word": value["word"]])
-                    if let pad = saved?["notepad"], pad["id"] == model.selectedPad["id"] { model.selectedPad = pad; await model.refreshMembership() }
+                    if let pad = saved?["notepad"], pad["id"] == model.selectedPad["id"] { model.selectedPad = pad; model.refreshMembership() }
                 }
             } catch { }
         }

@@ -54,9 +54,11 @@ struct Notice: Identifiable {
     @Published var loginTarget: SavedAccount?
     @Published var notepads: [J] = []
     @Published var selectedPad = J.null
+    @Published private(set) var selectingNotepad = false
     @Published var notebookRows: [J] = []
     @Published var notebookLoading = false
     @Published var todayStatus = ""
+    @Published private(set) var todayStatusError = ""
     @Published var membership = false
     @Published var writing = false
     @Published var stubbornWords: [J] = []
@@ -90,6 +92,10 @@ struct Notice: Identifiable {
     private var suggestionTask: Task<Void, Never>?
     private var lookupTask: Task<Void, Never>?
     private var accountTask: Task<Void, Never>?
+    private var cloudNotesTask: Task<Void, Never>?
+    private var studyStatusTask: Task<Void, Never>?
+    private var nextStudyRetry: Date?
+    private var notepadSelectionVersion = 0
     private var savingLogin = false
     private var preferencesObserver: AnyCancellable?
     private var preferencesSave: Task<Void, Never>?
@@ -154,7 +160,7 @@ struct Notice: Identifiable {
         let query = raw.trimmed
         guard ready, !query.isEmpty, query.count <= 100 else { return }
         if page == .translation { cancelTranslation() }
-        lookupTask?.cancel(); wordVersion += 1
+        lookupTask?.cancel(); cancelCloudWordLookup(); wordVersion += 1
         let version = wordVersion; let account = accountVersion
         search = query
         showWindow?()
@@ -168,7 +174,8 @@ struct Notice: Identifiable {
                     chineseResults = result["items"].list; chineseTotal = result["total"].integer
                     status = "找到 \(chineseTotal) 个相关结果。"
                 } else {
-                    page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = loggedIn ? "Loading" : ""; membership = false
+                    page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = loggedIn ? "Loading" : ""
+                    refreshMembership()
                     onlineDefinition = .null
                     definitionLoading = true
                     let result = try await core.request("dictionary.lookup", ["word": .string(query)])
@@ -181,10 +188,7 @@ struct Notice: Identifiable {
                     recordHistory(word); status = definitionLoading ? "正在联网查找释义…" : "查词完成。"
                     Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }
                     Task { await loadExamples(reset: true) }
-                    if loggedIn {
-                        let currentAccount = accountVersion
-                        Task { await loadCloudWord(word, version: version, account: currentAccount) }
-                    }
+                    loadCloudWord()
                 }
                 if navigate { appendLocation(.init(page: page, query: query)) }
                 if !chinese && definitionLoading {
@@ -203,20 +207,55 @@ struct Notice: Identifiable {
         chineseLimit += 160
         if let result = try? await core.request("dictionary.reverse", ["query": .string(search), "limit": .number(Double(chineseLimit))]) { chineseResults = result["items"].list }
     }
-    private func loadCloudWord(_ query: String, version: Int, account: Int) async {
-        async let cloudNotes = try? core.request("notes.cloud", ["word": .string(query)])
-        await refreshTodayStatus(query, version: version, account: account)
-        let result = await cloudNotes
-        guard version == wordVersion, account == accountVersion else { return }
-        if let result { notes = result.list }
-        await refreshMembership()
+    private func cancelCloudWordLookup() {
+        cloudNotesTask?.cancel()
+        studyStatusTask?.cancel()
+        nextStudyRetry = nil
+        todayStatusError = ""
     }
-    private func refreshTodayStatus(_ query: String, version: Int, account: Int) async {
-        guard loggedIn, version == wordVersion, account == accountVersion, query == word else { return }
+    private func loadCloudWord() {
+        refreshMembership()
+        cloudNotesTask?.cancel()
+        guard loggedIn, page == .word, !word.isEmpty else { return }
+        refreshTodayStatus()
+        let query = word, version = wordVersion, generation = accountVersion
+        cloudNotesTask = Task { [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            if let result = try? await core.request("notes.cloud", ["word": .string(query)]),
+               currentCloudWord(query, version: version, generation: generation) {
+                notes = result.list
+                markAccountConnected(generation)
+            }
+        }
+    }
+    private func currentCloudWord(_ query: String, version: Int, generation: Int) -> Bool {
+        !Task.isCancelled && loggedIn && page == .word && word == query && version == wordVersion && generation == accountVersion
+    }
+    private func refreshTodayStatus() {
+        guard loggedIn, page == .word, !word.isEmpty else { return }
+        studyStatusTask?.cancel()
         todayStatus = "Loading"
-        let result = try? await core.request("study.status", ["word": .string(query)])
-        guard loggedIn, version == wordVersion, account == accountVersion, query == word else { return }
-        todayStatus = result?["status"].text ?? "Failed"
+        todayStatusError = ""
+        nextStudyRetry = nil
+        let query = word, version = wordVersion, generation = accountVersion
+        studyStatusTask = Task { [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            do {
+                let result = try await core.request("study.status", ["word": .string(query)], timeout: 80)
+                guard currentCloudWord(query, version: version, generation: generation) else { return }
+                let state = result["status"].text
+                guard !state.isEmpty else { throw CoreFailure(code: "study", message: "墨墨暂未返回学习状态，请稍后重试。") }
+                todayStatus = state
+                if state != "Missing" { markAccountConnected(generation) }
+            } catch {
+                guard currentCloudWord(query, version: version, generation: generation) else { return }
+                todayStatus = "Failed"
+                todayStatusError = error.localizedDescription
+                if (error as? CoreFailure)?.code != "permission_denied" {
+                    nextStudyRetry = Date().addingTimeInterval(45)
+                }
+            }
+        }
     }
     func loadExamples(reset: Bool) async {
         if reset { examplesVersion += 1; exampleOffset = 0; examples = [] }
@@ -237,6 +276,7 @@ struct Notice: Identifiable {
     }
     func enterTranslation() {
         lookupTask?.cancel()
+        cancelCloudWordLookup()
         page = .translation
         appendLocation(.init(page: .translation, query: "段落翻译", input: translationInput, translated: translationOutput, direction: translationDirection))
     }
@@ -328,10 +368,12 @@ struct Notice: Identifiable {
             if !query.isEmpty {
                 Task {
                     if let result = try? await core.request("notes.local", ["word": .string(query)]),
-                       generation == accountVersion, query == word { notes = result.list }
+                       generation == accountVersion, query == word, notes.isEmpty { notes = result.list }
                 }
             }
-            checkAccountConnection(generation, verified: verified)
+            if verified { markAccountConnected(generation) }
+            loadCloudWord()
+            checkAccountConnection(generation)
         } catch {
             guard generation == accountVersion else { return }
             if error is CredentialStoreError {
@@ -345,24 +387,31 @@ struct Notice: Identifiable {
             nextAccountCheck = Date().addingTimeInterval(45)
         }
     }
-    private func checkAccountConnection(_ generation: Int, verified: Bool = false) {
+    private func markAccountConnected(_ generation: Int) {
+        guard generation == accountVersion, loggedIn else { return }
+        if accountStatus != "已登录" { accountStatus = "已登录" }
+        nextAccountCheck = nil
+    }
+    private func checkAccountConnection(_ generation: Int) {
         accountTask = Task { [weak self] in
             guard let self else { return }
-            do {
-                if !verified { _ = try await core.request("account.validate", timeout: 55) }
-                guard generation == accountVersion, !Task.isCancelled else { return }
-                accountStatus = "已登录"
-                nextAccountCheck = nil
-                async let stubborn: Void = refreshStubborn(force: true)
-                async let pads: Void = refreshNotepads()
-                if !word.isEmpty { await loadCloudWord(word, version: wordVersion, account: generation) }
-                _ = await (stubborn, pads)
-            } catch {
-                guard generation == accountVersion, !Task.isCancelled else { return }
-                accountStatus = "暂时离线"
-                status = error.localizedDescription
-                nextAccountCheck = Date().addingTimeInterval(45)
+            await refreshNotepads()
+            guard generation == accountVersion, !Task.isCancelled else { return }
+            if accountStatus != "已登录" {
+                do {
+                    _ = try await core.request("account.validate", timeout: 55)
+                    guard !Task.isCancelled else { return }
+                    markAccountConnected(generation)
+                } catch {
+                    guard generation == accountVersion, !Task.isCancelled, accountStatus != "已登录" else { return }
+                    accountStatus = "暂时离线"
+                    status = error.localizedDescription
+                    nextAccountCheck = Date().addingTimeInterval(45)
+                    return
+                }
             }
+            guard generation == accountVersion, !Task.isCancelled else { return }
+            await refreshStubborn(force: true)
         }
     }
     func finishLogin(_ authorization: J, identity: String, fromOfficialPage: Bool = false) async throws {
@@ -476,10 +525,14 @@ struct Notice: Identifiable {
     func checkExpiry() {
         guard let account = activeAccount, !account.needsLogin else { return }
         if let expiry = account.expiresAt, expiry <= Date() { expireAccount(); return }
-        guard let retry = nextAccountCheck, retry <= Date() else { return }
-        nextAccountCheck = nil
-        if loggedIn { checkAccountConnection(accountVersion) }
-        else { Task { await activate(account.id) } }
+        if let retry = nextAccountCheck, retry <= Date() {
+            nextAccountCheck = nil
+            if loggedIn { checkAccountConnection(accountVersion) }
+            else { Task { await activate(account.id) } }
+        }
+        if loggedIn, !writing, todayStatus == "Failed", let retry = nextStudyRetry, retry <= Date() {
+            refreshTodayStatus()
+        }
     }
     func renameAccount(_ id: String, _ name: String) {
         guard let index = accounts.firstIndex(where: { $0.id == id }), !name.trimmed.isEmpty else { return }
@@ -498,7 +551,10 @@ struct Notice: Identifiable {
         if activeAccountID == id { await logout() }
     }
     private func clearCloudState(keepStubborn: Bool = false) {
+        cancelCloudWordLookup()
         core.invalidateAccount()
+        notepadSelectionVersion += 1
+        selectingNotepad = false
         if sheet == .notepad { sheet = nil }
         notes = []; notepads = []; selectedPad = .null; notebookRows = []; notebookLoading = false
         membership = false; todayStatus = ""; writing = false
@@ -512,48 +568,86 @@ struct Notice: Identifiable {
     func refreshNotepads() async {
         guard loggedIn else { return }; let generation = accountVersion
         do {
-            let result = try await core.request("notepads.list"); guard generation == accountVersion else { return }; notepads = result.list
+            let result = try await core.request("notepads.list")
+            guard generation == accountVersion, !Task.isCancelled else { return }
+            markAccountConnected(generation)
+            notepads = result.list
             let id = notepads.contains { $0["id"].text == preferences.selectedNotepad } ? preferences.selectedNotepad : notepads.first?["id"].text ?? ""
             preferences.selectedNotepad = id; preferences.save(); await selectNotepad(id)
-        } catch { if generation == accountVersion { status = error.localizedDescription } }
+        } catch { if generation == accountVersion, !Task.isCancelled { status = error.localizedDescription } }
     }
     func selectNotepad(_ id: String) async {
-        guard loggedIn, !id.isEmpty else { selectedPad = .null; return }; let generation = accountVersion
-        preferences.selectedNotepad = id; preferences.save()
+        guard loggedIn else { return }
+        notepadSelectionVersion += 1
+        let version = notepadSelectionVersion, generation = accountVersion
+        if preferences.selectedNotepad != id { preferences.selectedNotepad = id; preferences.save() }
+        if selectedPad["id"].text != id || id.isEmpty { selectedPad = .null; refreshMembership() }
+        selectingNotepad = !id.isEmpty
+        guard selectingNotepad else { return }
+        defer { if version == notepadSelectionVersion { selectingNotepad = false } }
         do {
             let value = try await core.request("notepads.get", ["id": .string(id)])
-            guard generation == accountVersion, preferences.selectedNotepad == id else { return }; selectedPad = value
-            await refreshMembership()
-        } catch { if generation == accountVersion { status = error.localizedDescription } }
+            guard generation == accountVersion, version == notepadSelectionVersion, !Task.isCancelled else { return }
+            selectedPad = value
+            refreshMembership()
+        } catch { if version == notepadSelectionVersion, !Task.isCancelled { status = error.localizedDescription } }
     }
-    func refreshMembership() async { membership = selectedPad["content"].text.components(separatedBy: .newlines).contains { $0.trimmed.caseInsensitiveCompare(word) == .orderedSame && !$0.trimmed.hasPrefix("#") } }
+    func refreshMembership() {
+        membership = !word.isEmpty && selectedPad["id"].text == preferences.selectedNotepad
+            && selectedPad["content"].text.components(separatedBy: .newlines).contains {
+                !$0.trimmed.hasPrefix("#") && $0.trimmed.caseInsensitiveCompare(word) == .orderedSame
+            }
+    }
     func toggleMembership() async {
-        guard loggedIn else { openAccountSettings(); return }; guard !word.isEmpty, !writing else { return }
-        if selectedPad == .null { createNotebook(); return }
-        if membership, selectedPad["words"].list.count <= 1 { notice = .init(title: "删除整个云词本？", message: "这是词本中的最后一个单词。删除后，整个云词本也会被删除。", confirm: "删除词本", destructive: true, action: { [weak self] in Task { await self?.deleteNotebook() } }); return }
-        writing = true; let generation = accountVersion; let id = selectedPad["id"].text
+        guard loggedIn else { openAccountSettings(); return }
+        guard !word.isEmpty, !writing, !selectingNotepad else { return }
+        let id = selectedPad["id"].text
+        guard !id.isEmpty, preferences.selectedNotepad == id else {
+            if notepads.isEmpty, preferences.selectedNotepad.isEmpty { createNotebook() }
+            else { status = "请先刷新并选择云词本。" }
+            return
+        }
+        let generation = accountVersion, query = word, removing = membership
+        writing = true
+        defer { if generation == accountVersion { writing = false } }
         do {
-            let result = try await core.request(membership ? "notepads.remove" : "notepads.add", ["id": .string(id), "word": .string(word)])
-            if generation == accountVersion, preferences.selectedNotepad == id { selectedPad = result["notepad"]; await refreshMembership(); status = membership ? "已加入云词本。" : "已从云词本移除。" }
-        } catch { if generation == accountVersion { fail(error) } }; if generation == accountVersion { writing = false }
+            let result = try await core.request(removing ? "notepads.remove" : "notepads.add", ["id": .string(id), "word": .string(query)])
+            guard generation == accountVersion, preferences.selectedNotepad == id else { return }
+            selectedPad = result["notepad"]
+            refreshMembership()
+            status = removing ? "已从云词本移除。" : "已加入云词本。"
+        } catch let error as CoreFailure where error.code == "empty_notepad" {
+            guard generation == accountVersion, preferences.selectedNotepad == id else { return }
+            await selectNotepad(id)
+            guard generation == accountVersion, preferences.selectedNotepad == id else { return }
+            status = "云词本至少需要保留一个单词。"
+            notice = .init(title: "无法移除最后一个单词", message: status)
+        } catch { if generation == accountVersion { fail(error) } }
     }
     func addToday() {
         guard loggedIn else { openAccountSettings(); return }
+        guard !word.isEmpty, !writing else { return }
         switch todayStatus {
         case "Failed":
-            Task { await refreshTodayStatus(word, version: wordVersion, account: accountVersion) }
+            refreshTodayStatus()
         case "SyncRequired", "PendingVerification":
             Task { await performAddToday(verifyOnly: true) }
         case "Loading", "AlreadyLearned", "AlreadyToday", "Added", "Planned", "Missing":
             return
         default:
-            notice = .init(title: "将「\(word)」添加到今日新学？",
+            let query = word, version = wordVersion, generation = accountVersion
+            notice = .init(title: "将「\(query)」添加到今日新学？",
                 message: "学习状态依赖墨墨的数据同步。开启手机端自动同步，可及时更新学习记录。\n\n墨墨背单词 → 我的 → 学习数据同步 → 学习数据自动同步",
-                confirm: "添加", action: { [weak self] in Task { await self?.performAddToday() } })
+                confirm: "添加", action: { [weak self] in
+                    Task {
+                        guard let self, self.currentCloudWord(query, version: version, generation: generation) else { return }
+                        await self.performAddToday()
+                    }
+                })
         }
     }
     private func performAddToday(verifyOnly: Bool = false) async {
-        guard !writing, !word.isEmpty else { return }; writing = true; let generation = accountVersion; let query = word
+        guard loggedIn, !writing, !word.isEmpty else { return }; writing = true; let generation = accountVersion; let query = word
         do {
             let result = try await core.request("study.add", ["word": .string(query), "verifyOnly": .bool(verifyOnly)])
             if generation == accountVersion, query == word {
@@ -587,13 +681,22 @@ struct Notice: Identifiable {
     func saveNotebook(original: J, title: String, brief: String, content: String) async throws {
         let generation = accountVersion
         let result = try await core.request("notepads.update", ["original": original, "title": .string(title), "brief": .string(brief), "content": .string(content)])
-        guard generation == accountVersion else { return }; selectedPad = result; await loadNotebookRows(); await refreshMembership(); await refreshNotepads()
+        guard generation == accountVersion else { return }; selectedPad = result; await loadNotebookRows(); refreshMembership(); await refreshNotepads()
     }
-    func deleteNotebook() async {
-        guard selectedPad != .null else { return }
+    func deleteNotebook(original: J) async throws {
+        let id = original["id"].text
+        guard loggedIn, !writing, !selectingNotepad, !id.isEmpty, id == selectedPad["id"].text, id == preferences.selectedNotepad else {
+            throw CoreFailure(code: "notepad", message: "当前词本已变更，请重新载入后再确认。")
+        }
         let generation = accountVersion
-        do { _ = try await core.request("notepads.delete", ["original": selectedPad]); guard generation == accountVersion else { return }; selectedPad = .null; sheet = nil; await refreshNotepads(); status = "云词本已删除。" }
-        catch { if generation == accountVersion { fail(error) } }
+        writing = true
+        defer { if generation == accountVersion { writing = false } }
+        _ = try await core.request("notepads.delete", ["original": original])
+        guard generation == accountVersion else { return }
+        if preferences.selectedNotepad == id { selectedPad = .null; refreshMembership() }
+        sheet = nil
+        await refreshNotepads()
+        if generation == accountVersion { status = "云词本已删除。" }
     }
     func refreshStubborn(force: Bool = false) async {
         guard loggedIn, !stubbornLoading else { return }

@@ -51,7 +51,9 @@ public sealed partial class MaiMemoClient
             if(root.ValueKind!=JsonValueKind.Object)return null;
             if(!response.IsSuccessStatusCode||root.TryGetProperty("success",out var success)&&success.ValueKind==JsonValueKind.False)
                 return SafeApiError(root).StatusCode==HttpStatusCode.Unauthorized?false:null;
-            if(!root.TryGetProperty("data",out var data)||data.ValueKind!=JsonValueKind.Object||!data.TryGetProperty("voc",out var voc))return null;
+            if(root.TryGetProperty("data",out var data))root=data;
+            if(root.ValueKind!=JsonValueKind.Object||!root.TryGetProperty("voc",out var voc))return null;
+            if(voc.ValueKind==JsonValueKind.Array)voc=voc.EnumerateArray().FirstOrDefault();
             return Text(voc,"id").Length>0?true:null;
         }
         catch(Exception error)when(!cancellation.IsCancellationRequested&&error is HttpRequestException or OperationCanceledException or JsonException or System.IO.IOException){return null;}

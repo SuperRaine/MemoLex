@@ -18,7 +18,7 @@ internal sealed class WordListRow(string word, string localMeaning, OnlineDictio
     public string DisplayMeaning => IsConcealed ? "点击查看释义"
         : Meaning.Length > 0 ? Meaning : NeedsOnlineMeaning ? "正在联网补查…" : "暂无释义";
     public string MeaningTooltip => !IsConcealed && _definition is { } found
-        ? DisplayMeaning + "\n" + found.Provider + (found.SourceUrl == null ? " · 联网翻译" : " · 维基词典译文（CC BY-SA 4.0）\n" + found.SourceUrl)
+        ? DisplayMeaning + "\n" + found.SourceLabel + (found.SourceAttribution is { } source ? "\n" + source : "")
         : DisplayMeaning;
     public event PropertyChangedEventHandler? PropertyChanged;
 
