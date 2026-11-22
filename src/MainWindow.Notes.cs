@@ -40,7 +40,7 @@ public partial class MainWindow
         if(!_allowCloud||!_tokens.HasToken)
         {
             SetAccountStatus(!_allowCloud?"离线模式":InactiveAccountStatus);
-            StatusText.Text="已显示离线释义和本地助记。";
+            StatusText.Text="本地助记已就绪。";
             if(_mnemonics.LoadWarning!=null)NotesHintText.Text+=" · "+_mnemonics.LoadWarning;
             return;
         }

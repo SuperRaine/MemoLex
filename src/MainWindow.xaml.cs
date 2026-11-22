@@ -282,6 +282,7 @@ public partial class MainWindow : Window
 
         FillWordLinks(DefinitionText, definition?.Meaning ?? "暂未找到中文释义，可打开海词词典继续查找。",
             EmptyMatches, word, skipPartOfSpeech: true);
+        StatusText.Text = definition == null ? "暂未找到中文释义。" : "已补充联网释义。";
         if (definition == null) return;
 
         WordMetaText.Text = "联网翻译";
