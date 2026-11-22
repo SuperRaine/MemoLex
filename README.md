@@ -12,9 +12,9 @@
 
 | 版本 | 使用方法 |
 | --- | --- |
-| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.14.0/MemoLex-1.14.0-Windows-x64-Setup.msi)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.14.0/MemoLex-1.14.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
-| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.14.0/MemoLex-1.14.0-Windows-x64.zip)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.14.0/MemoLex-1.14.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
-| [Mac 安装包](https://github.com/SuperRaine/MemoLex/releases/download/v1.14.0/MemoLex-1.14.0-macOS-universal.dmg)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.14.0/MemoLex-1.14.0-macOS-universal.dmg)） | 打开后将 `MemoLex` 拖到「应用程序」。 |
+| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-Windows-x64-Setup.msi)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
+| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-Windows-x64.zip)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
+| [Mac 安装包](https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-macOS-universal.dmg)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.15.0/MemoLex-1.15.0-macOS-universal.dmg)） | 打开后将 `MemoLex` 拖到「应用程序」。 |
 
 Windows 登录和海词词典需要网页组件，缺少时按提示联网安装即可；Mac 使用系统网页组件。
 
@@ -39,7 +39,7 @@ Windows 登录和海词词典需要网页组件，缺少时按提示联网安装
 
 Mac 的首次打开、权限和快捷键说明见 [Mac 使用说明](macos/使用说明.md)。
 
-发现新版时默认先提醒。你可以手动下载，也可以在设置中开启自动下载。
+发现新版时默认先提醒，下载源默认使用 GHFast。可在设置中更换下载源或开启自动下载。
 
 ## 反馈
 
