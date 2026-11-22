@@ -109,6 +109,16 @@ struct Notice: Identifiable {
     var titleAccount: String { activeAccount?.displayName ?? accountStatus }
     var stubbornCurrent: String { stubbornOrder.indices.contains(stubbornIndex) ? stubbornOrder[stubbornIndex]["spelling"].text : "" }
     var canBrowseStubborn: Bool { loggedIn || stubbornSnapshot != nil }
+    var showingCachedStubborn: Bool { stubbornSnapshot != nil && (!loggedIn || lastStubbornFetch == nil) }
+    var notepadConnectionHint: String? {
+        if keychainAuthorizationNeeded { return "请在墨墨账号设置中授权钥匙串。" }
+        if activeAccount?.needsLogin == true { return "登录已失效，请重新登录墨墨账号。" }
+        switch accountStatus {
+        case "正在连接": return "正在连接墨墨账号…"
+        case "暂时离线", "连接未完成": return "暂时无法连接墨墨，可稍后刷新云词本。"
+        default: return loggedIn ? nil : "登录墨墨账号后即可使用。"
+        }
+    }
     var selectedNotepadTitle: String { selectedPad["title"].text }
     func initialize() async {
         Task { await restoreAccount() }
@@ -121,7 +131,6 @@ struct Notice: Identifiable {
     }
     private func restoreAccount() async {
         guard let account = activeAccount else { return }
-        if account.needsLogin { accountStatus = "请重新登录"; return }
         await activate(account.id)
     }
     func suggest() {
@@ -261,14 +270,14 @@ struct Notice: Identifiable {
         UserDefaults.standard.set(id, forKey: "activeAccount")
         accountStatus = "正在连接"
         do {
+            if let name = stubbornCacheName(id), let snapshot = load(name, as: StubbornSnapshot.self),
+               snapshot.total >= snapshot.words.count {
+                installStubborn(snapshot)
+            }
             if account.needsLogin || (account.expiresAt.map { $0 <= Date() } ?? false) {
                 if !account.needsLogin { expireAccount() }
                 else { accountStatus = "请重新登录"; try await core.setAccount(token: nil) }
                 return
-            }
-            if let name = stubbornCacheName(id), let snapshot = load(name, as: StubbornSnapshot.self),
-               snapshot.total >= snapshot.words.count {
-                installStubborn(snapshot)
             }
             let credential: String?
             if let token { credential = token }
@@ -390,7 +399,7 @@ struct Notice: Identifiable {
         accountTask?.cancel()
         loggedIn = false
         accountStatus = "登录已失效"
-        clearCloudState()
+        clearCloudState(keepStubborn: true)
         Task { await clearWorkerAccount(generation) }
         notice = .init(title: "墨墨登录已失效", message: "请重新登录或导入有效的墨墨 API 授权。登录后，云词本和顽固单词会自动刷新。", confirm: "账号设置", action: { [weak self] in self?.openAccountSettings() })
     }
@@ -422,13 +431,17 @@ struct Notice: Identifiable {
         await CredentialVault.shared.remove(account.keychainAccount)
         if let name = stubbornCacheName(id) { try? FileManager.default.removeItem(at: AppPaths.profile.appendingPathComponent(name)) }
     }
-    private func clearCloudState() {
+    private func clearCloudState(keepStubborn: Bool = false) {
         core.invalidateAccount()
+        if sheet == .notepad { sheet = nil }
         keychainAuthorizationNeeded = false
         notes = []; notepads = []; selectedPad = .null; notebookRows = []; notebookLoading = false
         membership = false; todayStatus = ""; writing = false
-        stubbornTask?.cancel(); stubbornTask = nil; stubbornSnapshot = nil
-        stubbornWords = []; stubbornOrder = []; stubbornIndex = 0; stubbornTotal = 0; stubbornLoading = false
+        stubbornTask?.cancel(); stubbornTask = nil; stubbornLoading = false
+        if !keepStubborn {
+            stubbornSnapshot = nil
+            stubbornWords = []; stubbornOrder = []; stubbornIndex = 0; stubbornTotal = 0
+        }
         stubbornHint = ""; lastStubbornFetch = nil; nextStubbornRetry = nil; nextAccountCheck = nil
     }
     func refreshNotepads() async {

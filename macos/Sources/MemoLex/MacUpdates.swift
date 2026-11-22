@@ -37,6 +37,41 @@ struct MacUpdatePackage: Equatable {
     }
 }
 
+private enum MacUpdateSource: String, CaseIterable {
+    case automatic = "auto", proxy = "gh-proxy", fast = "ghfast", github = "official"
+
+    var label: String {
+        switch self {
+        case .automatic: return "自动选择"
+        case .proxy: return "GH-Proxy"
+        case .fast: return "GHFast"
+        case .github: return "GitHub 官方"
+        }
+    }
+    private var mirror: URL? {
+        switch self {
+        case .proxy: return URL(string: "https://gh-proxy.com/")
+        case .fast: return URL(string: "https://ghfast.top/")
+        default: return nil
+        }
+    }
+    func url(for asset: URL) -> URL {
+        guard let mirror else { return asset }
+        return URL(string: mirror.absoluteString + asset.absoluteString)!
+    }
+    func label(for response: URL?) -> String {
+        guard let mirror, let host = response?.host, host != mirror.host else { return label }
+        return label + " → " + (UpdateRedirects.isGitHubDownload(response) ? Self.github.label : host)
+    }
+    func candidates(verified: Bool) -> [Self] {
+        switch self {
+        case .automatic: return verified ? [.proxy, .fast, .github] : [.github]
+        case .github: return [.github]
+        default: return verified ? [self] : []
+        }
+    }
+}
+
 @MainActor final class MacUpdates: ObservableObject {
     private enum Phase {
         case checking, downloading, preparing, applying
@@ -45,7 +80,7 @@ struct MacUpdatePackage: Equatable {
     @Published private var phase: Phase?
     @Published private(set) var cancelling = false
     @Published var status = "点击“手动检查更新”获取最新版本。"
-    @Published var progress: Double = 0
+    @Published private(set) var receivedBytes: Int64?
     @Published var release = J.null
     @Published var downloaded: URL?
     let preferences: Preferences
@@ -60,13 +95,14 @@ struct MacUpdatePackage: Equatable {
     private var officialMetadata = false
     var busy: Bool { phase != nil }
     var downloading: Bool { phase == .downloading }
+    var downloadSize: Int64 { Int64(package?.size ?? 0) }
     var canCancel: Bool { busy && phase != .applying && !cancelling }
     var hasUpdate: Bool { package != nil }
     var latestVersion: String {
         let tag = release["tag_name"].text
         return tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
     }
-    static let sources = [("auto", "自动选择"), ("gh-proxy", "GH-Proxy"), ("ghfast", "GHFast"), ("official", "GitHub 官方")]
+    static let sources = MacUpdateSource.allCases.map { ($0.rawValue, $0.label) }
     init(preferences: Preferences) { self.preferences = preferences }
     func start() {
         guard timer == nil else { return }
@@ -111,53 +147,71 @@ struct MacUpdatePackage: Equatable {
     }
     @discardableResult func download() async -> Bool {
         guard !busy, let package else { return false }
+        let selected = MacUpdateSource(rawValue: preferences.updateSource) ?? .automatic
         return await perform(.downloading, message: "正在准备下载…") { [self] id in
-            try await download(package, operation: id)
+            try await download(package, selected: selected, operation: id)
         }
     }
 
-    private func download(_ package: MacUpdatePackage, operation id: UUID) async throws {
+    private func download(_ package: MacUpdatePackage, selected: MacUpdateSource, operation id: UUID) async throws {
         // A mirror can serve the file when its hash was confirmed independently on GitHub.
         var trusted = officialMetadata
-        if !trusted {
+        if !trusted && selected != .github {
             status = "正在核对更新文件…"
-            if let official = await Self.fetchMetadata(Self.latestRelease, session), MacUpdatePackage.select(from: official) == package { trusted = true }
+            if let official = await Self.fetchMetadata(Self.latestRelease, session), MacUpdatePackage.select(from: official) == package {
+                trusted = true
+                officialMetadata = true
+            }
         }
         try Task.checkCancellation()
-        let destinations = ["gh-proxy": "https://gh-proxy.com/", "ghfast": "https://ghfast.top/", "official": ""]
-        let choices = ["gh-proxy", "ghfast", "official"]
-        let preferred = preferences.updateSource
-        let ids = !trusted ? ["official"] : preferred == "auto" ? choices : [preferred] + choices.filter { $0 != preferred }
-        for source in ids {
-            guard let prefix = destinations[source], let url = URL(string: prefix + package.url.absoluteString) else { continue }
+        let sources = selected.candidates(verified: trusted)
+        guard !sources.isEmpty else {
+            throw CoreFailure(code: "updates", message: "暂时无法从 GitHub 核对 \(selected.label) 的更新文件，请稍后重试或切换下载源。")
+        }
+        let manager = FileManager.default
+        let folder = AppPaths.profile.appendingPathComponent("updates", isDirectory: true)
+        try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+        let destination = folder.appendingPathComponent(package.name)
+        let expectedBytes = Int64(package.size)
+        for source in sources {
+            receivedBytes = nil
+            status = "正在连接 \(source.label)…"
+            let temporary = folder.appendingPathComponent(".\(UUID().uuidString).part")
+            defer { try? manager.removeItem(at: temporary) }
             do {
-                status = "正在下载更新 · \(Self.sources.first { $0.0 == source }?.1 ?? source)…"
-                progress = 0
-                var request = URLRequest(url: url); request.timeoutInterval = 180
-                let delegate = DownloadProgressDelegate(officialOnly: !trusted) { [weak self] fraction in
-                    Task { @MainActor in
-                        guard let self, self.operationID == id, self.downloading, !self.cancelling else { return }
-                        self.progress = fraction
-                    }
+                var request = URLRequest(url: source.url(for: package.url)); request.timeoutInterval = 180
+                let response = try await UpdateTransfer().download(request, to: temporary, officialOnly: source == .github) { [weak self] count, url in
+                    guard let self, self.operationID == id, self.downloading, !self.cancelling else { return }
+                    let count = min(count, expectedBytes)
+                    guard count > (self.receivedBytes ?? 0) else { return }
+                    if self.receivedBytes == nil { self.status = "正在下载更新 · \(source.label(for: url))" }
+                    self.receivedBytes = count
                 }
-                let (temporary, response) = try await session.download(for: request, delegate: delegate)
-                defer { try? FileManager.default.removeItem(at: temporary) }
                 try Task.checkCancellation()
-                guard (response as? HTTPURLResponse)?.statusCode == 200,
-                      trusted || DownloadProgressDelegate.isGitHubDownload(response.url) else { throw URLError(.badServerResponse) }
-                let attributes = try FileManager.default.attributesOfItem(atPath: temporary.path)
-                let hash = try await Self.hashOffMain(temporary)
+                let label = source.label(for: response)
+                guard try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize == package.size else {
+                    throw CoreFailure(code: "updates", message: "\(label) 返回的文件大小不符。")
+                }
+                receivedBytes = expectedBytes
+                status = "正在校验更新 · \(label)"
+                guard try await Self.hashOffMain(temporary) == package.digest else {
+                    throw CoreFailure(code: "updates", message: "\(label) 的下载文件校验未通过。")
+                }
                 try Task.checkCancellation()
-                guard (attributes[.size] as? NSNumber)?.intValue == package.size, hash == package.digest else { throw CoreFailure(code: "updates", message: "下载文件校验失败。") }
-                let folder = AppPaths.profile.appendingPathComponent("updates", isDirectory: true); try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                let destination = folder.appendingPathComponent(package.name)
-                let manager = FileManager.default
                 if manager.fileExists(atPath: destination.path) { _ = try manager.replaceItemAt(destination, withItemAt: temporary) }
                 else { try manager.moveItem(at: temporary, to: destination) }
-                downloaded = destination; status = "新版已下载，可更新并重启。"; progress = 1; return
-            } catch { try Task.checkCancellation() }
+                downloaded = destination
+                status = "新版已通过 \(label) 下载，可更新并重启。"
+                return
+            } catch {
+                try Task.checkCancellation()
+                if selected != .automatic {
+                    if let failure = error as? CoreFailure { throw failure }
+                    throw CoreFailure(code: "updates", message: "\(source.label) 下载未完成，可重试或切换下载源。")
+                }
+            }
         }
-        throw CoreFailure(code: "updates", message: trusted ? "下载未完成，可更换下载源后重试。" : "暂时无法连接 GitHub 校验新版，请稍后重试或前往下载页面。")
+        throw CoreFailure(code: "updates", message: "下载未完成，可更换下载源后重试或前往下载页面。")
     }
 
     private func perform(_ phase: Phase, message: String, action: @escaping @MainActor (UUID) async throws -> Void) async -> Bool {
@@ -166,7 +220,7 @@ struct MacUpdatePackage: Equatable {
         operationID = id
         self.phase = phase
         status = message
-        progress = 0
+        receivedBytes = nil
         let work = Task {
             defer {
                 operation = nil
@@ -180,7 +234,7 @@ struct MacUpdatePackage: Equatable {
                 return true
             } catch {
                 if Task.isCancelled || error is CancellationError {
-                    progress = 0
+                    receivedBytes = nil
                     switch phase {
                     case .checking: status = "检查更新已取消。"
                     case .downloading: status = "下载已取消，稍后可重新下载。"
@@ -217,7 +271,7 @@ struct MacUpdatePackage: Equatable {
             request.setValue("MemoLex/\(AppPaths.version) macOS", forHTTPHeaderField: "User-Agent")
             request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
             let (data, response) = try await session.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 2_000_000,
+            guard (response as? HTTPURLResponse)?.statusCode == 200, response.url?.scheme == "https", data.count <= 2_000_000,
                   address != latestRelease || response.url?.host == "api.github.com" else { return nil }
             let value = try JSONDecoder().decode(J.self, from: data)
             let tag = value["tag_name"].text
@@ -278,16 +332,57 @@ struct MacUpdatePackage: Equatable {
     }
 }
 
-private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
+@MainActor private final class UpdateTransfer {
+    private var task: URLSessionDownloadTask?
+
+    func download(_ request: URLRequest, to destination: URL, officialOnly: Bool,
+                  onProgress: @escaping (Int64, URL?) -> Void) async throws -> URL? {
+        let delegate = UpdateRedirects(officialOnly: officialOnly)
+        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        let observe = Task {
+            while !Task.isCancelled {
+                if let task, task.countOfBytesReceived > 0 {
+                    onProgress(task.countOfBytesReceived, task.response?.url ?? task.currentRequest?.url)
+                }
+                do { try await Task.sleep(nanoseconds: 150_000_000) }
+                catch { return }
+            }
+        }
+        defer { observe.cancel(); task = nil; session.finishTasksAndInvalidate() }
+        let response = try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL?, Error>) in
+                let transfer = session.downloadTask(with: request) { file, response, error in
+                    if let error { continuation.resume(throwing: error); return }
+                    guard let file, let response = response as? HTTPURLResponse, response.statusCode == 200,
+                          response.url?.scheme == "https",
+                          !officialOnly || UpdateRedirects.isGitHubDownload(response.url) else {
+                        continuation.resume(throwing: URLError(.badServerResponse))
+                        return
+                    }
+                    do {
+                        try FileManager.default.moveItem(at: file, to: destination)
+                        continuation.resume(returning: response.url)
+                    } catch { continuation.resume(throwing: error) }
+                }
+                task = transfer
+                transfer.resume()
+            }
+        } onCancel: {
+            Task { @MainActor in self.task?.cancel() }
+        }
+        try Task.checkCancellation()
+        return response
+    }
+}
+
+private final class UpdateRedirects: NSObject, URLSessionTaskDelegate {
     let officialOnly: Bool
-    let progress: (Double) -> Void
-    init(officialOnly: Bool, progress: @escaping (Double) -> Void) { self.officialOnly = officialOnly; self.progress = progress }
+    init(officialOnly: Bool) { self.officialOnly = officialOnly }
     static func isGitHubDownload(_ url: URL?) -> Bool {
         guard url?.scheme == "https", let host = url?.host else { return false }
         return ["github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"].contains(host)
     }
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) { if totalBytesExpectedToWrite > 0 { progress(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)) } }
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         let allowed = request.url?.scheme == "https" && (!officialOnly || Self.isGitHubDownload(request.url))
         completionHandler(allowed ? request : nil)
@@ -321,12 +416,20 @@ struct UpdatesSettings: View {
                     GridRow {
                         Text("下载源").foregroundStyle(Palette.muted)
                         MemoPicker(title: "下载源", selection: $preferences.updateSource, options: MacUpdates.sources).frame(width: 155)
+                            .disabled(updates.downloading)
                     }
                 }
+                Text("自动选择会在连接失败时切换下载源。").font(.footnote).foregroundStyle(Palette.muted)
             }
             SettingsCard(title: "当前版本 \(AppPaths.version)") {
                 Text(updates.status).font(.callout).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
-                if updates.downloading { ProgressView(value: updates.progress).tint(Palette.accent) }
+                if updates.downloading, let received = updates.receivedBytes, updates.downloadSize > 0 {
+                    HStack(spacing: 10) {
+                        ProgressView(value: Double(received), total: Double(updates.downloadSize)).tint(Palette.accent)
+                        Text((Double(received) / Double(updates.downloadSize)).formatted(.percent.precision(.fractionLength(0))))
+                            .font(.caption.monospacedDigit()).foregroundStyle(Palette.muted)
+                    }
+                }
                 else if updates.busy { ProgressView().controlSize(.small) }
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) { updateActions }.fixedSize(horizontal: true, vertical: false)

@@ -2,6 +2,10 @@ import AppKit
 import SwiftUI
 
 struct SettingsView: View {
+    @MainActor static var preferredSize: NSSize {
+        let bounds = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1100, height: 820)
+        return NSSize(width: min(900, bounds.width - 65), height: min(650, bounds.height - 65))
+    }
     @ObservedObject var model: AppModel
     @State private var status = ""
     private let pages = [
@@ -11,7 +15,6 @@ struct SettingsView: View {
     ]
     var body: some View {
         VStack(spacing: 0) {
-            DialogHeader(title: "设置") { model.sheet = nil }
             HStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: 3) {
@@ -45,7 +48,7 @@ struct SettingsView: View {
                     }
                 }
             }.frame(maxHeight: .infinity)
-        }.frame(width: min(900, (NSScreen.main?.visibleFrame.width ?? 1100) - 65), height: min(650, (NSScreen.main?.visibleFrame.height ?? 820) - 65))
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.canvas).foregroundStyle(Palette.ink).tint(Palette.accent).toggleStyle(.checkbox)
             .onChange(of: model.settingsPage) { _ in status = "" }
             .onExitCommand { model.sheet = nil }

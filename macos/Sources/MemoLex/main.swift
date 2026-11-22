@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--apply-update" {
@@ -18,6 +19,8 @@ private final class MemoLexWindow: NSWindow {
     var window: NSWindow!
     var integration: SystemIntegration!
     private var statusItem: NSStatusItem!
+    private var settingsWindow: NSWindow?
+    private var settingsSubscription: AnyCancellable?
     private var haiciWindow: NSWindow?
     private var haici: HaiciBrowser?
     private var forceQuit = false
@@ -41,6 +44,9 @@ private final class MemoLexWindow: NSWindow {
         window.toolbar = windowedToolbar
         window.isMovableByWindowBackground = true; window.isReleasedWhenClosed = false; window.delegate = self
         installContent(MainView(model: model), in: window)
+        settingsSubscription = model.$sheet.receive(on: DispatchQueue.main).sink { [weak self] _ in
+            self?.syncSettingsWindow()
+        }
         if !window.setFrameUsingName("MemoLex.Main") { window.center() }
         let minimumFrame = window.frameRect(forContentRect: CGRect(origin: .zero, size: MainView.minimumSize)).size
         window.minSize = minimumFrame
@@ -138,6 +144,38 @@ private final class MemoLexWindow: NSWindow {
         let floating = model.preferences.alwaysOnTop && !window.styleMask.contains(.fullScreen)
         let level: NSWindow.Level = floating ? .floating : .normal
         if window.level != level { window.level = level }
+        if let settingsWindow, settingsWindow.level != level { settingsWindow.level = level }
+    }
+    private func syncSettingsWindow() {
+        guard model.sheet == .settings else {
+            if let settingsWindow {
+                model.showLogin = false
+                self.settingsWindow = nil
+                settingsWindow.close()
+            }
+            return
+        }
+        if settingsWindow == nil {
+            let settings = NSWindow(contentRect: NSRect(origin: .zero, size: SettingsView.preferredSize),
+                                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            settings.title = "设置"
+            settings.isReleasedWhenClosed = false
+            settings.collectionBehavior.insert(.fullScreenAuxiliary)
+            settings.delegate = self
+            installContent(SettingsView(model: model), in: settings)
+            settings.center()
+            settingsWindow = settings
+            applyWindowLevel()
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+    func windowWillClose(_ notification: Notification) {
+        guard let closing = notification.object as? NSWindow, closing === settingsWindow else { return }
+        settingsWindow = nil
+        if model.sheet == .settings {
+            model.showLogin = false
+            model.sheet = nil
+        }
     }
     func applyPreferences() {
         applyWindowLevel()
@@ -158,15 +196,23 @@ private final class MemoLexWindow: NSWindow {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender === window else { return true }
         if forceQuit { return true }
-        if model.preferences.rememberClose { if model.preferences.closeToTray { sender.orderOut(nil) } else { quit() }; return false }
+        if model.preferences.rememberClose { if model.preferences.closeToTray { hideMainWindow(sender) } else { quit() }; return false }
         let alert = NSAlert(); alert.messageText = "关闭墨墨搜词"; alert.informativeText = "你希望退出软件，还是收起到菜单栏？"
         alert.addButton(withTitle: "退出软件"); alert.addButton(withTitle: "收起到菜单栏"); alert.addButton(withTitle: "取消")
         let remember = NSButton(checkboxWithTitle: "记住选择，下次不再询问", target: nil, action: nil); remember.state = .off; alert.accessoryView = remember
         let choice = alert.runModal(); guard choice != .alertThirdButtonReturn else { return false }
         model.preferences.closeToTray = choice == .alertSecondButtonReturn; model.preferences.rememberClose = remember.state == .on; model.preferences.save()
-        if model.preferences.closeToTray { sender.orderOut(nil) } else { quit() }; return false
+        if model.preferences.closeToTray { hideMainWindow(sender) } else { quit() }; return false
     }
-    @objc func quit() { forceQuit = true; NSApp.terminate(nil) }
+    private func hideMainWindow(_ sender: NSWindow) {
+        if model.sheet == .settings { model.sheet = nil; syncSettingsWindow() }
+        sender.orderOut(nil)
+    }
+    @objc func quit() {
+        forceQuit = true
+        if model.sheet == .settings { model.sheet = nil; syncSettingsWindow() }
+        NSApp.terminate(nil)
+    }
     @objc func showMain() { show(); model.focusSearch?() }
     @objc func settings() { show(); model.sheet = .settings }
     @objc func history() { show(); model.sheet = .history }

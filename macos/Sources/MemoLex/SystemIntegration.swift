@@ -6,9 +6,9 @@ import ServiceManagement
 import SwiftUI
 
 @MainActor enum PermissionCenter {
-    enum Kind: String, Sendable {
-        case accessibility = "Accessibility"
-        case screen = "ScreenCapture"
+    enum Kind: String {
+        case accessibility = "Privacy_Accessibility"
+        case screen = "Privacy_ScreenCapture"
 
         var title: String { self == .accessibility ? "辅助功能" : "屏幕录制" }
         var icon: String { self == .accessibility ? "hand.tap" : "rectangle.dashed" }
@@ -19,11 +19,10 @@ import SwiftUI
     }
     private static var cached = Snapshot()
     private static var lastProbe = -Double.infinity
-    private static var lastCapture = -Double.infinity
     private static var uptime: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     static var accessibility: Bool { AXIsProcessTrusted() || snapshot().accessibility }
-    static var screen: Bool { CGPreflightScreenCaptureAccess() || uptime - lastCapture < 10 || snapshot().screen }
+    static var screen: Bool { CGPreflightScreenCaptureAccess() || snapshot().screen }
 
     static func snapshot(refresh: Bool = false) -> Snapshot {
         if refresh || uptime - lastProbe >= 2 {
@@ -31,10 +30,8 @@ import SwiftUI
                               screen: CGPreflightScreenCaptureAccess() || canReadOtherWindowTitles())
             lastProbe = uptime
         }
-        return Snapshot(accessibility: cached.accessibility, screen: cached.screen || uptime - lastCapture < 10)
+        return cached
     }
-
-    static func recordScreenAccess() { lastCapture = uptime }
 
     private static func canReadOtherApplication() -> Bool {
         let ownPID = ProcessInfo.processInfo.processIdentifier
@@ -62,119 +59,50 @@ import SwiftUI
         }
     }
 
-    static func requestAccessibility() { _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) }
-    static func requestScreen() { _ = CGRequestScreenCaptureAccess() }
-    static func open(_ section: String) { if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(section)") { NSWorkspace.shared.open(url) } }
-
-    static func openSettings(for kind: Kind, request: Bool) {
-        if request {
-            switch kind {
-            case .accessibility: requestAccessibility()
-            case .screen: requestScreen()
-            }
-        }
-        open("Privacy_\(kind.rawValue)")
-    }
-
-    static func verify() async -> Snapshot {
-        let status = snapshot(refresh: true)
-        if !status.screen, await ScreenCapture.hasAccess() { recordScreenAccess() }
-        return snapshot()
-    }
-
-    static func reset(_ kind: Kind) async -> Bool {
-        guard let bundleID = Bundle.main.bundleIdentifier, bundleID == "com.superraine.MemoLex",
-              Bundle.main.bundleURL.pathExtension == "app" else { return false }
-        let success = await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
-            process.arguments = ["reset", kind.rawValue, bundleID]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            do {
-                try process.run()
-                process.waitUntilExit()
-                return process.terminationStatus == 0
-            } catch { return false }
-        }.value
-        if success {
-            lastProbe = -.infinity
-            if kind == .screen { lastCapture = -.infinity }
-        }
-        return success
+    static func openSettings(for kind: Kind) {
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(kind.rawValue)")!
+        NSWorkspace.shared.open(url)
     }
 }
 
 struct PermissionsSettings: View {
     @ObservedObject var model: AppModel
-    @State private var refresh = 0
-    @State private var permissions: PermissionCenter.Snapshot?
-    @State private var checking = false
-    @State private var resetting: PermissionCenter.Kind?
-    @State private var recovery = ""
+    @State private var permissions = PermissionCenter.Snapshot()
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
-            permission(.accessibility, enabled: permissions?.accessibility,
+            permission(.accessibility, enabled: permissions.accessibility,
                        detail: "读取其他软件中的英文文本，监听连续两次 ⌘C。")
-            permission(.screen, enabled: permissions?.screen,
+            permission(.screen, enabled: permissions.screen,
                        detail: "用于图片取词和截图翻译。识别在本机完成。")
             HStack(spacing: 10) {
-                Button {
-                    checking = true
-                    Task {
-                        permissions = await PermissionCenter.verify()
-                        model.applySystemPreferences?()
-                        checking = false
-                    }
-                } label: {
-                    Label(checking ? "正在检查…" : "刷新权限状态", systemImage: "arrow.clockwise")
-                }.disabled(checking || resetting != nil)
+                Button(action: refresh) { Label("刷新权限状态", systemImage: "arrow.clockwise") }
                 Button("在访达中显示软件") {
                     NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL.resolvingSymlinksInPath()])
                 }
+            }.buttonStyle(MemoButtonStyle())
+            if !permissions.accessibility || !permissions.screen {
+                Text("在系统设置中允许墨墨搜词。列表里找不到时，可用「＋」添加当前 App。若 macOS 提示重新打开，请按系统提示操作。")
+                    .font(.callout).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(MemoButtonStyle())
-            if !recovery.isEmpty { Text(recovery).font(.callout).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true) }
         }.tourTarget("permissions")
-            .task(id: refresh) {
-                permissions = PermissionCenter.snapshot(refresh: true)
-                model.applySystemPreferences?()
-                try? await Task.sleep(nanoseconds: 600_000_000)
-                if !Task.isCancelled { permissions = PermissionCenter.snapshot(refresh: true) }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh += 1 }
+            .onAppear(perform: refresh)
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh() }
     }
-    private func permission(_ kind: PermissionCenter.Kind, enabled: Bool?, detail: String) -> some View {
+    private func refresh() {
+        permissions = PermissionCenter.snapshot(refresh: true)
+        model.applySystemPreferences?()
+    }
+    private func permission(_ kind: PermissionCenter.Kind, enabled: Bool, detail: String) -> some View {
         SettingsCard(title: kind.title) {
             HStack {
-                Label(enabled == true ? "已允许" : enabled == nil ? "正在检查…" : "待系统确认",
-                      systemImage: enabled == true ? "checkmark.circle.fill" : kind.icon)
-                    .font(.callout).foregroundStyle(enabled == true ? Palette.deep : Palette.muted)
+                Label(enabled ? "已允许" : "待系统确认", systemImage: enabled ? "checkmark.circle.fill" : kind.icon)
+                    .font(.callout).foregroundStyle(enabled ? Palette.deep : Palette.muted)
                 Spacer()
-                HStack(spacing: 7) {
-                    Button("前往系统设置") { PermissionCenter.openSettings(for: kind, request: enabled != true) }
-                    Button(resetting == kind ? "正在重置…" : "重新授权") { confirmReset(kind) }
-                }.buttonStyle(MemoButtonStyle(compact: true)).disabled(resetting != nil || checking)
+                Button("前往系统设置") { PermissionCenter.openSettings(for: kind) }
+                    .buttonStyle(MemoButtonStyle(compact: true))
             }
             Text(detail).font(.callout).foregroundStyle(Palette.muted)
         }
-    }
-
-    private func confirmReset(_ kind: PermissionCenter.Kind) {
-        model.notice = .init(title: "重新授权\(kind.title)？",
-                             message: "清除墨墨搜词的这项旧授权，然后在系统设置中允许当前版本。",
-                             confirm: "重新授权", action: {
-            Task {
-                resetting = kind
-                let success = await PermissionCenter.reset(kind)
-                resetting = nil
-                recovery = success
-                    ? "旧授权已重置。请在系统设置允许墨墨搜词，再退出并重新打开软件。"
-                    : "请在系统设置中移除旧的墨墨搜词条目，用「＋」添加当前 App 并开启权限，再重新打开软件。"
-                PermissionCenter.openSettings(for: kind, request: success)
-                refresh += 1
-            }
-        })
     }
 }
 
@@ -255,7 +183,6 @@ private struct ShortcutRecorder: NSViewRepresentable {
     private var expiryTimer: Timer?
     private var installedShortcuts: [String: NativeShortcut]?
     private var hoverEnabled: Bool?
-    private var doubleCopyEnabled: Bool?
     let hover: HoverController
     let screenshot: ScreenshotCapture
     init(model: AppModel) {
@@ -279,15 +206,8 @@ private struct ShortcutRecorder: NSViewRepresentable {
             installedShortcuts = preferences.shortcuts
         }
         let enabledHover = preferences.hoverEnabled
-        let enabledCopy = preferences.doubleCopy
-        if ((hoverEnabled == false && enabledHover) || (doubleCopyEnabled == false && enabledCopy)) && !PermissionCenter.accessibility {
-            PermissionCenter.requestAccessibility()
-        }
-        if hoverEnabled == false && enabledHover && !PermissionCenter.screen { PermissionCenter.requestScreen() }
-        if !enabledCopy, let copyMonitor { NSEvent.removeMonitor(copyMonitor); self.copyMonitor = nil }
         if enabledHover != hoverEnabled { hover.configure() }
         hoverEnabled = enabledHover
-        doubleCopyEnabled = enabledCopy
         ensureCopyMonitor()
     }
     private func installShortcuts(_ shortcuts: [String: NativeShortcut]) {
@@ -303,7 +223,18 @@ private struct ShortcutRecorder: NSViewRepresentable {
             if status == noErr, let reference { hotkeys.append(reference) } else { model.status = "\(shortcut.label) 已被占用，请更换快捷键。" }
         }
     }
-    private func ensureCopyMonitor() { if model.preferences.doubleCopy, PermissionCenter.accessibility, copyMonitor == nil { copyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in Task { @MainActor in self?.copyEvent(event) } } } }
+    private func ensureCopyMonitor() {
+        if model.preferences.doubleCopy && PermissionCenter.accessibility {
+            if copyMonitor == nil {
+                copyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                    Task { @MainActor in self?.copyEvent(event) }
+                }
+            }
+        } else if let copyMonitor {
+            NSEvent.removeMonitor(copyMonitor)
+            self.copyMonitor = nil
+        }
+    }
     private func invoke(_ id: UInt32) {
         if id == 3, model.sheet == nil { screenshot.start(); return }
         model.showWindow?()

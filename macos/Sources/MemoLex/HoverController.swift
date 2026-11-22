@@ -66,6 +66,7 @@ import SwiftUI
     }
     private func verifyImage() {
         guard let original = fingerprint, !verifying, Date().timeIntervalSince(lastVerification) > 0.8 else { return }
+        guard PermissionCenter.screen else { panel?.orderOut(nil); fingerprint = nil; return }
         verifying = true; lastVerification = Date(); let version = generation; let rect = captureRect
         Task {
             defer { verifying = false }
@@ -105,21 +106,14 @@ private struct HoverView: View {
     private var panels: [NSPanel] = []
     private var monitor: Any?
     private var wasVisible = false
-    private var checkingPermission = false
     init(model: AppModel) { self.model = model }
     func start() {
-        guard panels.isEmpty, !checkingPermission else { return }
+        guard panels.isEmpty else { return }
         if PermissionCenter.screen { beginSelection(); return }
-        checkingPermission = true
-        Task {
-            defer { checkingPermission = false }
-            if await ScreenCapture.hasAccess() {
-                PermissionCenter.recordScreenAccess()
-                beginSelection()
-            } else {
-                model.notice = .init(title: "检查屏幕录制权限", message: "macOS 暂时无法提供屏幕内容。请在系统设置中确认墨墨搜词的屏幕录制权限，再试一次。")
-            }
-        }
+        model.showWindow?()
+        model.notice = .init(title: "需要屏幕录制权限",
+                             message: "在系统设置中允许墨墨搜词后即可截图。列表里找不到时，可用「＋」添加当前 App。",
+                             confirm: "前往系统设置", action: { PermissionCenter.openSettings(for: .screen) })
     }
     private func beginSelection() {
         wasVisible = NSApp.windows.contains { $0.isVisible && !($0 is NSPanel) }; NSApp.windows.filter { !($0 is NSPanel) }.forEach { $0.orderOut(nil) }
@@ -140,7 +134,7 @@ private struct HoverView: View {
         closePanels()
         guard rect.width >= 4, rect.height >= 4 else { if wasVisible { model.showWindow?() }; return }
         Task {
-            do { try await Task.sleep(nanoseconds: 120_000_000); let image = try await ScreenCapture.image(rect); PermissionCenter.recordScreenAccess(); let result = try await ScreenText.recognize(image, crop: rect); model.showWindow?(); await model.classify(result.0) }
+            do { try await Task.sleep(nanoseconds: 120_000_000); let image = try await ScreenCapture.image(rect); let result = try await ScreenText.recognize(image, crop: rect); model.showWindow?(); await model.classify(result.0) }
             catch { model.showWindow?(); model.fail(CoreFailure(code: "capture", message: "未能读取截图，请检查屏幕录制权限后重试。")) }
         }
     }

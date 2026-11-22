@@ -36,7 +36,8 @@ struct StubbornView: View {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("顽固单词").font(.system(size: 24, weight: .semibold))
-                        Text("\(model.titleAccount) · \(visible.count) 个单词").font(.footnote).foregroundStyle(.secondary)
+                        Text("\(model.titleAccount) · \(visible.count) 个单词" + (model.showingCachedStubborn ? " · 本地缓存" : ""))
+                            .font(.footnote).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button(model.stubbornLoading ? "刷新中…" : model.loggedIn ? "刷新" : "账号设置") {
@@ -93,6 +94,7 @@ struct StubbornView: View {
     private var stubbornStatus: String {
         if model.keychainAuthorizationNeeded { return "在账号设置中授权钥匙串后，即可刷新顽固单词。" }
         if !model.canBrowseStubborn { return "登录墨墨账号后可查看顽固单词。" }
+        if !model.loggedIn { return "可点击缓存中的单词查词。登录墨墨账号后可刷新列表。" }
         if !model.stubbornHint.isEmpty { return model.stubbornHint }
         return "点击单词查词。手机端同步学习数据后可刷新。"
     }

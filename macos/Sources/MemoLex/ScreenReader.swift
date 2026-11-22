@@ -107,11 +107,6 @@ enum ScreenText {
 }
 
 enum ScreenCapture {
-    static func hasAccess() async -> Bool {
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) else { return false }
-        return !content.displays.isEmpty
-    }
-
     static func image(_ rect: CGRect) async throws -> CGImage {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first(where: { CGDisplayBounds($0.displayID).contains(CGPoint(x: rect.midX, y: rect.midY)) }) else { throw CoreFailure(code: "capture", message: "未找到要截取的屏幕。") }

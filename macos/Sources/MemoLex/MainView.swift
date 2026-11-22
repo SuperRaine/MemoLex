@@ -54,9 +54,9 @@ struct MainView: View {
             if url.scheme == "memolex", let query = url.path.removingPercentEncoding { model.lookup(String(query.dropFirst())); return .handled }
             return .systemAction
         })
-        .sheet(item: $model.sheet) { sheet in
+        .sheet(item: dialog) { sheet in
             switch sheet {
-            case .settings: SettingsView(model: model)
+            case .settings: EmptyView()
             case .history: HistoryView(model: model)
             case .stubborn: StubbornView(model: model)
             case .mnemonic: MnemonicView(model: model)
@@ -64,6 +64,11 @@ struct MainView: View {
             }
         }
         .onAppear { model.focusSearch = { searchFocused = true } }
+    }
+    private var dialog: Binding<AppSheet?> {
+        Binding(get: { model.sheet == .settings ? nil : model.sheet }, set: { sheet in
+            if model.sheet != .settings { model.sheet = sheet }
+        })
     }
     private var dictionarySummary: String {
         guard model.ready else { return "正在准备词典…" }
@@ -120,7 +125,7 @@ struct MainView: View {
             HStack { Text("我的云词本").font(.system(size: 12, weight: .semibold)); Spacer(); Button { Task { await model.refreshNotepads() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.plain) }
             MemoPicker(title: "选择云词本", selection: notepadSelection,
                        options: model.notepads.map { ($0["id"].text, $0["title"].text) }).disabled(!model.loggedIn)
-            if !model.loggedIn { Text("登录墨墨账号后即可使用").font(.caption).foregroundStyle(Palette.muted) }
+            if let hint = model.notepadConnectionHint { Text(hint).font(.caption).foregroundStyle(Palette.muted) }
             HStack { Spacer(); Button("查看 / 编辑") { model.sheet = .notepad }.disabled(model.selectedPad == .null); Button("新建") { model.createNotebook() } }.buttonStyle(MemoButtonStyle(compact: true))
         }.foregroundStyle(Palette.ink).padding(12).background(Palette.wash, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.border, lineWidth: 0.6).allowsHitTesting(false))
     }
@@ -188,15 +193,19 @@ private struct MainTitlebar: View {
             }.font(.system(size: model.stubbornCurrent.isEmpty ? 12 : 15, weight: .semibold))
                 .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading).buttonStyle(.plain)
                 .help(model.stubbornCurrent.isEmpty ? "顽固单词" : model.stubbornCurrent)
-            Button(model.stubbornLoading && !model.stubbornCurrent.isEmpty ? "刷新中…" : "全部") {
+            Button(stubbornListLabel) {
                 model.sheet = .stubborn
             }
                 .font(.caption).buttonStyle(.plain).fixedSize().foregroundStyle(Palette.deep)
-                .help("查看全部顽固单词")
+                .help(model.showingCachedStubborn ? "查看本地缓存的顽固单词" : "查看全部顽固单词")
             titleButton(preferences.stubbornSort == "random" ? "shuffle" : "arrow.right", label: "下一个顽固单词") { model.nextStubborn() }
                 .disabled(model.stubbornOrder.count < 2)
         }.padding(.leading, 9).padding(.trailing, 2).frame(height: 29)
             .background(Palette.wash, in: RoundedRectangle(cornerRadius: 8))
+    }
+    private var stubbornListLabel: String {
+        if model.stubbornLoading && !model.stubbornCurrent.isEmpty { return "刷新中…" }
+        return model.showingCachedStubborn ? "缓存" : "全部"
     }
 
     private func countdown(at date: Date) -> some View {
