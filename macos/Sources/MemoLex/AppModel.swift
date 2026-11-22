@@ -87,6 +87,7 @@ struct Notice: Identifiable {
     private var accountVersion = 0
     private var examplesVersion = 0
     private var translationVersion = 0
+    private var translationTask: Task<J, Error>?
     private var suggestionTask: Task<Void, Never>?
     private var lookupTask: Task<Void, Never>?
     private var accountTask: Task<Void, Never>?
@@ -148,6 +149,7 @@ struct Notice: Identifiable {
     func lookup(_ raw: String, navigate: Bool = true) {
         let query = raw.trimmed
         guard ready, !query.isEmpty, query.count <= 100 else { return }
+        if page == .translation { cancelTranslation() }
         lookupTask?.cancel(); wordVersion += 1
         let version = wordVersion; let account = accountVersion
         search = query
@@ -182,7 +184,7 @@ struct Notice: Identifiable {
                 }
                 if navigate { appendLocation(.init(page: page, query: query)) }
                 if !chinese && definitionLoading {
-                    let result = try? await core.request("dictionary.online", ["word": .string(word)], timeout: 17)
+                    let result = try? await core.request("dictionary.online", ["word": .string(word)], timeout: 22)
                     guard version == wordVersion, page == .word, !Task.isCancelled else { return }
                     onlineDefinition = result ?? .null
                     definitionLoading = false
@@ -236,15 +238,25 @@ struct Notice: Identifiable {
     }
     func translate() async {
         guard !translationInput.trimmed.isEmpty else { return }
-        translationVersion += 1; let version = translationVersion
-        translating = true; translationSource = translationInput
+        cancelTranslation()
+        let version = translationVersion
+        let input = translationInput, direction = translationDirection
+        translating = true; translationSource = input; translationOutput = ""; translationProvider = ""
+        let request = Task { try await core.request("translate", ["text": .string(input), "direction": .string(direction)], timeout: 22) }
+        translationTask = request
         do {
-            let result = try await core.request("translate", ["text": .string(translationInput), "direction": .string(translationDirection)])
+            let result = try await request.value
             guard version == translationVersion else { return }
             translationOutput = result["text"].text; translationProvider = result["provider"].text
-            if navigation.indices.contains(navigationIndex), page == .translation { navigation[navigationIndex] = .init(page: .translation, query: "段落翻译", input: translationInput, translated: translationOutput, direction: translationDirection) }
+            if navigation.indices.contains(navigationIndex), page == .translation { navigation[navigationIndex] = .init(page: .translation, query: "段落翻译", input: input, translated: translationOutput, direction: direction) }
         } catch { if version == translationVersion { fail(error) } }
-        if version == translationVersion { translating = false }
+        if version == translationVersion { translating = false; translationTask = nil }
+    }
+    private func cancelTranslation() {
+        translationVersion += 1
+        translationTask?.cancel()
+        translationTask = nil
+        translating = false
     }
     func classify(_ text: String, foreground: Bool = true) async {
         do {
@@ -264,6 +276,7 @@ struct Notice: Identifiable {
     }
     func move(_ direction: Int) {
         let target = navigationIndex + direction; guard navigation.indices.contains(target) else { return }
+        if page == .translation { cancelTranslation() }
         navigationIndex = target; let location = navigation[target]; page = location.page
         if page == .translation {
             lookupTask?.cancel()

@@ -42,7 +42,17 @@ jobs:
           unzip -q "$DATA_DIR/windows.zip" 'MemoLex/app/data/*' 'MemoLex/app/ThirdParty/*' -d "$DATA_DIR"
           printf 'MEMOLEX_DATA_ROOT=%s\n' "$DATA_DIR/MemoLex/app" >> "$GITHUB_ENV"
       - name: Build universal app and packages
-        run: bash macos/build.sh
+        env:
+          MEMOLEX_DEEPL_KEY: ${{ inputs.draft_tag != '' && secrets.MEMOLEX_DEEPL_KEY || '' }}
+        run: |
+          if [ -n "${MEMOLEX_DEEPL_KEY:-}" ]; then
+            key_file="$(mktemp -t memolex-deepl)"
+            trap 'rm -f "$key_file"' EXIT
+            printf '%s' "$MEMOLEX_DEEPL_KEY" > "$key_file"
+            export MEMOLEX_DEEPL_KEY_FILE="$key_file"
+          fi
+          unset MEMOLEX_DEEPL_KEY
+          bash macos/build.sh
       - name: Upload Mac packages
         uses: actions/upload-artifact@v7
         with:

@@ -4,7 +4,6 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Automation;
-using System.ComponentModel;
 using System.Net;
 using MemoLex.Core;
 using MemoLex.Services;
@@ -155,17 +154,17 @@ public partial class MainWindow
         Grid.SetColumn(conceal,3);options.Children.Add(conceal);
         var list=new ListView{Background=Brushes.White,BorderBrush=Brush("#DCE9F3"),BorderThickness=new Thickness(1)};Grid.SetRow(list,3);body.Children.Add(list);VirtualizingPanel.SetIsVirtualizing(list,true);VirtualizingPanel.SetVirtualizationMode(list,VirtualizationMode.Recycling);ScrollViewer.SetHorizontalScrollBarVisibility(list,ScrollBarVisibility.Disabled);
         var columns=new GridView();list.View=columns;
-        var wordButton=new FrameworkElementFactory(typeof(Button));wordButton.SetValue(StyleProperty,FindResource("StubbornWordButton"));wordButton.SetBinding(ContentControl.ContentProperty,new Binding(nameof(StubbornEntry.Word)));wordButton.SetBinding(FrameworkElement.TagProperty,new Binding(nameof(StubbornEntry.Word)));wordButton.SetValue(Control.BackgroundProperty,Brushes.Transparent);wordButton.SetValue(Control.BorderThicknessProperty,new Thickness(0));wordButton.SetValue(Control.ForegroundProperty,Brush("#087FAF"));wordButton.SetValue(Control.HorizontalContentAlignmentProperty,HorizontalAlignment.Left);wordButton.SetValue(Control.PaddingProperty,new Thickness(4,7,8,7));wordButton.AddHandler(Button.ClickEvent,new RoutedEventHandler((button,args)=>{if(button is Button{Tag:string word}){chosen=word;dialog.DialogResult=true;}}));
+        var wordButton=new FrameworkElementFactory(typeof(Button));wordButton.SetValue(StyleProperty,FindResource("StubbornWordButton"));wordButton.SetBinding(ContentControl.ContentProperty,new Binding(nameof(WordListRow.Word)));wordButton.SetBinding(FrameworkElement.TagProperty,new Binding(nameof(WordListRow.Word)));wordButton.SetValue(Control.BackgroundProperty,Brushes.Transparent);wordButton.SetValue(Control.BorderThicknessProperty,new Thickness(0));wordButton.SetValue(Control.ForegroundProperty,Brush("#087FAF"));wordButton.SetValue(Control.HorizontalContentAlignmentProperty,HorizontalAlignment.Left);wordButton.SetValue(Control.PaddingProperty,new Thickness(4,7,8,7));wordButton.AddHandler(Button.ClickEvent,new RoutedEventHandler((button,args)=>{if(button is Button{Tag:string word}){chosen=word;dialog.DialogResult=true;}}));
         columns.Columns.Add(new GridViewColumn{Header="单词",Width=190,CellTemplate=new DataTemplate{VisualTree=wordButton}});
         var meaningStyle=new Style(typeof(Button),(Style)FindResource("StubbornWordButton"));
         meaningStyle.Setters.Add(new Setter(Control.BackgroundProperty,Brushes.Transparent));meaningStyle.Setters.Add(new Setter(Control.BorderThicknessProperty,new Thickness(0)));
-        var concealedStyle=new DataTrigger{Binding=new Binding(nameof(StubbornEntry.IsConcealed)),Value=true};concealedStyle.Setters.Add(new Setter(Control.BackgroundProperty,Brush("#EEF5FA")));concealedStyle.Setters.Add(new Setter(Control.ForegroundProperty,Brush("#809BB0")));meaningStyle.Triggers.Add(concealedStyle);
-        var meaningButton=new FrameworkElementFactory(typeof(Button));meaningButton.SetValue(StyleProperty,meaningStyle);meaningButton.SetBinding(TagProperty,new Binding());meaningButton.SetValue(Control.PaddingProperty,new Thickness(7,7,7,7));meaningButton.SetBinding(ToolTipProperty,new Binding(nameof(StubbornEntry.DisplayMeaning)));
-        var meaningText=new FrameworkElementFactory(typeof(TextBlock));meaningText.SetBinding(TextBlock.TextProperty,new Binding(nameof(StubbornEntry.DisplayMeaning)));meaningText.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);meaningButton.AppendChild(meaningText);
-        meaningButton.AddHandler(Button.ClickEvent,new RoutedEventHandler((button,args)=>{if(button is Button{Tag:StubbornEntry entry}){entry.ToggleMeaning();args.Handled=true;}}));
+        var concealedStyle=new DataTrigger{Binding=new Binding(nameof(WordListRow.IsConcealed)),Value=true};concealedStyle.Setters.Add(new Setter(Control.BackgroundProperty,Brush("#EEF5FA")));concealedStyle.Setters.Add(new Setter(Control.ForegroundProperty,Brush("#809BB0")));meaningStyle.Triggers.Add(concealedStyle);
+        var meaningButton=new FrameworkElementFactory(typeof(Button));meaningButton.SetValue(StyleProperty,meaningStyle);meaningButton.SetBinding(TagProperty,new Binding());meaningButton.SetValue(Control.PaddingProperty,new Thickness(7,7,7,7));meaningButton.SetBinding(ToolTipProperty,new Binding(nameof(WordListRow.MeaningTooltip)));
+        var meaningText=new FrameworkElementFactory(typeof(WordListMeaningText));meaningText.SetBinding(TextBlock.TextProperty,new Binding(nameof(WordListRow.DisplayMeaning)));meaningText.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);meaningButton.AppendChild(meaningText);
+        meaningButton.AddHandler(Button.ClickEvent,new RoutedEventHandler((button,args)=>{if(button is Button{Tag:WordListRow entry}){entry.ToggleMeaning();args.Handled=true;}}));
         var meaningColumn=new GridViewColumn{Header="释义",Width=440,CellTemplate=new DataTemplate{VisualTree=meaningButton}};columns.Columns.Add(meaningColumn);list.SizeChanged+=(_,_)=>meaningColumn.Width=Math.Max(200,list.ActualWidth-218);
         var hint=InputDialog.Text("");hint.FontSize=11;hint.Margin=new Thickness(0,11,0,0);Grid.SetRow(hint,4);body.Children.Add(hint);
-        var entries=new Dictionary<string,StubbornEntry>(StringComparer.OrdinalIgnoreCase);StubbornWordList? displayed=null;
+        var entries=new Dictionary<string,WordListRow>(StringComparer.OrdinalIgnoreCase);StubbornWordList? displayed=null;
         IReadOnlyList<StubbornWord>? renderedOrder=null;
         string? renderedFilter=null;
         bool definitionsReady=false;
@@ -179,7 +178,7 @@ public partial class MainWindow
                 displayed=_stubbornWords;renderedOrder=_stubbornRotation.Words;renderedFilter=filterText;definitionsReady=_ready;
                 var visible=renderedOrder.Select(word=>
                 {
-                    if(!entries.TryGetValue(word.Spelling,out var entry))entries[word.Spelling]=entry=new(word.Spelling,StubbornMeaning(word.Spelling),_preferences.HideStubbornMeanings);
+                    if(!entries.TryGetValue(word.Spelling,out var entry))entries[word.Spelling]=entry=new(word.Spelling,StubbornMeaning(word.Spelling),_ready?_onlineDictionary:null,conceal:_preferences.HideStubbornMeanings);
                     return entry;
                 }).Where(item=>item.Word.Contains(filterText,StringComparison.OrdinalIgnoreCase)||item.Meaning.Contains(filterText,StringComparison.OrdinalIgnoreCase)).ToArray();
                 list.ItemsSource=visible;
@@ -212,16 +211,4 @@ public partial class MainWindow
         if(chosen!=null&&account==_accountVersion&&credential==_tokens.CredentialKey)await SearchAsync(chosen);
     }
     private sealed record StubbornSortChoice(string Key,string Label);
-    private sealed class StubbornEntry(string word,string meaning,bool conceal):INotifyPropertyChanged
-    {
-        private bool _conceal=conceal,_revealed;
-        public string Word {get;}=word;
-        public string Meaning {get;}=meaning;
-        public bool IsConcealed=>_conceal&&!_revealed;
-        public string DisplayMeaning=>IsConcealed?"点击查看释义":Meaning.Length==0?"暂无释义":Meaning;
-        public event PropertyChangedEventHandler? PropertyChanged;
-        internal void SetConceal(bool conceal){_conceal=conceal;_revealed=false;Changed();}
-        internal void ToggleMeaning(){if(!_conceal)return;_revealed=!_revealed;Changed();}
-        private void Changed(){PropertyChanged?.Invoke(this,new(nameof(IsConcealed)));PropertyChanged?.Invoke(this,new(nameof(DisplayMeaning)));}
-    }
 }

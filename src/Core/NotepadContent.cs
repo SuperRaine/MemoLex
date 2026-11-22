@@ -54,7 +54,7 @@ public static class NotepadContent
             else
             {
                 var translation=DictionaryEntry.FormatListMeaning(meaning(line));
-                rows.Add(new(line,translation.Length==0?"本地词库暂无中文释义":translation));
+                rows.Add(new(line,translation));
             }
         }
         return rows;

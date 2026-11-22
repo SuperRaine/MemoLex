@@ -85,7 +85,7 @@ public partial class MainWindow
             {
                 ApplyNotepadSnapshot(updated);
                 StatusText.Text="云词本修改已保存。";
-            },_dictionary,word=>LoadWordAsync(word),deleted:RemoveNotepadSnapshot,confirmDeletion:ConfirmNotepadDeletion).ShowDialog();
+            },_dictionary,word=>LoadWordAsync(word),deleted:RemoveNotepadSnapshot,confirmDeletion:ConfirmNotepadDeletion,online:_onlineDictionary).ShowDialog();
         }
         catch(Exception error){ShowError(error);}
         finally{_adding=false;SetCloudWriteBusy(false);await UpdateMembershipAsync();}

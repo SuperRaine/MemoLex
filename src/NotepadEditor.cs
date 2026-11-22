@@ -11,7 +11,7 @@ namespace MemoLex;
 
 internal static class NotepadEditor
 {
-    internal static Window Build(Window owner,CloudNotepad original,MaiMemoClient api,Action<CloudNotepad> saved,LocalDictionary? dictionary=null,Func<string,Task>? lookup=null,Action<string>? deleted=null,Func<Window,CloudNotepad,int,bool>? confirmDeletion=null)
+    internal static Window Build(Window owner,CloudNotepad original,MaiMemoClient api,Action<CloudNotepad> saved,LocalDictionary? dictionary=null,Func<string,Task>? lookup=null,Action<string>? deleted=null,Func<Window,CloudNotepad,int,bool>? confirmDeletion=null,OnlineDictionaryClient? online=null)
     {
         var dialog=InputDialog.Shell(owner,"我的云词本",out _);
         dialog.Width=800;dialog.Height=730;dialog.MinWidth=620;dialog.MinHeight=520;
@@ -73,13 +73,13 @@ internal static class NotepadEditor
         var close=Footer("关闭");var save=Footer("保存到云词本");save.Style=(Style)Application.Current.FindResource("AccentButton");
         InputDialog.SetBody(dialog,root);
         foreach(var control in new (string,FrameworkElement)[]{("NotepadWords",list),("NotepadFilter",search),("NotepadTitle",title),("NotepadBrief",brief),("NotepadEntryInput",entryInput),("NotepadEntryAction",entryAction),("NotepadEntryPanel",entryPanel),("NotepadDeleteSelected",delete),("NotepadSelectAll",selectAll),("NotepadClearSelection",clear),("NotepadSave",save),("NotepadUndo",undo),("NotepadTabs",tabs),("NotepadMetadata",metadata),("NotepadStatus",status)})dialog.RegisterName(control.Item1,control.Item2);
-        var rows=Array.Empty<NotepadDisplayRow>();
+        var rows=Array.Empty<WordListRow>();
         var totalWords=0;
         var draftContent=original.Content;
         var lastNonEmptyContent=original.Content;
         var changing=false;var busy=false;var closed=false;var version=0;var lifetime=new CancellationTokenSource();CancellationTokenSource? rowsCts=null;
         bool Dirty()=>title.Text!=original.Title||brief.Text!=original.Brief||draftContent!=original.Content;
-        string[] SelectedWords()=>list.SelectedItems.OfType<NotepadDisplayRow>().Where(row=>!row.IsChapter).Select(row=>row.Word).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        string[] SelectedWords()=>list.SelectedItems.OfType<WordListRow>().Where(row=>!row.IsChapter).Select(row=>row.Word).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         void UpdateState()
         {
             var query=search.Text.Trim();var shown=rows.Count(row=>!row.IsChapter&&(query.Length==0||row.Word.Contains(query,StringComparison.OrdinalIgnoreCase)||row.Meaning.Contains(query,StringComparison.OrdinalIgnoreCase)));
@@ -105,7 +105,9 @@ internal static class NotepadEditor
             {
                 if(debounce)await Task.Delay(180,cancellation);
                 var result=await Task.Run(()=>NotepadContent.Describe(snapshot,word=>dictionary?.Lookup(word)?.translation,cancellation),cancellation);
-                if(closed||current!=version||cancellation.IsCancellationRequested)return;rows=result.ToArray();totalWords=rows.Where(row=>!row.IsChapter).Select(row=>row.Word).Distinct(StringComparer.OrdinalIgnoreCase).Count();if(totalWords>0)lastNonEmptyContent=snapshot;Filter();
+                if(closed||current!=version||cancellation.IsCancellationRequested)return;
+                rows=result.Select(row=>new WordListRow(row.Word,row.Meaning,online,isChapter:row.IsChapter)).ToArray();
+                totalWords=rows.Where(row=>!row.IsChapter).Select(row=>row.Word).Distinct(StringComparer.OrdinalIgnoreCase).Count();if(totalWords>0)lastNonEmptyContent=snapshot;Filter();
             }
             catch(OperationCanceledException){ }
             catch{if(!closed)status.Text="未能加载中文释义，请重新加载后重试。";}
@@ -145,7 +147,7 @@ internal static class NotepadEditor
             if(changing)return;
             draftContent=NotepadContent.NormalizeContent(entryInput.Text);UpdateState();await RefreshRows(true);
         };
-        void SelectAll(){changing=true;try{list.SelectedItems.Clear();foreach(var row in list.Items.Cast<NotepadDisplayRow>().Where(row=>!row.IsChapter))list.SelectedItems.Add(row);}finally{changing=false;}UpdateState();}
+        void SelectAll(){changing=true;try{list.SelectedItems.Clear();foreach(var row in list.Items.Cast<WordListRow>().Where(row=>!row.IsChapter))list.SelectedItems.Add(row);}finally{changing=false;}UpdateState();}
         selectAll.Click+=(_,_)=>SelectAll();clear.Click+=(_,_)=>{list.SelectedItems.Clear();UpdateState();};
         delete.Click+=async(_,_)=>await Remove(SelectedWords());
         list.PreviewKeyDown+=async(_,e)=>
@@ -153,7 +155,7 @@ internal static class NotepadEditor
             if(e.Key==Key.Delete&&(Keyboard.Modifiers&(ModifierKeys.Alt|ModifierKeys.Windows))==ModifierKeys.None){e.Handled=true;await Remove(SelectedWords());}
             else if(e.Key==Key.A&&Keyboard.Modifiers==ModifierKeys.Control){e.Handled=true;SelectAll();}
         };
-        async Task Lookup(NotepadDisplayRow row)
+        async Task Lookup(WordListRow row)
         {
             if(lookup==null||row.IsChapter)return;
             if(Dirty()){status.Text="有未保存的修改，请先保存或撤销后再查词。";return;}
@@ -165,7 +167,7 @@ internal static class NotepadEditor
             var source=e.OriginalSource as DependencyObject;
             var container=source==null?null:ItemsControl.ContainerFromElement(list,source) as ListBoxItem;
             for(var element=source;element!=null&&element!=container;element=element is Visual?VisualTreeHelper.GetParent(element):LogicalTreeHelper.GetParent(element))if(element is Button)return;
-            if(container?.DataContext is NotepadDisplayRow row){e.Handled=true;await Lookup(row);}
+            if(container?.DataContext is WordListRow row){e.Handled=true;await Lookup(row);}
         };
         entryAction.Click+=async(_,_)=>
         {
@@ -178,7 +180,7 @@ internal static class NotepadEditor
         };
         list.AddHandler(Button.ClickEvent,new RoutedEventHandler(async(_,e)=>
         {
-            if(e.OriginalSource is not Button {DataContext:NotepadDisplayRow row} button||row.IsChapter)return;
+            if(e.OriginalSource is not Button {DataContext:WordListRow row} button||row.IsChapter)return;
             if(Equals(button.Tag,"remove")){await Remove(new[]{row.Word});return;}
             await Lookup(row);
         }));
@@ -222,15 +224,16 @@ internal static class NotepadEditor
         var remove=new FrameworkElementFactory(typeof(Button)){Name="RemoveWord"};remove.SetValue(DockPanel.DockProperty,Dock.Right);remove.SetValue(ContentControl.ContentProperty,"×");remove.SetValue(FrameworkElement.TagProperty,"remove");remove.SetValue(FrameworkElement.WidthProperty,27d);remove.SetValue(Control.PaddingProperty,new Thickness(2));remove.SetValue(Control.BorderThicknessProperty,new Thickness(0));remove.SetValue(Control.BackgroundProperty,Brushes.Transparent);remove.SetValue(FrameworkElement.ToolTipProperty,"从列表删除这个单词");panel.AppendChild(remove);
         var lookup=new FrameworkElementFactory(typeof(Button)){Name="LookupWord"};lookup.SetValue(DockPanel.DockProperty,Dock.Right);lookup.SetValue(ContentControl.ContentProperty,"\uE721");lookup.SetValue(Control.FontFamilyProperty,new FontFamily("Segoe MDL2 Assets"));lookup.SetValue(FrameworkElement.TagProperty,"lookup");lookup.SetValue(FrameworkElement.WidthProperty,27d);lookup.SetValue(Control.PaddingProperty,new Thickness(2));lookup.SetValue(Control.BorderThicknessProperty,new Thickness(0));lookup.SetValue(Control.BackgroundProperty,Brushes.Transparent);lookup.SetValue(FrameworkElement.ToolTipProperty,"查看释义（也可双击该行）");panel.AppendChild(lookup);
         var word=new FrameworkElementFactory(typeof(TextBlock)){Name="WordText"};word.SetValue(DockPanel.DockProperty,Dock.Left);word.SetValue(FrameworkElement.WidthProperty,148d);word.SetValue(FrameworkElement.MarginProperty,new Thickness(4,5,8,5));word.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Top);word.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);word.SetValue(TextBlock.FontWeightProperty,FontWeights.SemiBold);word.SetValue(TextBlock.ForegroundProperty,new SolidColorBrush(Color.FromRgb(8,127,175)));word.SetBinding(TextBlock.TextProperty,new Binding("Word"));panel.AppendChild(word);
-        var meaning=new FrameworkElementFactory(typeof(TextBlock)){Name="MeaningLabel"};
-        meaning.SetBinding(TextBlock.TextProperty,new Binding("Meaning"));
+        var meaning=new FrameworkElementFactory(typeof(WordListMeaningText)){Name="MeaningLabel"};
+        meaning.SetBinding(TextBlock.TextProperty,new Binding(nameof(WordListRow.DisplayMeaning)));
+        meaning.SetBinding(FrameworkElement.ToolTipProperty,new Binding(nameof(WordListRow.MeaningTooltip)));
         meaning.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);
         meaning.SetValue(TextBlock.TextAlignmentProperty,TextAlignment.Left);
         meaning.SetValue(TextBlock.FontSizeProperty,12d);
         meaning.SetValue(FrameworkElement.MarginProperty,new Thickness(0,5,0,5));
         meaning.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Top);
         panel.AppendChild(meaning);
-        var template=new DataTemplate(typeof(NotepadDisplayRow)){VisualTree=panel};var chapter=new DataTrigger {Binding=new Binding("IsChapter"),Value=true};
+        var template=new DataTemplate(typeof(WordListRow)){VisualTree=panel};var chapter=new DataTrigger {Binding=new Binding("IsChapter"),Value=true};
         foreach(var name in new[]{"LookupWord","RemoveWord","WordText","MeaningLabel"})chapter.Setters.Add(new Setter(UIElement.VisibilityProperty,Visibility.Collapsed,name));
         chapter.Setters.Add(new Setter(UIElement.VisibilityProperty,Visibility.Visible,"ChapterTitle"));template.Triggers.Add(chapter);return template;
     }

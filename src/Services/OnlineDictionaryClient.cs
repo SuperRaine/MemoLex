@@ -7,7 +7,7 @@ using MemoLex.Core;
 
 namespace MemoLex.Services;
 
-internal sealed record OnlineDefinition(string Meaning, string? SourceUrl);
+internal sealed record OnlineDefinition(string Meaning, string? SourceUrl, string Provider);
 
 internal sealed class OnlineDictionaryClient : IDisposable
 {
@@ -17,6 +17,7 @@ internal sealed class OnlineDictionaryClient : IDisposable
     private readonly HttpClient _http;
     private readonly TranslationClient _translation;
     private readonly ConcurrentDictionary<string, OnlineDefinition> _cache = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _lookupSlots = new(3);
 
     public OnlineDictionaryClient(TranslationClient translation)
         : this(translation, new HttpClientHandler { AllowAutoRedirect = false }) { }
@@ -30,7 +31,7 @@ internal sealed class OnlineDictionaryClient : IDisposable
             Timeout = TimeSpan.FromSeconds(3),
             MaxResponseContentBufferSize = 256 * 1024
         };
-        var version = typeof(OnlineDictionaryClient).Assembly.GetName().Version?.ToString(3) ?? "1.15.0";
+        var version = typeof(OnlineDictionaryClient).Assembly.GetName().Version?.ToString(3) ?? "1.15.1";
         _http.DefaultRequestHeaders.UserAgent.ParseAdd($"MemoLex/{version} (https://github.com/SuperRaine/MemoLex)");
     }
 
@@ -41,8 +42,19 @@ internal sealed class OnlineDictionaryClient : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         if (_cache.TryGetValue(word, out var cached)) return cached;
 
+        await _lookupSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_cache.TryGetValue(word, out cached)) return cached;
+            return await LookupUncachedAsync(word, cancellationToken).ConfigureAwait(false);
+        }
+        finally { _lookupSlots.Release(); }
+    }
+
+    private async Task<OnlineDefinition?> LookupUncachedAsync(string word, CancellationToken cancellationToken)
+    {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(14));
+        deadline.CancelAfter(TimeSpan.FromSeconds(17));
         var token = deadline.Token;
         try
         {
@@ -62,7 +74,8 @@ internal sealed class OnlineDictionaryClient : IDisposable
 
             var text = senses.Count == 0 ? word : string.Join('\n', senses.Select(sense => sense.Text));
             token.ThrowIfCancellationRequested();
-            var translated = (await _translation.TranslateAsync(text, cancellationToken: token).ConfigureAwait(false)).Trim();
+            var result = await _translation.TranslateAsync(text, cancellationToken: token).ConfigureAwait(false);
+            var translated = result.Text.Trim();
             token.ThrowIfCancellationRequested();
             if (!ChineseReverseSearch.ContainsChinese(translated)) return null;
 
@@ -71,8 +84,8 @@ internal sealed class OnlineDictionaryClient : IDisposable
                 translated = string.Join('\n', lines.Select((line, index) => (senses[index].PartOfSpeech + " " + line).TrimStart()));
             translated = DictionaryEntry.FormatListMeaning(translated);
             var source = senses.Count == 0 ? null : Wiki + "wiki/" + Uri.EscapeDataString(title.Replace(' ', '_')) + "#English";
-            var definition = new OnlineDefinition(translated, source);
-            if (_cache.Count >= 128 && _cache.Keys.FirstOrDefault() is { } previous) _cache.TryRemove(previous, out _);
+            var definition = new OnlineDefinition(translated, source, result.Provider);
+            if (_cache.Count >= 256 && _cache.Keys.FirstOrDefault() is { } previous) _cache.TryRemove(previous, out _);
             return _cache.GetOrAdd(word, definition);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return null; }

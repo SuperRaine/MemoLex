@@ -42,6 +42,8 @@ public partial class App : Application
                 result["chineseReverseCheck"]=reverse.Items.Any(item=>item.Word=="happy")&&reverse.Items.Any(item=>item.Word=="cheerful");
                 result["chineseDefinitionCheck"]=reverse.Items.All(item=>item.Meaning==dictionary.Lookup(item.Word)?.translation);
                 var mnemonics=new MnemonicStore(Path.Combine(Path.GetTempPath(),"MemoLex-smoke-"+Guid.NewGuid().ToString("N"),"unused.json"));await mnemonics.LoadAsync();
+                using var translation = new TranslationClient();
+                result["translationProvider"] = translation.PreferredProvider;
                 result["localMnemonicCount"]=mnemonics.BundledCount;
                 result["localMnemonicCheck"]=mnemonics.BundledCount>=10613
                     &&mnemonics.Get("taste").Any(note=>note.Text.Contains("test")&&note.Text.Contains("tasty"))

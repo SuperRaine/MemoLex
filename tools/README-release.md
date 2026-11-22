@@ -22,7 +22,7 @@ Windows 如使用可信的代码签名证书，在构建应用文件和 MSI 时�
 
 助记正文和升级匹配表在 `mnemonics`，随包复制到 `data`。
 
-公开软件包使用 MyMemory 翻译。本机构建可在 `src/Private/DeepL.key` 配置自己的 DeepL 密钥，该目录受版本控制忽略。
+打包时会从 `src/Private/DeepL.key` 读取 DeepL 密钥。用独立目录打包时，Windows 可传 `-DeepLKeyFile`，Mac 可设置 `MEMOLEX_DEEPL_KEY_FILE`。GitHub Actions 构建正式 Mac 发布包时使用仓库密钥 `MEMOLEX_DEEPL_KEY`。软件会优先使用内置的 DeepL，连接失败时转用 MyMemory。
 
 ## 合并内置词库
 

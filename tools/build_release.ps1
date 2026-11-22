@@ -5,7 +5,8 @@ param(
     [switch]$IncludeBrowserRuntime,
     [string]$OutputDirectory,
     [string]$SigningThumbprint,
-    [string]$SignToolCommand='signtool.exe'
+    [string]$SignToolCommand='signtool.exe',
+    [string]$DeepLKeyFile
 )
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
@@ -18,7 +19,13 @@ $destination=if($OutputDirectory){[IO.Path]::GetFullPath($OutputDirectory)}else{
 if(Test-Path -LiteralPath (Join-Path $destination 'MemoLex.runtimeconfig.json')){throw 'Use a fresh output directory for the compact package layout.'}
 $runtime=Join-Path $destination 'app'
 if(-not $IncludeBrowserRuntime -and (Test-Path -LiteralPath (Join-Path $runtime 'webview2'))){throw 'The build folder contains an optional runtime from an earlier full build. Use a fresh build folder.'}
-& $DotnetCommand publish (Join-Path $repo 'src/MemoLex.csproj') -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=8.0.34 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $runtime
+$translationArguments=@()
+if($DeepLKeyFile) {
+    $keyPath=(Resolve-Path -LiteralPath $DeepLKeyFile).Path
+    if(-not (Test-Path -LiteralPath $keyPath -PathType Leaf)){throw 'The DeepL key file is missing.'}
+    $translationArguments+="-p:MemoLexDeepLKeyFile=$keyPath"
+}
+& $DotnetCommand publish (Join-Path $repo 'src/MemoLex.csproj') -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=8.0.34 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $runtime @translationArguments
 if($LASTEXITCODE -ne 0){throw 'Application build failed'}
 $targetData=Join-Path $runtime 'data';New-Item -ItemType Directory -Path $targetData -Force | Out-Null
 Copy-Item -Path (Join-Path $data '*') -Destination $targetData -Recurse -Force
@@ -46,4 +53,8 @@ python @manifestArguments
 if($LASTEXITCODE -ne 0){throw 'Package inventory failed'}
 $application=Start-Process -FilePath (Join-Path $destination 'MemoLex.exe') -ArgumentList '--smoke-test' -WindowStyle Hidden -PassThru
 if(-not $application.WaitForExit(30000) -or $application.ExitCode -ne 0){throw 'Offline verification failed'}
+if($DeepLKeyFile -or (Test-Path -LiteralPath (Join-Path $repo 'src/Private/DeepL.key') -PathType Leaf)) {
+    $smoke=Get-Content -LiteralPath (Join-Path $runtime 'smoke-test.json') -Raw | ConvertFrom-Json
+    if($smoke.translationProvider -ne 'DeepL'){throw 'The DeepL key was not loaded by the packaged app.'}
+}
 Write-Output "Portable files: $destination"

@@ -8,10 +8,11 @@
     <Nullable>enable</Nullable>
     <AssemblyName>MemoLex</AssemblyName>
     <RootNamespace>MemoLex</RootNamespace>
-    <Version>1.15.0</Version>
+    <Version>1.15.1</Version>
     <Product>墨墨搜词 MemoLex</Product>
     <Description>离线英汉查词与墨墨云词本</Description>
     <ApplicationIcon>app.ico</ApplicationIcon>
+    <MemoLexDeepLKeyFile Condition="'$(MemoLexDeepLKeyFile)' == ''">$(MSBuildThisFileDirectory)Private/DeepL.key</MemoLexDeepLKeyFile>
   </PropertyGroup>
   <ItemGroup>
     <Using Remove="System.Windows.Forms" />
@@ -25,7 +26,7 @@
     <InternalsVisibleTo Include="MemoLex.HoverTests" />
     <InternalsVisibleTo Include="MemoLex.BrowserTests" />
     <EmbeddedResource Include="Desktop/update.ps1" LogicalName="MemoLex.update.ps1" />
-    <EmbeddedResource Include="Private/DeepL.key" LogicalName="MemoLex.DeepL.key" Condition="Exists('Private/DeepL.key')" />
+    <EmbeddedResource Include="$(MemoLexDeepLKeyFile)" LogicalName="MemoLex.DeepL.key" Condition="Exists('$(MemoLexDeepLKeyFile)')" />
     <Content Include="Native/*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="ThirdParty/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="Bootstrapper/MicrosoftEdgeWebview2Setup.exe" Link="browser-setup.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="Exists('Bootstrapper/MicrosoftEdgeWebview2Setup.exe')" />

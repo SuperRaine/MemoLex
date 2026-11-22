@@ -304,10 +304,10 @@ private struct WordPage: View {
                 .foregroundStyle(Palette.muted)
         } else if model.onlineDefinition != .null {
             if let source = URL(string: model.onlineDefinition["sourceUrl"].text), source.scheme == "https" {
-                Link("维基词典译文", destination: source).foregroundStyle(Palette.deep)
+                Link("维基词典译文 · " + model.onlineDefinition["provider"].text, destination: source).foregroundStyle(Palette.deep)
                     .help("查看原词条（CC BY-SA 4.0）")
             } else {
-                Text("联网翻译").foregroundStyle(Palette.muted)
+                Text("联网翻译 · " + model.onlineDefinition["provider"].text).foregroundStyle(Palette.muted)
             }
         }
     }

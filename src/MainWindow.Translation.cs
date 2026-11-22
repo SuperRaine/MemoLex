@@ -73,7 +73,7 @@ public partial class MainWindow
         {
             var translated=await _translation.TranslateAsync(text,pair,cancellation);
             if(version!=_translationVersion||_viewTarget!=ViewTarget.Translation)return;
-            _translatedText=translated;_translatedProvider=_translation.LastProvider;RenderTranslationText();
+            _translatedText=translated.Text;_translatedProvider=translated.Provider;RenderTranslationText();
             TranslationHintText.Text=_translatedProvider+" · 点击原文或译文中的英文单词可查看释义。";
             TranslationScroll.ScrollToTop();RememberCurrentView();
         }

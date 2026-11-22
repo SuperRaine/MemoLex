@@ -28,8 +28,13 @@ swift build --package-path "$ROOT/macos" -c release --arch x86_64 --scratch-path
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/macos/Info.plist" "$APP/Contents/Info.plist"
 lipo -create "$WORK/swift-arm64/arm64-apple-macosx/release/MemoLex" "$WORK/swift-x64/x86_64-apple-macosx/release/MemoLex" -output "$APP/Contents/MacOS/MemoLex"
+CORE_BUILD_ARGS=(-c Release --self-contained true)
+if [ -n "${MEMOLEX_DEEPL_KEY_FILE:-}" ]; then
+  test -f "$MEMOLEX_DEEPL_KEY_FILE"
+  CORE_BUILD_ARGS+=("-p:MemoLexDeepLKeyFile=$MEMOLEX_DEEPL_KEY_FILE")
+fi
 for ARCH in arm64 x64; do
-  dotnet publish "$ROOT/macos/Core/MemoLex.Core.csproj" -c Release -r "osx-$ARCH" --self-contained true \
+  dotnet publish "$ROOT/macos/Core/MemoLex.Core.csproj" "${CORE_BUILD_ARGS[@]}" -r "osx-$ARCH" \
     -p:RuntimeFrameworkVersion=8.0.34 -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true \
     -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false \
     -o "$WORK/core-$ARCH" --nologo
@@ -55,7 +60,11 @@ codesign --force --sign - --identifier com.superraine.MemoLex "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 plutil -lint "$APP/Contents/Info.plist"
 ARCH="$(uname -m)"; [ "$ARCH" != x86_64 ] || ARCH=x64
-MEMOLEX_RESOURCES="$APP/Contents/Resources" MEMOLEX_PROFILE="$WORK/profile" "$APP/Contents/Resources/Core-$ARCH/MemoLex.Core" --smoke-test
+CORE_SMOKE="$(MEMOLEX_RESOURCES="$APP/Contents/Resources" MEMOLEX_PROFILE="$WORK/profile" "$APP/Contents/Resources/Core-$ARCH/MemoLex.Core" --smoke-test)"
+printf '%s\n' "$CORE_SMOKE"
+if [ -n "${MEMOLEX_DEEPL_KEY_FILE:-}" ] || [ -f "$ROOT/src/Private/DeepL.key" ]; then
+  [[ "$CORE_SMOKE" == *'"translationProvider":"DeepL"'* ]]
+fi
 
 # This archive transfers the app to the native verification job.
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUTPUT/MemoLex-$VERSION-macOS-universal.zip"

@@ -21,14 +21,69 @@ struct HistoryView: View {
     }
 }
 
+private struct WordListMeaning: View {
+    let core: CoreBridge
+    let word: String
+    let local: String?
+    var concealed = false
+    var lineByLine = false
+    let onResolved: (String) -> Void
+    @State private var attempt: (word: String, result: J)?
+
+    private var result: J? { attempt?.word == word ? attempt?.result : nil }
+    private var wordToLookUp: String? { local == "" && !concealed && result == nil ? word : nil }
+    private var display: String {
+        if concealed { return "点击查看释义" }
+        guard let local else { return "正在读取…" }
+        if !local.isEmpty { return local }
+        guard let result else { return "正在联网补查…" }
+        let meaning = result["meaning"].text
+        return meaning.isEmpty ? "暂无释义" : meaning
+    }
+    private var tooltip: String {
+        guard !concealed, local == "", let result, !result["meaning"].text.isEmpty else { return display }
+        let source = result["sourceUrl"].text
+        return display + "\n" + result["provider"].text + (source.isEmpty ? " · 联网翻译" : " · 维基词典译文（CC BY-SA 4.0）\n" + source)
+    }
+
+    var body: some View {
+        Group {
+            if lineByLine {
+                let lines = display.components(separatedBy: "\n")
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(lines.indices, id: \.self) { index in Text(lines[index]).lineLimit(1) }
+                }
+            } else {
+                Text(display).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+            }
+        }.font(.system(size: lineByLine ? 13 : 12))
+            .foregroundStyle(concealed ? Palette.muted : Palette.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(tooltip)
+            .task(id: wordToLookUp) {
+                guard let word = wordToLookUp else { return }
+                let value = try? await core.request("dictionary.online", ["word": .string(word)], timeout: 60)
+                guard !Task.isCancelled else { return }
+                attempt = (word, value ?? .null)
+                if let meaning = value?["meaning"].text, !meaning.isEmpty { onResolved(meaning) }
+            }
+    }
+}
+
 struct StubbornView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var preferences: Preferences
     init(model: AppModel) { self.model = model; self.preferences = model.preferences }
     @State private var filter = ""
     @State private var meanings: [String: String] = [:]
+    @State private var onlineMeanings: [String: String] = [:]
     @State private var revealed: Set<String> = []
-    private var visible: [J] { model.stubbornOrder.filter { value in filter.trimmed.isEmpty || value["spelling"].text.localizedCaseInsensitiveContains(filter) || meanings[value["spelling"].text, default: ""].localizedCaseInsensitiveContains(filter) } }
+    private var visible: [J] { model.stubbornOrder.filter { value in
+        let word = value["spelling"].text
+        return filter.trimmed.isEmpty || word.localizedCaseInsensitiveContains(filter)
+            || meanings[word, default: ""].localizedCaseInsensitiveContains(filter)
+            || onlineMeanings[word, default: ""].localizedCaseInsensitiveContains(filter)
+    } }
     var body: some View {
         VStack(spacing: 0) {
             DialogHeader(title: "顽固单词") { model.sheet = nil }
@@ -67,17 +122,10 @@ struct StubbornView: View {
                             Button(word) { model.sheet = nil; model.lookup(word) }.buttonStyle(.plain).foregroundStyle(Palette.deep).frame(width: 180, alignment: .leading)
                             Button { if model.preferences.concealMeanings { if revealed.contains(word) { revealed.remove(word) } else { revealed.insert(word) } } } label: {
                                 let hidden = model.preferences.concealMeanings && !revealed.contains(word)
-                                let meaning = hidden ? "点击查看释义" : meanings[word, default: "正在读取…"]
-                                let lines = meaning.components(separatedBy: "\n")
-                                VStack(alignment: .leading, spacing: 2) {
-                                    ForEach(lines.indices, id: \.self) { index in
-                                        Text(lines[index]).lineLimit(1)
-                                    }
-                                }.font(.system(size: 13)).foregroundStyle(hidden ? Palette.muted : Palette.ink)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                WordListMeaning(core: model.core, word: word, local: meanings[word],
+                                                concealed: hidden, lineByLine: true) { onlineMeanings[word] = $0 }
                                     .padding(.horizontal, 8).padding(.vertical, 7)
                                     .background(hidden ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 5))
-                                    .help(meaning)
                             }.buttonStyle(.plain)
                         }.padding(.horizontal, 10).frame(minHeight: 35)
                     } }
@@ -88,7 +136,9 @@ struct StubbornView: View {
         }.frame(width: 730, height: min(650, (NSScreen.main?.visibleFrame.height ?? 760) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep)
             .task { await model.refreshStubborn() }
             .task(id: model.stubbornWords.map { $0["spelling"].text }.joined(separator: "\n")) {
-                if let rows = try? await model.core.request("dictionary.batch", ["content": .string(model.stubbornWords.map { $0["spelling"].text }.joined(separator: "\n"))]) { meanings = Dictionary(rows.list.map { ($0["word"].text, $0["meaning"].text) }, uniquingKeysWith: { first, _ in first }) }
+                if let rows = try? await model.core.request("dictionary.batch", ["content": .string(model.stubbornWords.map { $0["spelling"].text }.joined(separator: "\n"))]), !Task.isCancelled {
+                    meanings = Dictionary(rows.list.map { ($0["word"].text, $0["meaning"].text) }, uniquingKeysWith: { first, _ in first })
+                }
             }
     }
     private var stubbornStatus: String {
@@ -145,12 +195,17 @@ struct NotebookView: View {
     @State private var brief = ""
     @State private var content = ""
     @State private var rows: [J] = []
+    @State private var onlineMeanings: [String: String] = [:]
     @State private var selected: Set<String> = []
     @State private var filter = ""
     @State private var editing = false
     @State private var busy = false
     @State private var error = ""
-    private var visible: [J] { rows.filter { filter.isEmpty || $0["word"].text.localizedCaseInsensitiveContains(filter) || $0["meaning"].text.localizedCaseInsensitiveContains(filter) } }
+    private var visible: [J] { rows.filter {
+        let word = $0["word"].text
+        return filter.isEmpty || word.localizedCaseInsensitiveContains(filter) || $0["meaning"].text.localizedCaseInsensitiveContains(filter)
+            || onlineMeanings[word, default: ""].localizedCaseInsensitiveContains(filter)
+    } }
     var body: some View {
         VStack(spacing: 0) {
             DialogHeader(title: "云词本") { model.sheet = nil }
@@ -172,12 +227,12 @@ struct NotebookView: View {
                     if row["isChapter"].flag {
                         Text(row["word"].text).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.muted).padding(.vertical, 5)
                     } else {
+                        let word = row["word"].text
                         HStack(alignment: .firstTextBaseline, spacing: 14) {
-                            Button(row["word"].text) { model.sheet = nil; model.lookup(row["word"].text) }
+                            Button(word) { model.sheet = nil; model.lookup(word) }
                                 .buttonStyle(.plain).foregroundStyle(Palette.deep).frame(width: 170, alignment: .leading)
-                            Text(row["meaning"].text).font(.system(size: 12)).multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
-                        }.padding(.vertical, 5).tag(row["word"].text)
+                            WordListMeaning(core: model.core, word: word, local: row["meaning"].text) { onlineMeanings[word] = $0 }
+                        }.padding(.vertical, 5).tag(word)
                     }
                 }
             }.listStyle(.inset).frame(maxHeight: .infinity).overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border))

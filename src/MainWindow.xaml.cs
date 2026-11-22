@@ -285,7 +285,7 @@ public partial class MainWindow : Window
         StatusText.Text = definition == null ? "暂未找到中文释义。" : "已补充联网释义。";
         if (definition == null) return;
 
-        WordMetaText.Text = "联网翻译";
+        WordMetaText.Text = "联网翻译 · " + definition.Provider;
         if (!Uri.TryCreate(definition.SourceUrl, UriKind.Absolute, out var source)) return;
         var link = new Hyperlink(new Run("维基词典译文")) { NavigateUri = source, ToolTip = "查看原词条（CC BY-SA 4.0）" };
         link.RequestNavigate += (_, args) =>
@@ -296,6 +296,7 @@ public partial class MainWindow : Window
         };
         WordMetaText.Inlines.Clear();
         WordMetaText.Inlines.Add(link);
+        WordMetaText.Inlines.Add(new Run(" · " + definition.Provider));
     }
 
     private Task LoadNotesAsync(string word,CancellationToken cancellation)=>LoadLocalAndCloudNotesAsync(word,cancellation);

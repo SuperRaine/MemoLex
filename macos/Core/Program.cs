@@ -124,6 +124,8 @@ internal sealed class CoreService : IDisposable
             using var validation = _api.BindNativeAccount(T(p, "accountKey"));
             return await _api.ResolveWordAsync("hello", cancellation) ?? throw new MaiMemoException("暂时无法确认登录信息。");
         }
+        if (method == "translate")
+            return await _translation.TranslateAsync(T(p, "text"), T(p, "direction", "en|zh-CN"), cancellation);
         await _ready.Value.WaitAsync(cancellation);
         var authenticated = method.StartsWith("notepads.", StringComparison.Ordinal) || method.StartsWith("study.", StringComparison.Ordinal) || method is "notes.cloud" or "notes.publish" or "stubborn";
         var accountKey = _tokens.CredentialKey;
@@ -149,7 +151,6 @@ internal sealed class CoreService : IDisposable
             case "examples":
                 var page = await _examples.SearchAsync(word, T(p, "paperType", "ALL"), Number(p, "offset", 0, 0, 100000), 10, cancellation);
                 return new { page.Total, page.Offset, page.ReceivedCount, page.HasMore, items = page.Items.Select(item => new { item.Id, item.English, item.Translation, item.Source, item.OptionLabel, item.ContextEnglish, item.ContextTranslation, item.MatchedWords, translationTerms = TextHighlights.TranslationTerms(item.English, item.Translation, word, item.MatchedWords, value => _dictionary.Lookup(value)?.translation, item.MatchedTranslations, item.TranslationAligned) }) };
-            case "translate": return new { text = await _translation.TranslateAsync(T(p, "text"), T(p, "direction", "en|zh-CN"), cancellation), provider = _translation.LastProvider };
             case "notes.local": return _notes.Get(word, _tokens.CredentialKey);
             case "notes.save":
                 var note = Program.Decode<StoredMnemonic>(p.GetProperty("note"));
