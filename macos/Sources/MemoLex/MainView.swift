@@ -81,7 +81,7 @@ struct MainView: View {
     }
     private var dictionarySummary: String {
         guard model.ready else { return "正在准备词典…" }
-        return "内置词库 · \(model.wordCount.formatted()) 词目"
+        return "内置词库 · \(model.wordCount.formatted()) 词"
     }
     private func sidebar(compact: Bool) -> some View {
         VStack(spacing: 13) {
@@ -283,7 +283,7 @@ private struct WordPage: View {
                         ForEach(EnglishAccent.allCases, id: \.self) { accent in
                             Button { model.speak(accent) } label: { Label(accent.label, systemImage: "speaker.wave.2") }
                                 .disabled(model.word.isEmpty)
-                                .help("百度翻译 · \(accent.label)")
+                                .help("播放\(accent.label)")
                         }
                         Button("海词词典") { model.openHaici?(model.word) }.disabled(model.word.isEmpty)
                     }.buttonStyle(MemoButtonStyle(compact: true)).padding(.top, 8).padding(.bottom, 14)
@@ -296,8 +296,7 @@ private struct WordPage: View {
                     RelationsView(model: model).padding(.top, 16)
                     rule
                     HStack { HStack(spacing: 10) { Text("记").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28).background(Palette.wash, in: RoundedRectangle(cornerRadius: 7)); Text("我的助记").font(.system(size: 17, weight: .semibold)) }; Spacer(); Button("编辑助记") { model.sheet = .mnemonic }.buttonStyle(MemoButtonStyle(compact: true)).disabled(model.word.isEmpty) }
-                    Text(model.notes.contains { $0["origin"].text == "cloud" } ? "云端助记 · 已缓存到本机" : "本地助记 · 支持编辑").font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.vertical, 10)
-                    if model.notes.isEmpty { Text(model.word.isEmpty ? "查词后查看助记" : "暂无助记，点击“编辑助记”添加。").font(.system(size: 12)).foregroundStyle(Palette.muted) }
+                    Text(noteSummary).font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.vertical, 10)
                     ForEach(Array(model.notes.enumerated()), id: \.offset) { _, note in VStack(alignment: .leading, spacing: 9) { Text(note["noteType"].text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.deep); LinkedText(text: note["text"].text, size: 15, color: Palette.deep) }.padding(18).frame(maxWidth: .infinity, alignment: .leading).background(Palette.wash, in: RoundedRectangle(cornerRadius: 10)).padding(.bottom, 8) }
                     rule
                     HStack {
@@ -314,18 +313,25 @@ private struct WordPage: View {
             }.padding(.trailing, 5)
         }
     }
+    private var noteSummary: String {
+        if model.word.isEmpty { return "查词后可查看助记" }
+        if model.notes.isEmpty { return "暂无助记" }
+        let source = model.notes.contains { $0["origin"].text == "cloud" } ? "云端助记" : "本地助记"
+        return "\(source) · \(model.notes.count) 条"
+    }
     private var definitionText: String {
-        if model.word.isEmpty { return "在左侧输入英文查释义，或用中文找单词。" }
+        if model.word.isEmpty { return "在左侧输入英文或中文查词。" }
         let local = model.entry["translation"].text.decodedLines
         if !local.trimmed.isEmpty { return local }
         if model.definitionLoading { return "正在查找释义…" }
         let online = model.onlineDefinition["meaning"].text
-        return online.isEmpty ? "还没有找到中文释义，可以去海词词典看看。" : online
+        return online.isEmpty ? "暂无释义。可在海词词典中查看。" : online
     }
     @ViewBuilder private var definitionSource: some View {
         if !model.entry["translation"].text.trimmed.isEmpty {
-            Text("内置词库 · 离线可用" + (model.entry["bnc"].text.isEmpty ? "" : "  /  BNC 词频 #\(model.entry["bnc"].text)"))
-                .foregroundStyle(Palette.muted)
+            let label = Text("内置词库").foregroundStyle(Palette.muted)
+            let rank = Int(model.entry["bnc"].text) ?? 0
+            if rank > 0 { label.help("BNC 词频排名 \(rank.formatted())") } else { label }
         } else if model.onlineDefinition != .null {
             let label = Text(verbatim: model.onlineDefinition["sourceLabel"].text).foregroundStyle(Palette.muted)
             let attribution = model.onlineDefinition["sourceAttribution"].text
@@ -415,7 +421,7 @@ private struct ExamplesView: View {
     @ObservedObject var model: AppModel
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !model.examples.isEmpty { Text("已显示 \(model.examples.count) 条 · 共 \(model.exampleTotal) 条相关结果").font(.system(size: 11)).foregroundStyle(Palette.muted) }
+            if !model.examples.isEmpty { Text("\(model.examples.count) / \(model.exampleTotal) 条例句").font(.system(size: 11)).foregroundStyle(Palette.muted) }
             ForEach(Array(model.examples.enumerated()), id: \.offset) { _, item in VStack(alignment: .leading, spacing: 12) {
                 Text(item["source"].text).font(.system(size: 11)).foregroundStyle(Palette.muted)
                 LinkedText(text: item["english"].text, highlights: item["matchedWords"].list.map(\.text), size: 15, color: Palette.deep)
@@ -425,7 +431,7 @@ private struct ExamplesView: View {
             if model.examplesLoading { ProgressView().controlSize(.small).frame(maxWidth: .infinity) }
             else if !model.examplesError.isEmpty { Text(model.examplesError).font(.system(size: 12)).foregroundStyle(Palette.muted); Button("重试") { Task { await model.loadExamples(reset: model.examples.isEmpty) } }.buttonStyle(MemoButtonStyle()) }
             else if model.exampleOffset < model.exampleTotal { Button("加载更多例句") { Task { await model.loadExamples(reset: false) } }.buttonStyle(MemoButtonStyle()).frame(maxWidth: .infinity) }
-            else if model.examples.isEmpty { Text(model.word.isEmpty ? "查词后可查看真题例句" : "还没找到例句，可以换个考试类型再试。").font(.system(size: 11)).foregroundStyle(Palette.muted) }
+            else if model.examples.isEmpty { Text(model.word.isEmpty ? "查词后可查看真题例句" : "暂无例句。可切换考试类型。").font(.system(size: 11)).foregroundStyle(Palette.muted) }
         }
     }
 }
@@ -475,7 +481,7 @@ private struct TranslationPage: View {
                     .buttonStyle(MemoButtonStyle(accent: true)).disabled(model.translating)
             }
             TextEditor(text: $model.translationInput).font(.system(size: 15)).padding(8).frame(height: 140).background(Palette.paper, in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.border)).tourTarget("translation")
-            Text((model.translationProvider.isEmpty ? "" : "\(model.translationProvider) · ") + "点击英文单词可查看释义。").font(.system(size: 11)).foregroundStyle(Palette.muted)
+            Text("点击英文单词查看释义。").font(.system(size: 11)).foregroundStyle(Palette.muted)
             ScrollView {
                 VStack(spacing: 14) {
                     Card {
@@ -487,10 +493,9 @@ private struct TranslationPage: View {
                     Card {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("译文").sectionLabel()
-                            if model.translationOutput.isEmpty {
-                                Text("点击「翻译」后在这里看译文。").foregroundStyle(Palette.muted)
-                            } else {
+                            if !model.translationOutput.isEmpty {
                                 LinkedText(text: model.translationOutput, size: 16).transition(.opacity)
+                                    .help(model.translationProvider.isEmpty ? "" : "翻译来源 " + model.translationProvider)
                             }
                         }.animation(reduceMotion ? nil : .easeOut(duration: 0.17), value: model.translationOutput.isEmpty)
                     }

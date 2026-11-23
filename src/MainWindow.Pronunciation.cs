@@ -27,7 +27,7 @@ public partial class MainWindow
 
         using var request = new CancellationTokenSource();
         _pronunciationRequest = request;
-        StatusText.Text = $"正在获取{AccentLabel(accent)}…";
+        StatusText.Text = "正在加载发音…";
         try
         {
             var audio = await _pronunciation.DownloadAsync(word, accent, request.Token);
@@ -56,7 +56,7 @@ public partial class MainWindow
             stream.Write(audio);
         }
         var player = _pronunciationPlayer = new MediaPlayer();
-        var playing = $"正在播放百度翻译{AccentLabel(accent)}。";
+        var playing = $"正在播放{AccentLabel(accent)}。";
         player.MediaOpened += (_, _) =>
         {
             if (ReferenceEquals(_pronunciationPlayer, player)) StatusText.Text = playing;
@@ -89,7 +89,7 @@ public partial class MainWindow
             if (voices.Count == 0) throw new InvalidOperationException();
             _speaker.Voice = voices.Item(0);
             _speaker.Speak(word, 3);
-            StatusText.Text = $"正在播放系统{label}。";
+            StatusText.Text = $"正在播放{label}。";
         }
         catch { StatusText.Text = $"暂时无法播放{label}。"; }
     }

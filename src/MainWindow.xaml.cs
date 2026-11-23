@@ -178,7 +178,7 @@ public partial class MainWindow : Window
             await _chinese.LoadAsync();
             _ready = true;
             _ = RefreshStubbornWordsAsync();
-            DictionaryCountText.Text=$"内置词库 · {_dictionary.Count:N0} 词目";
+            DictionaryCountText.Text=$"内置词库 · {_dictionary.Count:N0} 词";
             UpdateHistory();
             SearchBox.Text = _preferences.History.FirstOrDefault() ?? "serendipity";
             SearchBox.Focus();
@@ -239,14 +239,15 @@ public partial class MainWindow : Window
         var lookOnline = !hasLocalMeaning && _allowCloud;
         WordText.Text = entry?.word ?? word;
         PhoneticText.Text = string.IsNullOrWhiteSpace(entry?.phonetic) ? "" : $"/{entry.phonetic.Trim('/')}/";
-        FillWordLinks(DefinitionText, hasLocalMeaning ? localMeaning : lookOnline ? "正在联网查找释义…" : "内置词库暂无释义。",
+        FillWordLinks(DefinitionText, hasLocalMeaning ? localMeaning : lookOnline ? "正在查找释义…" : "暂无释义。",
             EmptyMatches, word, skipPartOfSpeech: true);
         var exchange = FormatExchange(entry?.exchange);
         FillWordLinks(ExchangeText, exchange, EmptyMatches, word);
         ExchangeCard.Visibility = exchange.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        WordMetaText.Text = hasLocalMeaning ? "内置词库 · 离线可用" : "";
-        WordMetaText.ToolTip = null;
-        if (hasLocalMeaning && int.TryParse(entry?.bnc, out var frequency) && frequency > 0) WordMetaText.Text += $"  /  BNC 词频 #{frequency:N0}";
+        WordMetaText.Text = hasLocalMeaning ? "内置词库" : "";
+        WordMetaText.ToolTip = hasLocalMeaning && int.TryParse(entry?.bnc, out var frequency) && frequency > 0
+            ? $"BNC 词频排名 {frequency:N0}"
+            : null;
         RenderTags(entry);
         ResultScroll.ScrollToTop();
         UiMotion.Reveal(DefinitionSection);
@@ -283,9 +284,9 @@ public partial class MainWindow : Window
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return; }
         if (version != _wordVersion || cancellation.IsCancellationRequested) return;
 
-        FillWordLinks(DefinitionText, definition?.Meaning ?? "还没有找到中文释义，可以去海词词典看看。",
+        FillWordLinks(DefinitionText, definition?.Meaning ?? "暂无释义。可在海词词典中查看。",
             EmptyMatches, word, skipPartOfSpeech: true);
-        StatusText.Text = definition == null ? "还没有找到中文释义。" : "已找到在线释义。";
+        StatusText.Text = definition == null ? "暂无释义。" : "查词完成。";
         if (definition == null) return;
 
         UiMotion.Reveal(DefinitionText, distance: 0);
@@ -328,7 +329,7 @@ public partial class MainWindow : Window
         {
             _examplesLoading = false;
             _examplesLoaded = true;
-            ExamplesHintText.Text = "离线模式 · 真题例句需要联网查询。";
+            ExamplesHintText.Text = "查看真题例句需要联网。";
             if (recordFilterNavigation) QueueExamplesScroll(wordVersion, version);
             return;
         }
@@ -349,7 +350,7 @@ public partial class MainWindow : Window
             _examplesHaveMore = page.HasMore;
             _examplesLoaded = true;
             _examplesError = false;
-            ExamplesHintText.Text = _shownExamples.Count == 0 ? "暂未找到相关例句，可切换考试类型再试。" : $"已显示 {_shownExamples.Count} 条 · 共 {page.Total} 条相关结果";
+            ExamplesHintText.Text = _shownExamples.Count == 0 ? "暂无例句。可切换考试类型。" : $"{_shownExamples.Count} / {page.Total} 条例句";
             MoreExamplesButton.Visibility = _examplesHaveMore ? Visibility.Visible : Visibility.Collapsed;
         }
         catch (OperationCanceledException) { }

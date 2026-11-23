@@ -74,7 +74,7 @@ struct SettingsView: View {
     private var description: String {
         switch model.settingsPage {
         case "常规": return "设置关闭方式、启动选项和考试倒计时。"
-        case "墨墨账号": return "使用手机号或邮箱登录，也可切换已保存的账号。"
+        case "墨墨账号": return "登录墨墨后可使用云词本和学习记录。"
         case "鼠标取词": return "鼠标停在英文单词上时显示释义，移开后自动收起。"
         case "系统权限": return "按需要授权取词、截图和全局快捷键。"
         case "快捷键": return "点击输入框，按下想用的组合键。"

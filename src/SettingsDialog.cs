@@ -22,7 +22,7 @@ internal static class SettingsDialog
     internal const string BugReportUrl=RepositoryUrl+"/issues/new?template=bug_report.yml";
     internal const string FeatureRequestUrl=RepositoryUrl+"/issues/new?template=feature_request.yml";
     internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
-    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.0.0";
+    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.0.1";
     [Flags]
     private enum SettingsArea { None=0, General=1, Hover=2, Shortcuts=4 }
     public static void Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null)
@@ -119,7 +119,7 @@ internal static class SettingsDialog
         }
         shortcutsPage.Children.Add(InputDialog.Text("全局快捷键可在其他软件中使用。鼠标侧键可后退或前进。"));
 
-        var account=Page("墨墨账号","使用手机号或邮箱登录，也可切换已保存的账号。");
+        var account=Page("墨墨账号","登录墨墨后可使用云词本和学习记录。");
         var accountNotice=InputDialog.Text(IndependenceNotice);accountNotice.FontSize=12;accountNotice.Margin=new Thickness(0,0,0,10);
         account.Children.Add(accountNotice);dialog.RegisterName("AccountDisclaimer",accountNotice);
         account.Children.Add(AccountSettingsPanel.Build(dialog,store,accountChanged??(()=>Task.CompletedTask)));

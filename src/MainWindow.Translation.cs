@@ -47,7 +47,7 @@ public partial class MainWindow
             TranslationDirectionCombo.SelectedIndex=snapshot.Direction=="zh-CN|en"?1:0;
             _translatedText=snapshot.Output;_translatedSource=snapshot.Source;_translatedProvider=snapshot.Provider;
             RenderTranslationText();
-            TranslationHintText.Text=(snapshot.Output.Length>0?_translatedProvider+" · ":"")+"点击原文或译文中的英文单词可查看释义。";
+            TranslationHintText.Text="点击英文单词查看释义。";
             QueueViewRestore(_wordVersion,()=>{TranslationScroll.UpdateLayout();TranslationScroll.ScrollToVerticalOffset(snapshot.ScrollOffset);});
         }
         _navigating=false;UpdateNavigationButtons();
@@ -60,7 +60,8 @@ public partial class MainWindow
     private void RenderTranslationText()
     {
         FillWordLinks(TranslationSourceText,_translatedSource.Length>0?_translatedSource:"在上方输入或粘贴原文。",EmptyMatches,_word,navigate:NavigateTranslationWordAsync);
-        FillWordLinks(TranslationOutputText,_translatedText.Length>0?_translatedText:"点击「翻译」后在这里看译文。",EmptyMatches,_word,navigate:NavigateTranslationWordAsync);
+        FillWordLinks(TranslationOutputText,_translatedText,EmptyMatches,_word,navigate:NavigateTranslationWordAsync);
+        TranslationOutputText.ToolTip = _translatedText.Length > 0 && _translatedProvider.Length > 0 ? "翻译来源 " + _translatedProvider : null;
     }
     private async void TranslateButton_Click(object sender,RoutedEventArgs e)=>await TranslateParagraphAsync();
     private async Task TranslateParagraphAsync()
@@ -78,7 +79,7 @@ public partial class MainWindow
             if(version!=_translationVersion||_viewTarget!=ViewTarget.Translation)return;
             _translatedText=translated.Text;_translatedProvider=translated.Provider;RenderTranslationText();
             UiMotion.Reveal(TranslationOutputText);
-            TranslationHintText.Text=_translatedProvider+" · 点击原文或译文中的英文单词可查看释义。";
+            TranslationHintText.Text="点击英文单词查看释义。";
             TranslationScroll.ScrollToTop();RememberCurrentView();
         }
         catch(OperationCanceledException){ }

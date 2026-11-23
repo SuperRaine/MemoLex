@@ -32,7 +32,7 @@ public partial class MainWindow
             {
                 panel.Children.Add(new TextBlock
                 {
-                    Text = items == null ? "没能加载相关词，请再查一次。" : "没找到相关词。",
+                    Text = items == null ? "未能加载相关词，请重试。" : "暂无相关词。",
                     FontSize = 12, Foreground = Brush("#91A7BA")
                 });
                 return;

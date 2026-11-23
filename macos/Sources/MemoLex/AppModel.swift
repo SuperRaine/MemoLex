@@ -149,7 +149,7 @@ enum EnglishAccent: String, CaseIterable {
         do {
             let metadata = try await core.request("initialize")
             wordCount = metadata["wordCount"].integer; translationProvider = metadata["translationProvider"].text
-            ready = true; status = metadata["warning"].text.isEmpty ? "词典与本地助记已就绪。" : metadata["warning"].text
+            ready = true; status = metadata["warning"].text.isEmpty ? "词库已就绪。" : metadata["warning"].text
             if !preferences.onboardingCompleted { startTour() }
         } catch { fail(error) }
     }
@@ -181,7 +181,7 @@ enum EnglishAccent: String, CaseIterable {
                 let chinese = query.range(of: "[\\p{Han}]", options: .regularExpression) != nil
                 if chinese {
                     chineseQuery = query
-                    chineseHint = "正在找意思相近的英文词…"
+                    chineseHint = "正在查找相关词…"
                     chineseResults = []
                     chineseTotal = 0
                     page = .chinese; chineseLimit = 160
@@ -189,8 +189,8 @@ enum EnglishAccent: String, CaseIterable {
                     guard version == wordVersion, !Task.isCancelled else { return }
                     chineseResults = result["items"].list; chineseTotal = result["total"].integer
                     chineseHint = chineseTotal == 0
-                        ? "没找到意思相近的词。试试「快乐」「管理」这类更简短的说法。"
-                        : "找到 \(chineseTotal) 个相关词。点击一行查看释义。"
+                        ? "未找到相关词。请缩短查询内容。"
+                        : "共 \(chineseTotal) 个相关词。点击一行查看释义。"
                     status = "查词完成。"
                 } else {
                     page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = loggedIn ? "Loading" : ""
@@ -204,7 +204,7 @@ enum EnglishAccent: String, CaseIterable {
                     if account == accountVersion { notes = result["notes"].list }
                     suggestions = result["suggestions"].list.map(\.text)
                     definitionLoading = entry["translation"].text.trimmed.isEmpty
-                    recordHistory(word); status = definitionLoading ? "正在联网查找释义…" : "查词完成。"
+                    recordHistory(word); status = definitionLoading ? "正在查找释义…" : "查词完成。"
                     Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }
                     Task { await loadExamples(reset: true) }
                     loadCloudWord()
@@ -215,11 +215,11 @@ enum EnglishAccent: String, CaseIterable {
                     guard version == wordVersion, page == .word, !Task.isCancelled else { return }
                     onlineDefinition = result ?? .null
                     definitionLoading = false
-                    status = onlineDefinition == .null ? "还没有找到中文释义。" : "已找到在线释义。"
+                    status = onlineDefinition == .null ? "暂无释义。" : "查词完成。"
                 }
             } catch {
                 if version == wordVersion, !Task.isCancelled {
-                    if page == .chinese { chineseHint = "暂时找不到结果，请再试一次。" }
+                    if page == .chinese { chineseHint = "查词失败，请重试。" }
                     definitionLoading = false
                     fail(error)
                 }
@@ -302,7 +302,7 @@ enum EnglishAccent: String, CaseIterable {
         guard page == .word, !query.isEmpty else { return }
         stopPronunciation()
         let version = wordVersion
-        status = "正在获取\(accent.label)…"
+        status = "正在加载发音…"
         pronunciationTask = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
             let result = try? await core.request("pronunciation", ["word": .string(query), "accent": .string(accent.rawValue)], timeout: 7)
@@ -311,7 +311,7 @@ enum EnglishAccent: String, CaseIterable {
             if let encoded = result?["audio"].text, !encoded.isEmpty, let audio = Data(base64Encoded: encoded),
                let player = try? AVAudioPlayer(data: audio), player.play() {
                 pronunciationPlayer = player
-                status = "百度翻译 · \(accent.label)"
+                status = "正在播放\(accent.label)。"
                 return
             }
             guard let voice = AVSpeechSynthesisVoice(language: accent.rawValue), voice.language == accent.rawValue else {

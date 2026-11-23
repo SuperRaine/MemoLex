@@ -40,7 +40,7 @@ public partial class MainWindow
         if(!_allowCloud||!_tokens.HasToken)
         {
             SetAccountStatus(!_allowCloud?"离线模式":InactiveAccountStatus);
-            StatusText.Text="本地助记已就绪。";
+            StatusText.Text="查词完成。";
             if(_mnemonics.LoadWarning!=null)NotesHintText.Text+=" · "+_mnemonics.LoadWarning;
             return;
         }
@@ -64,13 +64,13 @@ public partial class MainWindow
             if(usable.Length>0)
             {
                 RenderNotes(word,usable,true);NotesHintText.Text=$"云端助记 · {usable.Length} 条";
-                try{if(accountKey!=null)_mnemonics.SaveCloud(word,usable,accountKey);NotesHintText.Text+=" · 已保存到本地";}
-                catch(Exception error)when(error is System.IO.IOException or UnauthorizedAccessException){NotesHintText.Text+=" · 未能保存到本地";}
+                try{if(accountKey!=null)_mnemonics.SaveCloud(word,usable,accountKey);}
+                catch(Exception error)when(error is System.IO.IOException or UnauthorizedAccessException){NotesHintText.Text+=" · 未能保存到本机";}
             }
             else
             {
                 if(accountKey!=null)_mnemonics.SaveCloud(word,[],accountKey);
-                RenderNotes(word,_mnemonics.Get(word,accountKey));NotesHintText.Text=LocalNotesHint()+" · 云端暂无助记";
+                RenderNotes(word,_mnemonics.Get(word,accountKey));NotesHintText.Text=LocalNotesHint();
             }
             StatusText.Text="查词完成";
         }
@@ -101,7 +101,7 @@ public partial class MainWindow
                 var current=_mnemonics.Get(word,accountKey).ToList();var index=current.FindIndex(item=>item.Id==note.Id);
                 if(index<0)current.Add(value);else current[index]=value;
                 _mnemonics.SaveEdit(word,value,accountKey);_cloudCache.Remove((_accountCredentialKey??"offline")+":"+word.ToLowerInvariant());
-                if(word==_word){RenderNotes(word,current,value.Origin=="cloud");NotesHintText.Text=value.Origin=="cloud"?"已同步到墨墨，并保存在本地。":"已保存到本地；联网查词时优先显示云端助记。";}
+                if(word==_word){RenderNotes(word,current,value.Origin=="cloud");NotesHintText.Text=value.Origin=="cloud"?"已同步到墨墨。":"已保存到本机。";}
             }
             Persist(edited);
             if(!sync)return;

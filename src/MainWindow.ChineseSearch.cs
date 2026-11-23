@@ -36,11 +36,11 @@ public partial class MainWindow
     {
         if(!_ready)return;
         var query=raw.Trim();
-        if(ChineseReverseSearch.Normalize(query).Length is <1 or >40||query.Length>100){StatusText.Text="请用 1 到 40 个汉字描述你想找的词。";return;}
+        if(ChineseReverseSearch.Normalize(query).Length is <1 or >40||query.Length>100){StatusText.Text="请输入 1 到 40 个汉字。";return;}
         if(addNavigationEntry)RememberCurrentView();
         CancelChineseSearch();CancelTranslation();_chineseCts=new CancellationTokenSource();var cancellation=_chineseCts.Token;var version=_chineseVersion;
         _navigating=true;EnterChineseView();_chineseQuery=query;SearchBox.Text=query;_chineseItems=[];_chineseTotal=0;_chineseReady=false;
-        ChineseQueryTitle.Text="「"+query+"」的英文表达";ChineseSearchHint.Text="正在找意思相近的英文词…";ChineseResultsPanel.Children.Clear();
+        ChineseQueryTitle.Text="「"+query+"」的英文表达";ChineseSearchHint.Text="正在查找相关词…";ChineseResultsPanel.Children.Clear();
         ChineseSearchScroll.ScrollToTop();MoreChineseResultsButton.Visibility=Visibility.Collapsed;UpdateHeader();_navigating=false;
         if(addNavigationEntry)_navigation.Navigate(CaptureView());UpdateNavigationButtons();
         if(recordHistory){_preferences.RecordLookup(query);_preferences.Save();UpdateHistory();}
@@ -56,15 +56,15 @@ public partial class MainWindow
         catch(OperationCanceledException){ }
         catch(Exception error)
         {
-            if(version==_chineseVersion){_chineseReady=true;ChineseSearchHint.Text=error is IOException or ArgumentException?error.Message:"暂时找不到结果，请再试一次。";RememberCurrentView();}
+            if(version==_chineseVersion){_chineseReady=true;ChineseSearchHint.Text=error is IOException or ArgumentException?error.Message:"查词失败，请重试。";RememberCurrentView();}
         }
     }
     private void ApplyChinesePage(ChineseSearchPage page)
     {
         _chineseItems=page.Items.ToArray();_chineseTotal=page.Total;ChineseResultsPanel.Children.Clear();
         ChineseSearchHint.Text=page.Total==0
-            ?"没找到意思相近的词。试试「快乐」「管理」这类更简短的说法。"
-            :$"找到 {page.Total} 个相关词，当前显示 {page.Items.Count} 个。点击一行查看释义。";
+            ?"未找到相关词。请缩短查询内容。"
+            :$"共 {page.Total} 个相关词。点击一行查看释义。";
         MoreChineseResultsButton.Visibility=page.Total>page.Items.Count&&page.Items.Count<120?Visibility.Visible:Visibility.Collapsed;
         MoreChineseResultsButton.IsEnabled=true;
         foreach(var item in page.Items)
@@ -99,7 +99,7 @@ public partial class MainWindow
             ApplyChinesePage(page);QueueViewRestore(_wordVersion,()=>{ChineseSearchScroll.UpdateLayout();ChineseSearchScroll.ScrollToVerticalOffset(offset);});RememberCurrentView();
         }
         catch(OperationCanceledException){ }
-        catch {if(version==_chineseVersion){ChineseSearchHint.Text="没能加载更多结果，请再试一次。";MoreChineseResultsButton.IsEnabled=true;}}
+        catch {if(version==_chineseVersion){ChineseSearchHint.Text="未能加载更多结果，请重试。";MoreChineseResultsButton.IsEnabled=true;}}
     }
     private async Task UpdateSuggestionsAsync(string query)
     {
