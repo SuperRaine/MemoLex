@@ -69,15 +69,20 @@
                 <Grid.ColumnDefinitions><ColumnDefinition x:Name="SidebarColumn" Width="264"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <Border Background="#FBFDFF" BorderBrush="#E3ECF4" BorderThickness="0,0,1,0">
                     <Grid x:Name="SidebarLayout" Margin="19,18,19,18">
-                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="30"/><RowDefinition Height="*"/><RowDefinition Height="30"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="26"/><RowDefinition Height="*" MinHeight="38"/><RowDefinition Height="26"/><RowDefinition Height="*" MinHeight="38"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                           <StackPanel>
                             <Grid Margin="1,0,1,12"><TextBlock Text="快速查词" Foreground="#58718A" FontWeight="SemiBold" FontSize="12"/><TextBlock x:Name="SearchShortcutHint" Text="Ctrl+L" HorizontalAlignment="Right" Foreground="#A5B4C2" FontFamily="Segoe UI" FontSize="11"/></Grid>
                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="43"/></Grid.ColumnDefinitions>
                                 <TextBox x:Name="SearchBox" Height="43" TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="15" ToolTip="输入英文查释义，或用中文找单词" Margin="0,0,6,0" AutomationProperties.Name="输入英文或中文查词"/>
                                 <Button x:Name="SearchButton" Grid.Column="1" Click="SearchButton_Click" Style="{StaticResource AccentButton}" Padding="0" ToolTip="查询单词" AutomationProperties.Name="查询"><TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="17"/></Button>
                             </Grid>
-                            <Grid Margin="0,10,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><Button x:Name="TranslationModeButton" Content="段落翻译" Click="TranslationModeButton_Click" Margin="0,0,4,0" Padding="5,8" FontSize="11" Background="#EFF8FE" BorderBrush="#DFEEF8" ToolTip="段落翻译（Ctrl+T）"/><Button x:Name="ScreenshotButton" Grid.Column="1" Content="截图翻译" Click="ScreenshotButton_Click" Margin="4,0,0,0" Padding="5,8" FontSize="11" Background="#EFF8FE" BorderBrush="#DFEEF8"/></Grid>
-                            <Button x:Name="TodayPlanButton" Content="今日学习" Click="TodayPlanButton_Click" Margin="0,7,0,0" Padding="5,7" FontSize="11" Background="#EFF8FE" BorderBrush="#DFEEF8"/>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="5"/><ColumnDefinition/><ColumnDefinition Width="5"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <Grid.Resources><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Padding" Value="3,7"/><Setter Property="FontSize" Value="11"/><Setter Property="Background" Value="#EFF8FE"/><Setter Property="BorderBrush" Value="#DFEEF8"/></Style></Grid.Resources>
+                                <Button x:Name="TranslationModeButton" Content="段落翻译" Click="TranslationModeButton_Click" ToolTip="段落翻译（Ctrl+T）"/>
+                                <Button x:Name="ScreenshotButton" Grid.Column="2" Content="截图翻译" Click="ScreenshotButton_Click"/>
+                                <Button x:Name="TodayPlanButton" Grid.Column="4" Content="今日学习" Click="TodayPlanButton_Click"/>
+                            </Grid>
                         </StackPanel>
                         <TextBlock Grid.Row="1" Text="单词建议" Style="{StaticResource SectionLabel}" Margin="2,4,0,2" VerticalAlignment="Center"/>
                         <ListBox x:Name="SuggestionList" Grid.Row="2" SelectionChanged="SuggestionList_SelectionChanged" ScrollViewer.VerticalScrollBarVisibility="Auto" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"/>

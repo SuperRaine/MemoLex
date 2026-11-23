@@ -111,7 +111,7 @@ public partial class MainWindow
         if(_ready)_=RefreshStubbornWordsAsync();
         _lookupCts?.Cancel();_notesCts?.Cancel();_studyLoadCts?.Cancel();++_studyReadVersion;
         _cloudCache.Clear();_vocabulary=null;_todayStudyStates.Clear();_studyLoadingWord=null;
-        _notepadCache.Clear();_notepadLoads.Clear();_deletedNotepads.Clear();++_membershipVersion;
+        _notepadCache.Clear();_notepadLoads.Clear();_deletedNotepads.Clear();_pendingNotepadWords.Clear();++_membershipVersion;
         _membershipWord=_membershipPad="";_refreshing=false;
         _changingLists=true;NotepadCombo.ItemsSource=Array.Empty<CloudNotepad>();_changingLists=false;
         SetAccountStatus(_tokens.HasToken?"连接中":InactiveAccountStatus);UpdateTodayStudyButton();

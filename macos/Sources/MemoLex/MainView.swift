@@ -28,7 +28,7 @@ struct MainView: View {
                 MainTitlebar(model: model, preferences: preferences, compact: compact)
                 Divider().overlay(Palette.border)
                 HStack(spacing: 0) {
-                    sidebar(compact: compact).frame(width: compact ? 220 : 264)
+                    sidebar(compact: compact, short: geometry.size.height < 620).frame(width: compact ? 220 : 264)
                     Divider().overlay(Palette.border)
                     ZStack {
                         Group {
@@ -84,9 +84,9 @@ struct MainView: View {
         guard model.ready else { return "正在准备词典…" }
         return "内置词库 · \(model.wordCount.formatted()) 词"
     }
-    private func sidebar(compact: Bool) -> some View {
-        VStack(spacing: 13) {
-            VStack(spacing: 10) {
+    private func sidebar(compact: Bool, short: Bool) -> some View {
+        VStack(spacing: short ? 8 : 13) {
+            VStack(spacing: short ? 7 : 10) {
                 HStack { Text("快速查词").sectionLabel(); Spacer(); Text(model.preferences.shortcuts["search"]?.label ?? "").font(.system(size: 10)).foregroundStyle(Palette.muted) }
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -102,11 +102,11 @@ struct MainView: View {
                 HStack(spacing: 7) {
                     Button("段落翻译") { model.enterTranslation() }
                     Button("截图翻译") { model.captureScreen?() }.tourTarget("screenshot")
+                    Button("今日学习") {
+                        if model.loggedIn { model.sheet = .todayPlan }
+                        else { model.openAccountSettings() }
+                    }.tourTarget("today-plan")
                 }.buttonStyle(LookupButtonStyle(small: true, expands: true))
-                Button("今日学习") {
-                    if model.loggedIn { model.sheet = .todayPlan }
-                    else { model.openAccountSettings() }
-                }.buttonStyle(LookupButtonStyle(small: true, expands: true)).tourTarget("today-plan")
             }
             VStack(alignment: .leading, spacing: 7) {
                 Text("单词建议").sectionLabel()
@@ -115,7 +115,7 @@ struct MainView: View {
                         Button { model.lookup(word) } label: { Text(word).font(.system(size: 14)).lineLimit(1) }
                             .buttonStyle(SidebarRowStyle(selected: word == model.word))
                     }
-                } }.frame(maxWidth: .infinity)
+                } }.frame(minHeight: 38)
             }.frame(maxHeight: .infinity)
             VStack(alignment: .leading, spacing: 7) {
                 HStack { Text("最近查词").sectionLabel(); Spacer(); Button("全部 \(model.history.count) 条") { model.sheet = .history }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(Palette.deep) }
@@ -130,19 +130,19 @@ struct MainView: View {
                             }.font(.system(size: 14)).contentShape(Rectangle())
                         }.buttonStyle(SidebarRowStyle(selected: record.word == model.word))
                     }
-                } }
+                } }.frame(minHeight: 38)
             }.frame(maxHeight: .infinity)
-            cloudCard.tourTarget("cloud")
-        }.padding(.horizontal, compact ? 14 : 17).padding(.vertical, 15).background(Palette.sidebar)
+            cloudCard(short: short).tourTarget("cloud")
+        }.padding(.horizontal, compact ? 14 : 17).padding(.vertical, short ? 9 : 15).background(Palette.sidebar)
     }
-    private var cloudCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private func cloudCard(short: Bool) -> some View {
+        VStack(alignment: .leading, spacing: short ? 6 : 10) {
             HStack { Text("我的云词本").font(.system(size: 12, weight: .semibold)); Spacer(); Button { Task { await model.refreshNotepads() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.plain) }
             MemoPicker(title: "选择云词本", selection: notepadSelection,
                        options: model.notepads.map { ($0["id"].text, $0["title"].text) }).disabled(!model.loggedIn)
             if let hint = model.notepadConnectionHint { Text(hint).font(.caption).foregroundStyle(Palette.muted) }
             HStack { Spacer(); Button("查看 / 编辑") { model.sheet = .notepad }.disabled(model.selectedPad == .null); Button("新建") { model.createNotebook() } }.buttonStyle(MemoButtonStyle(compact: true))
-        }.foregroundStyle(Palette.ink).padding(12).background(Palette.wash, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.border, lineWidth: 0.6).allowsHitTesting(false))
+        }.foregroundStyle(Palette.ink).padding(short ? 9 : 12).background(Palette.wash, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.border, lineWidth: 0.6).allowsHitTesting(false))
     }
 
     private var notepadSelection: Binding<String> {
@@ -359,9 +359,11 @@ private struct WordPage: View {
     }
     @ViewBuilder private var actions: some View {
         let width: CGFloat? = compact ? 118 : nil
-        Button(model.membership ? "✓ 已加入云词本" : "＋ 加入云词本") { Task { await model.toggleMembership() } }
+        Button(model.savingCurrentNotepadWord ? "正在保存…" : model.membership ? "✓ 已加入云词本" : "＋ 加入云词本") {
+            Task { await model.toggleMembership() }
+        }
             .buttonStyle(LookupButtonStyle(primary: true, fixedWidth: width))
-            .disabled(model.word.isEmpty || model.writing || model.selectingNotepad)
+            .disabled(model.word.isEmpty || model.writing || model.selectingNotepad || model.savingCurrentNotepadWord)
         Button(todayLabel) { model.addToday() }.buttonStyle(LookupButtonStyle(fixedWidth: width))
             .disabled(model.word.isEmpty || model.writing || ["AlreadyLearned", "AlreadyToday", "Planned", "Added", "Loading", "Missing"].contains(model.todayStatus))
             .help(model.todayStatusError)

@@ -19,7 +19,7 @@ struct TourStep {
         .init(title: "登录与切换账号", text: "在这里登录墨墨。选择已保存的账号即可切换。", target: "login", settings: "墨墨账号"),
         .init(title: "顽固单词", text: "点击顶部单词查词。在“全部”中选择排序，或遮住释义自测。", target: "stubborn"),
         .init(title: "收藏与管理云词本", text: "点击“加入云词本”收藏，进入“查看 / 编辑”管理单词和查看释义。", target: "cloud"),
-        .init(title: "今日学习", text: "查看待学词和还需补充的新词数。可从云词本随机选词，也可手动选择，确认后添加。", target: "today-plan"),
+        .init(title: "今日学习", text: "查看待学和复习进度，可搜索单词或遮住释义。选词后确认添加到今日新学。", target: "today-plan"),
         .init(title: "今日新学", text: "将单词加入今日新学，添加时请留意手机端同步提醒。", target: "today"),
         .init(title: "段落翻译", text: "输入一段文字后点击翻译，英文单词也可点击查词。", target: "translation"),
         .init(title: "截图翻译", text: "框选屏幕中的英文。单个词直接查词，段落进入翻译。", target: "screenshot"),

@@ -71,6 +71,11 @@ enum EnglishAccent: String, CaseIterable {
     @Published private(set) var todayStatusError = ""
     @Published var membership = false
     @Published var writing = false
+    private struct NotepadWord: Hashable { let book: String; let word: String }
+    @Published private var pendingNotepadWords: Set<NotepadWord> = []
+    var savingCurrentNotepadWord: Bool {
+        pendingNotepadWords.contains(NotepadWord(book: preferences.selectedNotepad, word: word.lowercased()))
+    }
     @Published var stubbornWords: [J] = []
     @Published var stubbornOrder: [J] = []
     @Published var stubbornIndex = 0
@@ -633,7 +638,7 @@ enum EnglishAccent: String, CaseIterable {
         selectingNotepad = false
         if sheet == .notepad { sheet = nil }
         notes = []; notepads = []; selectedPad = .null; notebookRows = []; notebookLoading = false
-        membership = false; todayStatus = ""; writing = false
+        membership = false; todayStatus = ""; writing = false; pendingNotepadWords.removeAll()
         stubbornTask?.cancel(); stubbornTask = nil; stubbornLoading = false
         if !keepStubborn {
             stubbornSnapshot = nil
@@ -684,14 +689,17 @@ enum EnglishAccent: String, CaseIterable {
             return
         }
         let generation = accountVersion, query = word, removing = membership
-        writing = true
-        defer { if generation == accountVersion { writing = false } }
+        let key = NotepadWord(book: id, word: query.lowercased())
+        guard pendingNotepadWords.insert(key).inserted else { return }
+        defer { if generation == accountVersion { pendingNotepadWords.remove(key) } }
         do {
             let result = try await core.request(removing ? "notepads.remove" : "notepads.add", ["id": .string(id), "word": .string(query)])
-            guard generation == accountVersion, preferences.selectedNotepad == id else { return }
-            selectedPad = result["notepad"]
-            refreshMembership()
-            status = removing ? "已从云词本移除。" : "已加入云词本。"
+            guard generation == accountVersion else { return }
+            if preferences.selectedNotepad == id {
+                selectedPad = result["notepad"]
+                refreshMembership()
+            }
+            status = removing ? "已从云词本移除「\(query)」" : "已将「\(query)」加入云词本"
         } catch let error as CoreFailure where error.code == "empty_notepad" {
             guard generation == accountVersion, preferences.selectedNotepad == id else { return }
             await selectNotepad(id)

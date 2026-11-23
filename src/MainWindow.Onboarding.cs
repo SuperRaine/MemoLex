@@ -49,7 +49,7 @@ public partial class MainWindow
             new("登录与切换账号","在这里登录墨墨。选择已保存的账号即可切换。",()=>SettingsPage("墨墨账号","OfficialLoginButton")),
             new("顽固单词","点击顶部单词查词，右侧箭头可换词。在“全部”中选择排序，也可遮住释义，点击揭示答案。",()=>MainPage(false,StubbornCard)),
             new("收藏与管理云词本","点击“加入云词本”收藏，进入“查看 / 编辑”管理单词和查看释义。",()=>MainPage(false,CloudNotepadCard)),
-            new("今日学习","查看待学词和还需补充的新词数。可从云词本随机选词，也可手动选择，确认后添加。",()=>MainPage(false,TodayPlanButton)),
+            new("今日学习","查看待学和复习进度，可搜索单词或遮住释义。选词后确认添加到今日新学。",()=>MainPage(false,TodayPlanButton)),
             new("今日新学","将生词加入墨墨今日新学，添加前请按提示开启手机端同步。",()=>MainPage(false,AddTodayButton)),
             new("段落翻译","输入一段文字，点击“翻译”。",()=>MainPage(true,TranslationInput)),
             new("截图翻译","按 "+ShortcutLabel("screenshot")+"，框选屏幕上的英文即可翻译。",()=>MainPage(true,ScreenshotButton)),

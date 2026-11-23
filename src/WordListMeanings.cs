@@ -11,6 +11,9 @@ internal sealed class WordListRow(string word, string localMeaning, OnlineDictio
     private OnlineDefinition? _definition;
 
     public string Word { get; } = word;
+    public string Id { get; init; } = "";
+    public string Kind { get; init; } = "";
+    public bool CanToggleMeaning => _conceal;
     public bool IsChapter { get; } = isChapter;
     public string Meaning => _definition?.Meaning ?? localMeaning;
     public bool IsConcealed => _conceal && !_revealed;
@@ -49,6 +52,7 @@ internal sealed class WordListRow(string word, string localMeaning, OnlineDictio
 
     private void ConcealChanged()
     {
+        PropertyChanged?.Invoke(this, new(nameof(CanToggleMeaning)));
         PropertyChanged?.Invoke(this, new(nameof(IsConcealed)));
         UpdateDisplay();
     }

@@ -13,7 +13,14 @@ struct TodayStudyView: View {
     @State private var selected: Set<String> = []
     @State private var manual = ""
     @State private var randomCount = ""
+    @State private var page = 0
     @State private var filter = 0
+    @State private var dueSearch = ""
+    @State private var candidateSearch = ""
+    @State private var meanings: [String: String] = [:]
+    @State private var onlineMeanings: [String: String] = [:]
+    @State private var conceal = false
+    @State private var revealed: Set<String> = []
     @State private var status = ""
     @State private var busy = false
     @State private var writing = false
@@ -35,17 +42,28 @@ struct TodayStudyView: View {
                         } }
                     }.buttonStyle(MemoButtonStyle()).disabled(busy)
                 }
-                TabView {
-                    duePage.tabItem { Text("待学词汇") }
-                    selectionPage.tabItem { Text("加入新学") }
+                segments(["待学词汇", "加入新学"], selection: $page)
+                HStack(spacing: 12) {
+                    TextField("搜索单词或释义", text: page == 0 ? $dueSearch : $candidateSearch).inputFrame()
+                    Toggle("遮住释义", isOn: $conceal).toggleStyle(.switch).controlSize(.small)
                 }
+                Group {
+                    if page == 0 { duePage } else { selectionPage }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Palette.border).allowsHitTesting(false))
                 HStack(spacing: 8) {
                     if busy { ProgressView().controlSize(.small) }
                     Text(status.statusMessage).font(.system(size: 12)).foregroundStyle(Palette.muted)
                 }.frame(minHeight: 20, alignment: .leading)
             }.padding(18)
         }
-        .frame(width: 730, height: 595)
+        .frame(width: 730, height: min(630, (NSScreen.main?.visibleFrame.height ?? 760) - 60))
+        .background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep)
+        .onChange(of: conceal) { _ in revealed.removeAll() }
+        .onChange(of: candidateSearch) { _ in selected.formIntersection(visibleCandidateIDs) }
         .interactiveDismissDisabled(writing)
         .onChange(of: model.activeAccountID) { _ in model.sheet = nil }
         .onChange(of: model.loggedIn) { if !$0 { model.sheet = nil } }
@@ -69,6 +87,11 @@ struct TodayStudyView: View {
     }
 
     private var unfinished: [J] { plan["items"].list.filter { !$0["isFinished"].flag } }
+    private var visibleCandidateIDs: [String] {
+        candidates.values.filter { matches($0.spellingText, query: candidateSearch) }
+            .sorted { $0.spellingText.localizedStandardCompare($1.spellingText) == .orderedAscending }
+            .map(\.idText)
+    }
     private var summary: String {
         guard plan != .null else { return "今日学习进度待获取" }
         let new = unfinished.filter { $0["isNew"].flag }.count
@@ -79,24 +102,18 @@ struct TodayStudyView: View {
     }
 
     private var duePage: some View {
-        let visible = unfinished.filter { filter == 0 || $0["isNew"].flag == (filter == 1) }
+        let visible = unfinished.filter {
+            (filter == 0 || $0["isNew"].flag == (filter == 1)) && matches($0.spellingText, query: dueSearch)
+        }
         return VStack(alignment: .leading, spacing: 9) {
-            Picker("学习类型", selection: $filter) {
-                Text("全部待学").tag(0); Text("待新学").tag(1); Text("待复习").tag(2)
-            }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 295)
-            if visible.isEmpty {
-                Text(plan == .null ? "等待今日词表" : "没有符合条件的待学词汇")
-                    .font(.system(size: 12)).foregroundStyle(Palette.muted).frame(maxHeight: .infinity)
-            } else {
-                List(Array(visible.enumerated()), id: \.offset) { _, item in
-                    HStack {
-                        Text(item["spelling"].text)
-                        Spacer()
-                        Text(item["kind"].text).font(.system(size: 12)).foregroundStyle(Palette.muted)
-                    }
-                }.listStyle(.plain)
+            segments(["全部待学", "待新学", "待复习"], selection: $filter)
+            wordList(showKind: true, empty: visible.isEmpty ? (plan == .null ? "等待今日词表" : "没有符合条件的待学词汇") : nil) {
+                List(visible, id: \.idText) { item in
+                    wordRow(item.spellingText, kind: item["kind"].text)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                }
             }
-        }.padding(12)
+        }
     }
 
     private var selectionPage: some View {
@@ -113,19 +130,105 @@ struct TodayStudyView: View {
                 Button("选入待确认") { Task { await run("正在核对输入的单词…", action: stageManual) } }
                     .buttonStyle(MemoButtonStyle(compact: true)).disabled(manual.trimmed.isEmpty)
             }.disabled(busy)
-            List(candidates.keys.sorted { candidates[$0, default: .null]["spelling"].text.localizedStandardCompare(candidates[$1, default: .null]["spelling"].text) == .orderedAscending }, id: \.self) { id in
-                Toggle(candidates[id, default: .null]["spelling"].text, isOn: Binding(
-                    get: { selected.contains(id) }, set: { checked in
-                        if checked { selected.insert(id) } else { selected.remove(id) }
-                    })).toggleStyle(.checkbox)
-            }.listStyle(.plain).disabled(busy)
+            let visible = visibleCandidateIDs
+            HStack(spacing: 8) {
+                Button("全选当前结果") { selected = Set(visible) }.disabled(visible.isEmpty)
+                Button("清除选择") { selected.removeAll() }.disabled(selected.isEmpty)
+            }.buttonStyle(MemoButtonStyle(compact: true)).disabled(busy)
+            wordList(showKind: false, empty: visible.isEmpty
+                     ? (candidates.isEmpty ? "选择云词本或手动输入单词" : "未找到匹配的单词") : nil) {
+                List(selection: $selected) {
+                    ForEach(visible, id: \.self) { id in
+                        wordRow(candidates[id, default: .null].spellingText)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                            .tag(id)
+                    }
+                }.disabled(busy)
+            }
             HStack {
-                Text("已选 \(selected.count) 词").foregroundStyle(Palette.muted)
+                Text("已选 \(selected.count) 词 · ⌘ / Shift 多选").foregroundStyle(Palette.muted)
                 Spacer()
                 Button("确认添加") { confirming = true }.buttonStyle(MemoButtonStyle(accent: true))
                     .disabled(busy || selected.isEmpty || selected.count > 1000)
             }
-        }.padding(12)
+        }
+    }
+
+    private func segments(_ titles: [String], selection: Binding<Int>) -> some View {
+        HStack(spacing: 2) {
+            ForEach(titles.indices, id: \.self) { index in
+                let active = selection.wrappedValue == index
+                Button { selection.wrappedValue = index } label: {
+                    Text(titles[index])
+                        .font(.system(size: 13, weight: active ? .semibold : .regular))
+                        .foregroundStyle(active ? Palette.deep : Palette.ink)
+                        .padding(.horizontal, 14).frame(height: 29)
+                        .background(active ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                        .contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .accessibilityAddTraits(active ? .isSelected : [])
+            }
+        }.padding(3).background(Palette.control, in: RoundedRectangle(cornerRadius: 9))
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func wordList<Content: View>(showKind: Bool, empty: String?, @ViewBuilder list: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Text("单词").frame(width: 142, alignment: .leading)
+                Text("释义").frame(maxWidth: .infinity, alignment: .leading)
+                if showKind { Text("学习类型").frame(width: 66, alignment: .leading) }
+            }.font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.horizontal, 10)
+                .frame(height: 29).background(Palette.wash)
+            if let empty {
+                Text(empty).font(.system(size: 12)).foregroundStyle(Palette.muted).padding(10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                list().listStyle(.plain).scrollContentBackground(.hidden)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }.background(Palette.paper).clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.border).allowsHitTesting(false))
+    }
+
+    private func wordRow(_ word: String, kind: String? = nil) -> some View {
+        let hidden = conceal && !revealed.contains(word)
+        let meaning = WordListMeaning(core: model.core, word: word, local: meanings[word.lowercased()], concealed: hidden) {
+            onlineMeanings[word.lowercased()] = $0
+        }
+        return HStack(spacing: 10) {
+            Text(word).fontWeight(.medium).lineLimit(1).frame(width: 142, alignment: .leading)
+            Group {
+                if conceal {
+                    Button {
+                        if hidden { revealed.insert(word) } else { revealed.remove(word) }
+                    } label: {
+                        meaning.padding(.horizontal, 5).padding(.vertical, 3)
+                            .background(hidden ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 5))
+                    }.buttonStyle(.borderless)
+                } else { meaning }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            if let kind {
+                Text(kind).font(.system(size: 12)).foregroundStyle(Palette.muted).frame(width: 66, alignment: .leading)
+            }
+        }.frame(minHeight: 31).contentShape(Rectangle())
+    }
+
+    private func matches(_ word: String, query: String) -> Bool {
+        let term = query.trimmed
+        let key = word.lowercased()
+        return term.isEmpty || word.localizedCaseInsensitiveContains(term)
+            || meanings[key, default: ""].localizedCaseInsensitiveContains(term)
+            || onlineMeanings[key, default: ""].localizedCaseInsensitiveContains(term)
+    }
+
+    private func loadMeanings(_ words: [String]) async {
+        let missing = Set(words.filter { meanings[$0.lowercased()] == nil })
+        guard !missing.isEmpty else { return }
+        let rows = try? await model.core.request("dictionary.batch", ["content": .string(missing.joined(separator: "\n"))])
+        guard !Task.isCancelled else { return }
+        for word in missing { meanings[word.lowercased()] = "" }
+        for row in rows?.list ?? [] { meanings[row["word"].text.lowercased()] = row["meaning"].text }
     }
 
     private func run(_ message: String, write: Bool = false, action: () async throws -> Void) async {
@@ -141,6 +244,7 @@ struct TodayStudyView: View {
         plan = try await model.core.request("study.todayPlan")
         let needed = plan["newWordsNeeded"]
         if needed != .null { randomCount = String(min(needed.integer, 1000)) }
+        await loadMeanings(unfinished.map(\.spellingText))
     }
 
     private func readBooks() async throws {
@@ -160,20 +264,24 @@ struct TodayStudyView: View {
             if !submitted.contains(id) { candidates[id] = word; cloudIDs.insert(id) }
         }
         loadedBook = source
+        await loadMeanings(candidates.values.map(\.spellingText))
+        selected.formIntersection(visibleCandidateIDs)
         status = "词本中有 \(cloudIDs.count) 个可选新词"
     }
 
     private func pickRandom() async throws {
         guard let amount = Int(randomCount.trimmed), (1...1000).contains(amount) else { status = "随机数量请输入 1 到 1000"; return }
         if loadedBook != bookID { try await readCloud() }
-        selected.subtract(cloudIDs)
-        let picks = cloudIDs.shuffled().prefix(min(amount, max(0, 1000 - selected.count)))
-        selected.formUnion(picks)
+        selected.removeAll()
+        candidateSearch = ""
+        let picks = cloudIDs.shuffled().prefix(amount)
+        selected = Set(picks)
         status = "已随机选中 \(picks.count) 词，确认后才会添加"
     }
 
     private func stageManual() async throws {
         let result = try await model.core.request("study.candidates", ["input": .string(manual)])
+        candidateSearch = ""
         for word in result["words"].list {
             let id = word["id"].text
             if !submitted.contains(id) {
@@ -181,6 +289,7 @@ struct TodayStudyView: View {
                 if selected.count < 1000 { selected.insert(id) }
             }
         }
+        await loadMeanings(candidates.values.map(\.spellingText))
         manual = ""
         status = "找到 \(result["words"].list.count) 个可选新词 · \(result["excluded"].integer) 个已在计划或未被墨墨收录"
     }

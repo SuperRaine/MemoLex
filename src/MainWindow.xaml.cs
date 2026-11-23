@@ -625,42 +625,64 @@ public partial class MainWindow : Window
         if (!_tokens.HasToken) { AccountButton_Click(this, new RoutedEventArgs()); return; }
         if (NotepadCombo.SelectedItem is not CloudNotepad pad) { await CreateNotepadForCurrentWordAsync(); return; }
         var word = _word;
-        if(_membershipWord!=word||_membershipPad!=pad.Id)
-        {
-            await UpdateMembershipAsync();
-            if(_membershipWord!=word||_membershipPad!=pad.Id||word!=_word)return;
-        }
-        var remove=_isMember;
-        _adding = true;
-        SetCloudWriteBusy(true);
+        var account = _accountVersion;
+        var token = _accountCts.Token;
+        var key = (pad.Id, word.ToUpperInvariant());
+        if (!_pendingNotepadWords.Add(key)) return;
+        var membershipKnown = _membershipWord == word && _membershipPad == pad.Id;
+        var remove = _isMember;
+        var knownVocabulary = _vocabulary;
+        bool CurrentAccount() => account == _accountVersion && !token.IsCancellationRequested;
+        AddButton.Content = "正在保存…";
         AddButton.IsEnabled = false;
-        StatusText.Text = remove?$"正在从「{pad.Title}」移除…":$"正在加入「{pad.Title}」…";
         try
         {
-            var voc = _vocabulary?.Spelling.Equals(word, StringComparison.OrdinalIgnoreCase) == true ? _vocabulary : await _api.ResolveWordAsync(word);
+            if (!membershipKnown)
+                remove = MaiMemoClient.ContainsWord(await ReadNotepadAsync(pad.Id), word);
+            token.ThrowIfCancellationRequested();
+            var voc = knownVocabulary?.Spelling.Equals(word, StringComparison.OrdinalIgnoreCase) == true
+                ? knownVocabulary : await _api.ResolveWordAsync(word, token);
             if (voc == null) throw new MaiMemoException("墨墨未收录这个单词，请检查拼写。");
             if(remove)
             {
-                var result=await _api.RemoveFromNotepadAsync(pad.Id,voc.Spelling);ApplyNotepadSnapshot(result.Notepad);
-                StatusText.Text=$"已从「{pad.Title}」移除「{word}」。";
+                var result = await _api.RemoveFromNotepadAsync(pad.Id, voc.Spelling, token);
+                if (!CurrentAccount()) return;
+                ApplyNotepadSnapshot(result.Notepad);
+                StatusText.Text = $"已从「{pad.Title}」移除「{word}」";
             }
             else
             {
-                var result=await _api.AddToNotepadAsync(pad.Id,voc.Spelling);ApplyNotepadSnapshot(result.Notepad);
-                StatusText.Text=result.AlreadyExisted?$"「{word}」已在「{pad.Title}」中。":$"已将「{word}」加入「{pad.Title}」";
+                var result = await _api.AddToNotepadAsync(pad.Id, voc.Spelling, token);
+                if (!CurrentAccount()) return;
+                ApplyNotepadSnapshot(result.Notepad);
+                StatusText.Text = result.AlreadyExisted ? $"「{word}」已在「{pad.Title}」中" : $"已将「{word}」加入「{pad.Title}」";
             }
         }
+        catch (OperationCanceledException) when (!CurrentAccount()) { }
         catch(EmptyNotepadException error)
         {
-            if(ConfirmNotepadDeletion(this,error.Notepad,1))
+            if (!CurrentAccount()) return;
+            if (ConfirmNotepadDeletion(this, error.Notepad, 1))
             {
-                try{await _api.DeleteNotepadAsync(error.Notepad);RemoveNotepadSnapshot(error.Notepad.Id);}
-                catch(Exception failure){ShowError(failure);}
+                try
+                {
+                    await _api.DeleteNotepadAsync(error.Notepad, token);
+                    if (CurrentAccount()) RemoveNotepadSnapshot(error.Notepad.Id);
+                }
+                catch (Exception failure) { if (CurrentAccount()) ShowError(failure); }
             }
-            else StatusText.Text="已取消删除云词本，原单词已保留。";
+            else StatusText.Text = "已取消删除云词本，原单词已保留";
         }
-        catch (Exception ex) { ShowError(ex); }
-        finally { _adding = false; SetCloudWriteBusy(false); await UpdateMembershipAsync(); }
+        catch (Exception ex) { if (CurrentAccount()) ShowError(ex); }
+        finally
+        {
+            if (CurrentAccount())
+            {
+                _pendingNotepadWords.Remove(key);
+                if ((NotepadCombo.SelectedItem as CloudNotepad)?.Id == pad.Id)
+                    await UpdateMembershipAsync();
+            }
+        }
     }
     private async void CreateNotepadButton_Click(object sender, RoutedEventArgs e) => await CreateNotepadForCurrentWordAsync();
     private async Task CreateNotepadForCurrentWordAsync()

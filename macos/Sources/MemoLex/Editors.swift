@@ -21,7 +21,7 @@ struct HistoryView: View {
     }
 }
 
-private struct WordListMeaning: View {
+struct WordListMeaning: View {
     let core: CoreBridge
     let word: String
     let local: String?

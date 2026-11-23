@@ -1,7 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
 using MemoLex.Services;
 
 namespace MemoLex;
@@ -25,7 +26,8 @@ public partial class MainWindow
         {
             if (dialog.IsVisible) dialog.Close();
         })));
-        var body = BuildRows(new Thickness(20, 14, 20, 13), GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto);
+        var star = new GridLength(1, GridUnitType.Star);
+        var body = BuildRows(new Thickness(20, 14, 20, 13), GridLength.Auto, GridLength.Auto, GridLength.Auto, star, GridLength.Auto);
         InputDialog.SetBody(dialog, body);
 
         var header = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
@@ -34,21 +36,45 @@ public partial class MainWindow
         var overview = InputDialog.Text("正在读取今日学习…", status: true);
         overview.FontSize = 14; overview.VerticalAlignment = VerticalAlignment.Center;
         header.Children.Add(overview); body.Children.Add(header);
-        var tabs = new TabControl(); Grid.SetRow(tabs, 1); body.Children.Add(tabs);
+        var page = new Grid();
+        var card = new Border
+        {
+            Background = Brush("#F7FBFE"), BorderBrush = Brush("#DFEAF3"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10), Padding = new Thickness(12), Child = page
+        };
+        Grid.SetRow(card, 3); body.Children.Add(card);
         var status = InputDialog.Text("", status: true); status.Margin = new Thickness(0, 8, 0, 0);
-        Grid.SetRow(status, 2); body.Children.Add(status);
+        Grid.SetRow(status, 4); body.Children.Add(status);
 
-        var duePanel = BuildRows(new Thickness(12), GridLength.Auto, new GridLength(1, GridUnitType.Star));
-        tabs.Items.Add(new TabItem { Header = "待学词汇", Content = duePanel });
-        var dueFilter = new ComboBox { ItemsSource = new[] { "全部待学", "待新学", "待复习" }, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 120, Margin = new Thickness(0, 0, 0, 8) };
-        duePanel.Children.Add(dueFilter);
-        var due = new ListView(); Grid.SetRow(due, 1); duePanel.Children.Add(due);
-        var dueColumns = new GridView(); due.View = dueColumns;
-        dueColumns.Columns.Add(new GridViewColumn { Header = "单词", Width = 260, DisplayMemberBinding = new Binding(nameof(TodayStudyItem.Spelling)) });
-        dueColumns.Columns.Add(new GridViewColumn { Header = "学习类型", Width = 110, DisplayMemberBinding = new Binding(nameof(TodayStudyItem.Kind)) });
+        var duePanel = BuildRows(new Thickness(0), GridLength.Auto, star);
+        var addPanel = BuildRows(new Thickness(0), GridLength.Auto, GridLength.Auto, GridLength.Auto, star, GridLength.Auto);
+        page.Children.Add(duePanel); page.Children.Add(addPanel);
+        var dueFilter = 0;
+        var tab = 0;
+        var queries = new[] { "", "" };
+        var due = StudyList(includeKind: true);
+        Grid.SetRow(due, 1); duePanel.Children.Add(due);
+        var dueEmpty = InputDialog.Text("", status: true);
+        dueEmpty.Margin = new Thickness(10, 36, 10, 0);
+        dueEmpty.VerticalAlignment = VerticalAlignment.Top;
+        dueEmpty.IsHitTestVisible = false;
+        Grid.SetRow(dueEmpty, 1); duePanel.Children.Add(dueEmpty);
 
-        var addPanel = BuildRows(new Thickness(12), GridLength.Auto, GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto);
-        tabs.Items.Add(new TabItem { Header = "加入新学", Content = addPanel });
+        var searchBar = new DockPanel { Margin = new Thickness(0, 0, 0, 9) };
+        var conceal = new CheckBox
+        {
+            Content = "遮住释义", Style = (Style)FindResource("SwitchCheckBox"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0)
+        };
+        DockPanel.SetDock(conceal, Dock.Right); searchBar.Children.Add(conceal);
+        var searchLabel = InputDialog.Text("搜索", status: true);
+        searchLabel.VerticalAlignment = VerticalAlignment.Center; searchLabel.Margin = new Thickness(0, 0, 8, 0);
+        DockPanel.SetDock(searchLabel, Dock.Left); searchBar.Children.Add(searchLabel);
+        var search = new TextBox { ToolTip = "搜索单词或释义", MinHeight = 32 };
+        System.Windows.Automation.AutomationProperties.SetName(search, "搜索单词或释义");
+        searchBar.Children.Add(search);
+        Grid.SetRow(searchBar, 2); body.Children.Add(searchBar);
+
         var sources = new WrapPanel { Margin = new Thickness(0, 0, 0, 7) }; addPanel.Children.Add(sources);
         var pads = new ComboBox { DisplayMemberPath = nameof(CloudNotepad.Title), MinWidth = 155, MaxWidth = 230, Margin = new Thickness(0, 0, 7, 5) };
         sources.Children.Add(pads);
@@ -65,15 +91,19 @@ public partial class MainWindow
         System.Windows.Automation.AutomationProperties.SetName(input, "手动输入英文单词或短语");
         manualRow.Children.Add(input);
 
-        var choices = new ListBox { SelectionMode = SelectionMode.Multiple };
-        var checkbox = new FrameworkElementFactory(typeof(CheckBox));
-        checkbox.SetBinding(ContentControl.ContentProperty, new Binding(nameof(Vocabulary.Spelling)));
-        checkbox.SetBinding(ToggleButton.IsCheckedProperty, new Binding(nameof(ListBoxItem.IsSelected))
-        { RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(ListBoxItem), 1), Mode = BindingMode.TwoWay });
-        checkbox.SetValue(FrameworkElement.MarginProperty, new Thickness(5, 4, 0, 4));
-        choices.ItemTemplate = new DataTemplate { VisualTree = checkbox };
-        Grid.SetRow(choices, 2); addPanel.Children.Add(choices);
-        var footer = new DockPanel { Margin = new Thickness(0, 9, 0, 0) }; Grid.SetRow(footer, 3); addPanel.Children.Add(footer);
+        var selectionActions = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+        var selectAll = StudyButton("全选当前结果", selectionActions);
+        var clear = StudyButton("清除选择", selectionActions);
+        Grid.SetRow(selectionActions, 2); addPanel.Children.Add(selectionActions);
+        var choices = StudyList(includeKind: false);
+        choices.SelectionMode = SelectionMode.Extended;
+        Grid.SetRow(choices, 3); addPanel.Children.Add(choices);
+        var choicesEmpty = InputDialog.Text("", status: true);
+        choicesEmpty.Margin = new Thickness(10, 36, 10, 0);
+        choicesEmpty.VerticalAlignment = VerticalAlignment.Top;
+        choicesEmpty.IsHitTestVisible = false;
+        Grid.SetRow(choicesEmpty, 3); addPanel.Children.Add(choicesEmpty);
+        var footer = new DockPanel { Margin = new Thickness(0, 9, 0, 0) }; Grid.SetRow(footer, 4); addPanel.Children.Add(footer);
         var confirm = new Button { Content = "确认添加", Style = (Style)FindResource("AccentButton") };
         DockPanel.SetDock(confirm, Dock.Right); footer.Children.Add(confirm);
         var selection = InputDialog.Text("已选 0 词", status: true); selection.VerticalAlignment = VerticalAlignment.Center;
@@ -83,27 +113,90 @@ public partial class MainWindow
         var eligible = new Dictionary<string, Vocabulary>(StringComparer.Ordinal);
         var submitted = new HashSet<string>(StringComparer.Ordinal);
         var cloudIds = new HashSet<string>(StringComparer.Ordinal);
+        var meanings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        WordListRow[] dueRows = [], candidateRows = [];
         string? loadedPad = null;
         var busy = false;
         var writing = false;
-        Vocabulary[] Selected() => choices.SelectedItems.OfType<Vocabulary>().ToArray();
+        string[] Selected() => choices.SelectedItems.OfType<WordListRow>().Select(item => item.Id).ToArray();
+        bool updatingSelection = false;
         void RenderSelection()
         {
             var length = choices.SelectedItems.Count;
-            selection.Text = $"已选 {length} 词";
+            selection.Text = $"已选 {length} 词 · Ctrl / Shift 多选";
             confirm.IsEnabled = !busy && length is > 0 and <= MaiMemoClient.StudyBatchLimit;
+            selectAll.IsEnabled = !busy && choices.Items.Count > 0;
+            clear.IsEnabled = !busy && length > 0;
             refresh.IsEnabled = choices.IsEnabled = input.IsEnabled = pads.IsEnabled = count.IsEnabled = !busy;
             loadPad.IsEnabled = random.IsEnabled = !busy && pads.SelectedItem is CloudNotepad;
             stageWords.IsEnabled = !busy && !string.IsNullOrWhiteSpace(input.Text);
         }
-        void ReloadChoices(HashSet<string> selected)
+        static bool Match(WordListRow row, string query) => row.Word.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || row.Meaning.Contains(query, StringComparison.OrdinalIgnoreCase);
+        void RenderChoices(HashSet<string> selected)
         {
-            var rows = eligible.Values.OrderBy(item => item.Spelling, StringComparer.OrdinalIgnoreCase).ToArray();
+            var query = (tab == 1 ? search.Text : queries[1]).Trim();
+            var rows = candidateRows.Where(row => Match(row, query)).ToArray();
+            updatingSelection = true;
             choices.ItemsSource = rows;
-            foreach (var item in rows.Where(item => selected.Contains(item.Id))) choices.SelectedItems.Add(item);
+            foreach (var row in rows.Where(row => selected.Contains(row.Id))) choices.SelectedItems.Add(row);
+            updatingSelection = false;
+            choicesEmpty.Text = rows.Length != 0 ? "" : candidateRows.Length == 0
+                ? "选择云词本或手动输入单词" : "未找到匹配的单词";
             RenderSelection();
         }
-        void RenderDue() => due.ItemsSource = plan?.Items.Where(item => !item.IsFinished && (dueFilter.SelectedIndex == 0 || item.IsNew == (dueFilter.SelectedIndex == 1))).ToArray();
+        void RenderDue()
+        {
+            var query = (tab == 0 ? search.Text : queries[0]).Trim();
+            var rows = dueRows.Where(row => (dueFilter == 0 || row.Kind == (dueFilter == 1 ? "新学" : "复习")) && Match(row, query)).ToArray();
+            due.ItemsSource = rows;
+            dueEmpty.Text = rows.Length != 0 ? "" : plan == null ? "" : "没有符合条件的待学词汇";
+        }
+        void RenderSearch()
+        {
+            if (tab == 0) RenderDue();
+            else RenderChoices(Selected().ToHashSet(StringComparer.Ordinal));
+        }
+        async Task LoadMeanings(IEnumerable<string> words)
+        {
+            var missing = words.Distinct(StringComparer.OrdinalIgnoreCase).Where(word => !meanings.ContainsKey(word)).ToArray();
+            var found = await Task.Run(() => missing.ToDictionary(word => word, word =>
+            {
+                cancellation.ThrowIfCancellationRequested();
+                return _dictionary.Lookup(word)?.DisplayMeaning ?? "";
+            }, StringComparer.OrdinalIgnoreCase), cancellation);
+            foreach (var pair in found) meanings[pair.Key] = pair.Value;
+        }
+        WordListRow Row(string id, string word, string kind = "") =>
+            new(word, meanings.GetValueOrDefault(word, ""), _onlineDictionary, conceal: conceal.IsChecked == true) { Id = id, Kind = kind };
+        async Task ReloadChoices(HashSet<string> selected)
+        {
+            var entries = eligible.Values.OrderBy(item => item.Spelling, StringComparer.OrdinalIgnoreCase).ToArray();
+            await LoadMeanings(entries.Select(item => item.Spelling));
+            var existing = candidateRows.ToDictionary(row => row.Id, StringComparer.Ordinal);
+            candidateRows = entries.Select(item => existing.GetValueOrDefault(item.Id) ?? Row(item.Id, item.Spelling)).ToArray();
+            RenderChoices(selected);
+        }
+        void ClearCandidateSearch()
+        {
+            queries[1] = "";
+            if (tab == 1) search.Clear();
+        }
+        var tabs = StudySegments(["待学词汇", "加入新学"], index =>
+        {
+            queries[tab] = search.Text;
+            tab = index;
+            duePanel.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
+            addPanel.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
+            if (search.Text != queries[index]) search.Text = queries[index];
+            else RenderSearch();
+        });
+        Grid.SetRow(tabs, 1); body.Children.Add(tabs);
+        duePanel.Children.Add(StudySegments(["全部待学", "待新学", "待复习"], index =>
+        {
+            dueFilter = index;
+            RenderDue();
+        }));
         async Task Refresh()
         {
             plan = await _api.GetTodayPlanAsync(cancellation);
@@ -113,6 +206,9 @@ public partial class MainWindow
             overview.Text = $"{plan.Day} · 已完成 {plan.Finished}/{plan.Target} · 待新学 {remainingNew} · 待复习 {remainingReview}\n{gap}"
                 + (plan.Items.Count == MaiMemoClient.StudyBatchLimit ? " · 词表最多显示前 1000 条" : "");
             if (plan.NewWordsNeeded is int shortage) count.Text = Math.Min(shortage, MaiMemoClient.StudyBatchLimit).ToString();
+            var entries = plan.Items.Where(item => !item.IsFinished).ToArray();
+            await LoadMeanings(entries.Select(item => item.Spelling));
+            dueRows = entries.Select(item => Row(item.Id, item.Spelling, item.Kind)).ToArray();
             RenderDue();
         }
         async Task Run(string pending, Func<Task> action, bool write = false)
@@ -135,12 +231,12 @@ public partial class MainWindow
         {
             var pad = (CloudNotepad)pads.SelectedItem;
             var result = await _api.GetTodayCandidatesAsync(pad.Id, null, cancellation);
-            var selected = Selected().Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+            var selected = Selected().ToHashSet(StringComparer.Ordinal);
             foreach (var id in cloudIds) if (!selected.Contains(id)) eligible.Remove(id);
             cloudIds = result.Words.Select(item => item.Id).Where(id => !submitted.Contains(id)).ToHashSet(StringComparer.Ordinal);
             foreach (var item in result.Words.Where(item => cloudIds.Contains(item.Id))) eligible[item.Id] = item;
             loadedPad = pad.Id;
-            ReloadChoices(selected);
+            await ReloadChoices(selected);
             status.Text = $"词本中有 {cloudIds.Count} 个可选新词";
         }
 
@@ -163,8 +259,20 @@ public partial class MainWindow
             if (pads.Items.Count == 0) await ReadBooks();
             status.Text = "今日学习已刷新";
         });
-        dueFilter.SelectionChanged += (_, _) => RenderDue();
-        choices.SelectionChanged += (_, _) => RenderSelection();
+        search.TextChanged += (_, _) => RenderSearch();
+        conceal.Checked += (_, _) => { foreach (var row in dueRows.Concat(candidateRows)) row.SetConceal(true); };
+        conceal.Unchecked += (_, _) => { foreach (var row in dueRows.Concat(candidateRows)) row.SetConceal(false); };
+        choices.SelectionChanged += (_, _) => { if (!updatingSelection) RenderSelection(); };
+        selectAll.Click += (_, _) => choices.SelectAll();
+        clear.Click += (_, _) => choices.UnselectAll();
+        choices.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                choices.SelectAll();
+                args.Handled = true;
+            }
+        };
         input.TextChanged += (_, _) => RenderSelection();
         pads.SelectionChanged += (_, _) => RenderSelection();
         loadPad.Click += async (_, _) => await Run("正在核对词本中的新词…", ReadCloud);
@@ -173,27 +281,29 @@ public partial class MainWindow
             if (!int.TryParse(count.Text, out var amount) || amount is < 1 or > MaiMemoClient.StudyBatchLimit)
                 throw new ArgumentException("随机数量请输入 1 到 1000");
             if (((CloudNotepad)pads.SelectedItem).Id != loadedPad) await ReadCloud();
-            var selectionIds = Selected().Select(item => item.Id).Where(id => !cloudIds.Contains(id)).ToHashSet(StringComparer.Ordinal);
             var available = cloudIds.ToArray(); Random.Shared.Shuffle(available);
-            selectionIds.UnionWith(available.Take(Math.Min(amount, MaiMemoClient.StudyBatchLimit - selectionIds.Count)));
-            ReloadChoices(selectionIds);
-            status.Text = $"已随机选中 {selectionIds.Count(cloudIds.Contains)} 词，确认后才会添加";
+            var picks = available.Take(amount).ToHashSet(StringComparer.Ordinal);
+            choices.UnselectAll();
+            ClearCandidateSearch();
+            await ReloadChoices(picks);
+            status.Text = $"已随机选中 {picks.Count} 词，确认后才会添加";
         });
         stageWords.Click += async (_, _) => await Run("正在核对输入的单词…", async () =>
         {
             var result = await _api.GetTodayCandidatesAsync(null, input.Text, cancellation);
-            var selected = Selected().Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+            var selected = Selected().ToHashSet(StringComparer.Ordinal);
             foreach (var item in result.Words.Where(item => !submitted.Contains(item.Id)))
             {
                 eligible[item.Id] = item;
                 if (selected.Count < MaiMemoClient.StudyBatchLimit) selected.Add(item.Id);
             }
-            ReloadChoices(selected); input.Clear();
+            ClearCandidateSearch();
+            await ReloadChoices(selected); input.Clear();
             status.Text = $"找到 {result.Words.Count} 个可选新词 · {result.Excluded} 个已在计划或未被墨墨收录";
         });
         confirm.Click += async (_, _) =>
         {
-            var ids = Selected().Select(item => item.Id).ToArray();
+            var ids = Selected();
             var day = plan?.Day ?? MaiMemoClient.TodayPlanDay();
             if (ids.Length == 0 || !TodayStudyConfirmationDialog.ConfirmBatch(dialog, ids.Length)) return;
             await Run("正在确认并添加新词…", async () =>
@@ -201,7 +311,7 @@ public partial class MainWindow
                 var result = await _api.AddTodayBatchAsync(ids, day, cancellation);
                 submitted.UnionWith(ids); cloudIds.ExceptWith(ids);
                 foreach (var id in ids) eligible.Remove(id);
-                ReloadChoices([]); status.Text = result.Summary;
+                await ReloadChoices([]); status.Text = result.Summary;
                 try { await Refresh(); }
                 catch (MaiMemoException) { status.Text = result.Summary + " · 今日学习暂未刷新"; }
                 if (_word.Length > 0) { _todayStudyStates.Remove(_word); _ = RetryTodayStudyStatusAsync(_word); }
@@ -209,7 +319,7 @@ public partial class MainWindow
         };
         dialog.Closing += (_, args) => { if (writing && !cancellation.IsCancellationRequested) args.Cancel = true; };
         dialog.Closed += (_, _) => session.Cancel();
-        RenderSelection(); dialog.ShowDialog();
+        RenderChoices([]); dialog.ShowDialog();
     }
 
     private static Grid BuildRows(Thickness margin, params GridLength[] heights)
@@ -224,5 +334,67 @@ public partial class MainWindow
         var button = new Button { Content = title, Margin = new Thickness(0, 0, 7, 5) };
         parent.Children.Add(button);
         return button;
+    }
+
+    private static Border StudySegments(string[] titles, Action<int> selected)
+    {
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+        var border = new Border
+        {
+            Child = buttons, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 9),
+            Padding = new Thickness(3), CornerRadius = new CornerRadius(9), Background = Brush("#EBF3F9")
+        };
+        void Render(int current)
+        {
+            for (var index = 0; index < buttons.Children.Count; index++)
+            {
+                var button = (Button)buttons.Children[index];
+                button.Background = index == current ? Brush("#DDF2FC") : Brushes.Transparent;
+                button.Foreground = index == current ? Brush("#087FAF") : Brush("#50677A");
+                button.FontWeight = index == current ? FontWeights.SemiBold : FontWeights.Normal;
+            }
+        }
+        for (var index = 0; index < titles.Length; index++)
+        {
+            var segment = index;
+            var button = new Button { Content = titles[index], Padding = new Thickness(14, 5, 14, 5), BorderThickness = new Thickness(0) };
+            button.Click += (_, _) => { Render(segment); selected(segment); };
+            buttons.Children.Add(button);
+        }
+        Render(0);
+        selected(0);
+        return border;
+    }
+
+    private static ListView StudyList(bool includeKind)
+    {
+        var list = new ListView { BorderThickness = new Thickness(0), Background = Brushes.White };
+        ScrollViewer.SetHorizontalScrollBarVisibility(list, ScrollBarVisibility.Disabled);
+        VirtualizingPanel.SetIsVirtualizing(list, true);
+        VirtualizingPanel.SetVirtualizationMode(list, VirtualizationMode.Recycling);
+        var view = new GridView();
+        list.View = view;
+        view.Columns.Add(new GridViewColumn { Header = "单词", Width = 152, DisplayMemberBinding = new Binding(nameof(WordListRow.Word)) });
+        var meaning = new DataTemplate();
+        var text = new FrameworkElementFactory(typeof(WordListMeaningText));
+        text.SetBinding(TextBlock.TextProperty, new Binding(nameof(WordListRow.DisplayMeaning)));
+        text.SetBinding(ToolTipProperty, new Binding(nameof(WordListRow.MeaningTooltip)));
+        text.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+        text.SetValue(MarginProperty, new Thickness(0, 6, 0, 6));
+        text.AddHandler(MouseLeftButtonDownEvent, new MouseButtonEventHandler((sender, args) =>
+        {
+            if (sender is TextBlock { DataContext: WordListRow { CanToggleMeaning: true } row })
+            {
+                row.ToggleMeaning();
+                args.Handled = true;
+            }
+        }));
+        meaning.VisualTree = text;
+        var meaningColumn = new GridViewColumn { Header = "释义", CellTemplate = meaning, Width = 280 };
+        view.Columns.Add(meaningColumn);
+        if (includeKind)
+            view.Columns.Add(new GridViewColumn { Header = "学习类型", Width = 83, DisplayMemberBinding = new Binding(nameof(WordListRow.Kind)) });
+        list.SizeChanged += (_, _) => meaningColumn.Width = Math.Max(160, list.ActualWidth - (includeKind ? 255 : 172));
+        return list;
     }
 }

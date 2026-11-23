@@ -11,6 +11,7 @@ public partial class MainWindow
     private int _membershipVersion;
     private string _membershipWord="",_membershipPad="";
     private bool _isMember;
+    private readonly HashSet<(string Pad, string Word)> _pendingNotepadWords = new();
     private readonly HashSet<string> _deletedNotepads=new();
     internal Func<Window,CloudNotepad,int,bool> ConfirmNotepadDeletion {get;set;}=NotepadDeletionDialog.Confirm;
     private void RemoveNotepadSnapshot(string id)
@@ -54,7 +55,14 @@ public partial class MainWindow
         _membershipWord=_membershipPad="";
         if(!_ready||!_allowCloud||!_tokens.HasToken) {AddButton.IsEnabled=_allowCloud&&!_adding;return;}
         if(pad==null){AddButton.Content="＋ 新建词本并加入";AddButton.IsEnabled=!_adding&&!_refreshing;EditNotepadButton.IsEnabled=false;return;}
-        AddButton.Content="正在加载词本…";AddButton.IsEnabled=false;EditNotepadButton.IsEnabled=!_adding&&!_refreshing;
+        EditNotepadButton.IsEnabled = !_adding && !_refreshing;
+        if (_pendingNotepadWords.Contains((pad.Id, word.ToUpperInvariant())))
+        {
+            AddButton.Content = "正在保存…";
+            AddButton.IsEnabled = false;
+            return;
+        }
+        AddButton.Content="正在加载词本…";AddButton.IsEnabled=false;
         try
         {
             CloudNotepad full;
