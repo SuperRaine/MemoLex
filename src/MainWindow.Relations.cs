@@ -54,9 +54,8 @@ public partial class MainWindow
                 row.Children.Add(headword);
 
                 var meaning = new StackPanel();
-                foreach (var line in item.Meaning.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                foreach (var (partOfSpeech, text) in item.Senses)
                 {
-                    var (partOfSpeech, text) = DictionaryEntry.SplitDisplaySense(line);
                     var sense = new Grid();
                     sense.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "PartOfSpeech" });
                     sense.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });

@@ -1,6 +1,9 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using MemoLex.Services;
 
 namespace MemoLex;
@@ -20,8 +23,37 @@ public partial class MainWindow
         await PlaySpeechAsync(word, accent);
     }
 
-    private Task SpeakExampleAsync(string sentence) => string.IsNullOrWhiteSpace(sentence)
-        ? Task.CompletedTask : PlaySpeechAsync(sentence, EnglishAccent.American, isSentence: true);
+    private async Task SpeakExampleAsync(Button button, string sentence)
+    {
+        if (!button.IsEnabled || string.IsNullOrWhiteSpace(sentence)) return;
+
+        var rotation = new RotateTransform();
+        var spinner = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 11,6 A 5,5 0 1 1 6,1"),
+            Width = 12, Height = 12, Stroke = Brush("#087FAF"), StrokeThickness = 1.5,
+            RenderTransform = rotation, RenderTransformOrigin = new Point(0.5, 0.5),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0)
+        };
+        var loadingLabel = new StackPanel { Orientation = Orientation.Horizontal };
+        loadingLabel.Children.Add(spinner);
+        loadingLabel.Children.Add(new TextBlock { Text = "朗读", VerticalAlignment = VerticalAlignment.Center });
+        if (SystemParameters.ClientAreaAnimation && !SystemParameters.HighContrast)
+            rotation.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(850))
+            { RepeatBehavior = RepeatBehavior.Forever });
+
+        button.IsEnabled = false;
+        button.Content = loadingLabel;
+        AutomationProperties.SetName(button, "正在加载例句语音");
+        try { await PlaySpeechAsync(sentence, EnglishAccent.American, isSentence: true); }
+        finally
+        {
+            rotation.BeginAnimation(RotateTransform.AngleProperty, null);
+            button.Content = "朗读";
+            button.ClearValue(AutomationProperties.NameProperty);
+            button.IsEnabled = true;
+        }
+    }
 
     private async Task PlaySpeechAsync(string text, EnglishAccent accent, bool isSentence = false)
     {

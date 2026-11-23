@@ -49,6 +49,7 @@ enum EnglishAccent: String, CaseIterable {
     @Published var examplePaper = "ALL"
     @Published var examplesLoading = false
     @Published var examplesError = ""
+    @Published private(set) var loadingExampleIndex: Int?
     @Published var translationInput = ""
     @Published var translationOutput = ""
     @Published var translationSource = ""
@@ -285,7 +286,10 @@ enum EnglishAccent: String, CaseIterable {
         }
     }
     func loadExamples(reset: Bool) async {
-        if reset { examplesVersion += 1; exampleOffset = 0; examples = [] }
+        if reset {
+            if loadingExampleIndex != nil { stopPronunciation() }
+            examplesVersion += 1; exampleOffset = 0; examples = []
+        }
         let version = examplesVersion; let query = word; let paper = examplePaper
         guard !query.isEmpty else { return }
         examplesLoading = true; examplesError = ""
@@ -301,13 +305,17 @@ enum EnglishAccent: String, CaseIterable {
         playSpeech(word, accent: accent)
     }
 
-    func speakExample(_ text: String) {
-        guard page == .word, !text.trimmed.isEmpty else { return }
-        playSpeech(text, accent: .american, isSentence: true)
+    func speakExample(at index: Int) {
+        guard page == .word, examples.indices.contains(index), loadingExampleIndex != index else { return }
+        let text = examples[index]["english"].text
+        guard !text.trimmed.isEmpty else { return }
+        playSpeech(text, accent: .american, exampleIndex: index)
     }
 
-    private func playSpeech(_ text: String, accent: EnglishAccent, isSentence: Bool = false) {
+    private func playSpeech(_ text: String, accent: EnglishAccent, exampleIndex: Int? = nil) {
         stopPronunciation()
+        loadingExampleIndex = exampleIndex
+        let isSentence = exampleIndex != nil
         let version = wordVersion
         let label = isSentence ? "例句" : accent.label
         let method = isSentence ? "examples.pronunciation" : "pronunciation"
@@ -316,8 +324,10 @@ enum EnglishAccent: String, CaseIterable {
         pronunciationTask = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
             let result = try? await core.request(method, parameters, timeout: isSentence ? 19 : 7)
-            guard !Task.isCancelled, page == .word, version == wordVersion else { return }
+            guard !Task.isCancelled else { return }
             pronunciationTask = nil
+            loadingExampleIndex = nil
+            guard page == .word, version == wordVersion else { return }
             if let encoded = result?["audio"].text, !encoded.isEmpty, let audio = Data(base64Encoded: encoded),
                let player = try? AVAudioPlayer(data: audio), player.play() {
                 pronunciationPlayer = player
@@ -331,6 +341,7 @@ enum EnglishAccent: String, CaseIterable {
     func stopPronunciation() {
         pronunciationTask?.cancel()
         pronunciationTask = nil
+        if loadingExampleIndex != nil { loadingExampleIndex = nil }
         pronunciationPlayer?.stop()
         pronunciationPlayer = nil
     }

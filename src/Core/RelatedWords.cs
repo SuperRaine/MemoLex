@@ -4,7 +4,17 @@ using System.Text.RegularExpressions;
 
 namespace MemoLex.Core;
 
-public sealed record RelatedWord(string Word, string Meaning);
+public readonly record struct RelatedSense(string PartOfSpeech, string Meaning);
+public sealed record RelatedWord(string Word, string Meaning)
+{
+    public IEnumerable<RelatedSense> Senses => Meaning
+        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(line =>
+        {
+            var (label, text) = DictionaryEntry.SplitDisplaySense(line);
+            return new RelatedSense(label, text);
+        });
+}
 public sealed record WordRelations(IReadOnlyList<RelatedWord> Synonyms, IReadOnlyList<RelatedWord> Similar, IReadOnlyList<RelatedWord> Derivatives,IReadOnlyList<RelatedWord> Phrases);
 public sealed class RelatedWords(LocalDictionary dictionary, string? directory = null) : IDisposable
 {

@@ -398,27 +398,46 @@ private struct RelationsView: View {
             ForEach(groups, id: \.0) { key, title in if model.expandedRelations.contains(key) {
                 VStack(alignment: .leading, spacing: 9) {
                     Text(title).font(.system(size: 11, weight: .semibold))
-                    if model.relations[key].list.isEmpty {
+                    let rows = model.relations[key].list
+                    if rows.isEmpty {
                         Text("暂无相关词条").foregroundStyle(Palette.muted)
                     } else {
-                        Grid(alignment: .topLeading, horizontalSpacing: 15, verticalSpacing: 8) {
-                            ForEach(model.relations[key].list, id: \.wordText) { related in
-                                GridRow(alignment: .top) {
-                                    Button(related.wordText) { model.lookup(related.wordText) }
-                                        .buttonStyle(.link).font(.system(size: 14, weight: .semibold))
-                                        .multilineTextAlignment(.leading).frame(maxWidth: 154, alignment: .leading)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    Text(related["meaning"].text.decodedLines).font(.system(size: 13))
-                                        .foregroundStyle(Palette.deep).frame(maxWidth: .infinity, alignment: .leading)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                        }
+                        relatedEntries(rows)
                     }
                 }.padding(13).frame(maxWidth: .infinity, alignment: .leading)
                     .background(Palette.wash, in: RoundedRectangle(cornerRadius: 9))
                     .transition(reduceMotion ? .identity : .offset(y: -6).combined(with: .opacity))
             } }
+        }
+    }
+    private func relatedEntries(_ rows: [J]) -> some View {
+        let hasLabels = rows.contains { $0["senses"].list.contains { !$0["partOfSpeech"].text.isEmpty } }
+        return Grid(alignment: .topLeading, horizontalSpacing: 15, verticalSpacing: 7) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, related in
+                if index > 0 { Divider().overlay(Palette.border).gridCellUnsizedAxes(.horizontal) }
+                GridRow(alignment: .top) {
+                    Button { model.lookup(related.wordText) } label: {
+                        Text(related.wordText).multilineTextAlignment(.leading)
+                    }
+                    .buttonStyle(.link).font(.system(size: 14, weight: .semibold))
+                    .frame(maxWidth: 154, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(related["senses"].list.enumerated()), id: \.offset) { _, sense in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                if hasLabels {
+                                    Text(sense["partOfSpeech"].text).font(.system(size: 12))
+                                        .foregroundStyle(Palette.muted).frame(width: 66, alignment: .leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Text(sense["meaning"].text).font(.system(size: 13))
+                                    .foregroundStyle(Palette.deep).frame(maxWidth: .infinity, alignment: .leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     private func relationButton(_ key: String, _ title: String) -> some View {
@@ -442,13 +461,23 @@ private struct ExamplesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !model.examples.isEmpty { Text("\(model.examples.count) / \(model.exampleTotal) 条例句").font(.system(size: 11)).foregroundStyle(Palette.muted) }
-            ForEach(Array(model.examples.enumerated()), id: \.offset) { _, item in VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(model.examples.enumerated()), id: \.offset) { index, item in VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
                     Text(item["source"].text).font(.system(size: 11)).foregroundStyle(Palette.muted)
                     Spacer(minLength: 0)
-                    Button { model.speakExample(item["english"].text) } label: {
-                        Label("朗读", systemImage: "speaker.wave.2")
-                    }.buttonStyle(MemoButtonStyle(compact: true)).help("朗读整条例句")
+                    let loading = model.loadingExampleIndex == index
+                    Button { model.speakExample(at: index) } label: {
+                        HStack(spacing: 5) {
+                            Group {
+                                if loading { ProgressView().controlSize(.mini) }
+                                else { Image(systemName: "speaker.wave.2") }
+                            }.frame(width: 16, height: 16)
+                            Text("朗读")
+                        }
+                    }.buttonStyle(MemoButtonStyle(compact: true))
+                        .disabled(loading)
+                        .help(loading ? "正在加载例句语音" : "朗读整条例句")
+                        .accessibilityLabel(loading ? "正在加载例句语音" : "朗读整条例句")
                 }
                 LinkedText(text: item["english"].text, highlights: item["matchedWords"].list.map(\.text), size: 15, color: Palette.deep)
                 if !item["translation"].text.isEmpty { LinkedText(text: item["translation"].text, chineseHighlights: item["translationTerms"].list.map(\.text), size: 13, color: Palette.muted) }
