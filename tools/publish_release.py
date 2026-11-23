@@ -42,15 +42,16 @@ def release_snapshot(executable, tag, expected_names):
     return release, {asset["name"]: (asset["size"], asset["digest"][7:]) for asset in assets}
 
 
-def check_release_sequence(executable, tag):
+def check_release_sequence(executable, tag, *, minor_release=False):
     latest = json.loads(github(executable, ["view", "--json", "tagName,isDraft,isPrerelease"]))
     previous = VERSION_TAG.fullmatch(latest.get("tagName", ""))
     if previous is None or latest["isDraft"] or latest["isPrerelease"]:
         raise RuntimeError("无法确认上一版正式发布的版本号。")
     major, minor, patch = map(int, previous.groups())
     next_tag = "v2.0.0" if previous[0] == "v1.20.0" else f"v{major}.{minor}.{patch + 1}"
-    if tag not in (previous[0], next_tag):
-        raise RuntimeError(f"下一个正式版本应为 {next_tag}。当前版本可重新运行以补齐同步。")
+    expected = f"v{major}.{minor + 1}.0" if minor_release else next_tag
+    if tag not in (previous[0], expected):
+        raise RuntimeError(f"下一个正式版本应为 {expected}。当前版本可重新运行以补齐同步。")
 
 
 def matches(path, asset):
@@ -195,7 +196,7 @@ def publish(args):
     hosting = json.loads((site / ".openai" / "hosting.json").read_text(encoding="utf-8"))
     if not hosting.get("project_id") or hosting.get("static", {}).get("directory") != "dist" or not (site / "build.mjs").is_file():
         raise RuntimeError("请指定墨墨搜词的 Sites 源码目录。")
-    check_release_sequence(args.gh, tag)
+    check_release_sequence(args.gh, tag, minor_release=args.minor_release)
     version = tag[1:]
     prefix = f"MemoLex-{version}"
     names = [f"{prefix}-Windows-x64-Setup.msi", f"{prefix}-Windows-x64.zip", f"{prefix}-macOS-universal.dmg"]
@@ -246,7 +247,7 @@ def publish(args):
         if current_assets != assets or current["targetCommitish"] != release["targetCommitish"]:
             raise RuntimeError("同步期间 GitHub 附件或发布提交有变更，请重新运行。")
         if current["isDraft"]:
-            check_release_sequence(args.gh, tag)
+            check_release_sequence(args.gh, tag, minor_release=args.minor_release)
             notes = scratch / "notes.md"
             notes.write_text(current["body"].rstrip()
                 + f"\n\n[夸克网盘下载]({share_url}) · [软件主页]({HOMEPAGE})\n", encoding="utf-8")
@@ -260,6 +261,7 @@ def publish(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tag", help="正式版本，例如 v2.0.0")
+    parser.add_argument("--minor-release", action="store_true", help="发布明确指定的下一个次版本，例如从 v2.0.6 升到 v2.1.0")
     parser.add_argument("--quark-cli", required=True, help="已授权的夸克官方 quark-drive.cjs 路径")
     parser.add_argument("--packages", type=Path, help="可复用本机已校验的软件包目录")
     parser.add_argument("--site", type=Path, required=True, help="已打开的墨墨搜词 Sites 源码目录")
