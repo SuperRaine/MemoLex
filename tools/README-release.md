@@ -28,7 +28,7 @@ GitHub Releases 只上传软件包。Windows 提供 `.msi` 和 `-Windows-x64.zip
 python tools/publish_release.py v2.0.0 --quark-cli <quark-drive.cjs路径> --site work/sites/memolex --packages dist
 ```
 
-脚本会核对 GitHub 附件的 SHA-256，把文件同步到夸克「墨墨搜词 / 版本号」，再检查公开分享页里的三个包。脚本用同一版本和分享链接生成主页的下载区及软件内「夸克下载」使用的跳转页，然后公开 GitHub 发布。发布电脑可以复用已核对的文件和分享链接。`--packages` 可省略，脚本会下载缺少的附件。
+脚本会核对 GitHub 附件的 SHA-256，把文件同步到夸克「墨墨搜词 / 最新版 / 版本号」，再检查公开分享页里的三个包。脚本用同一版本和分享链接生成主页的下载入口，公开 GitHub 发布后，将旧版本移入「历史版本」。发布电脑可以复用已核对的文件和分享链接。省略 `--packages` 时，脚本会下载本机缺少的附件。
 
 将生成的主页部署到现有的墨墨搜词 Sites。打开线上主页，确认版本号、三个 GitHub 下载入口和 `quark.html` 都指向这次发布，发布才算完成。
 

@@ -12,6 +12,8 @@ from pathlib import Path
 
 REPOSITORY = "SuperRaine/MemoLex"
 QUARK_FOLDER = "墨墨搜词"
+QUARK_LATEST = "最新版"
+QUARK_HISTORY = "历史版本"
 HOMEPAGE = "https://memolex.de5.net/"
 SHARE_URL = re.compile(r"https://pan\.quark\.cn/s/[A-Za-z0-9_-]+/?")
 VERSION_TAG = re.compile(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
@@ -105,6 +107,20 @@ class QuarkDrive:
         with path.open(encoding="utf-8-sig") as file:
             return [json.loads(line) for line in file if line.strip()]
 
+    def move_folders(self, entries, destination):
+        if not entries:
+            return
+        self.call("move", *(item["fid"] for item in entries), "--target-fid", destination)
+        expected = {item["filename"]: quark_id(item["fid"]) for item in entries}
+        for attempt in range(4):
+            if attempt:
+                time.sleep(1)
+            found = {item["filename"]: quark_id(item["fid"]) for item in self.contents(destination)
+                     if str(item.get("file_type")) == "0"}
+            if all(found.get(name) == fid for name, fid in expected.items()):
+                return
+        raise RuntimeError("未能确认夸克目录移动结果，请检查文件夹后重试。")
+
     def upload(self, path, folder, size):
         data, rows = self.call("upload", str(path), "--parent-fid", folder)
         files = [row.get("data", {}) for row in rows if row.get("type") == "list" and row.get("code") == 0]
@@ -158,11 +174,53 @@ def matching_items(items, name):
     return found[0] if found else None
 
 
+def quark_id(value):
+    return value.rsplit("|", 1)[-1]
+
+
+def quark_release_directories(quark, version):
+    root = quark.folder(QUARK_FOLDER, "0")
+    latest = quark.folder(QUARK_LATEST, root)
+    history = quark.folder(QUARK_HISTORY, root)
+    locations = [(parent, matching_items(quark.contents(parent), version))
+                 for parent in (latest, root, history)]
+    existing = [(parent, item) for parent, item in locations if item is not None]
+    if not existing:
+        return root, latest, history, quark.folder(version, latest)
+    if len(existing) != 1 or str(existing[0][1].get("file_type")) != "0":
+        raise RuntimeError(f"请检查夸克上的 {version} 目录，找到同名项。")
+    parent, item = existing[0]
+    if parent != latest:
+        quark.move_folders([item], latest)
+    return root, latest, history, quark.folder(version, latest)
+
+
+def archive_quark_versions(quark, root, latest, history, version):
+    def version_key(name):
+        match = VERSION_TAG.fullmatch("v" + name)
+        return tuple(map(int, match.groups())) if match else None
+
+    current = version_key(version)
+    older = []
+    history_names = {item["filename"] for item in quark.contents(history)}
+    for parent in (root, latest):
+        for item in quark.contents(parent):
+            key = version_key(item["filename"])
+            if str(item.get("file_type")) != "0" or key is None or key >= current:
+                continue
+            if item["filename"] in history_names:
+                raise RuntimeError(f"夸克「历史版本」已有同名目录 {item['filename']}，请核对后重试。")
+            older.append(item)
+            history_names.add(item["filename"])
+    quark.move_folders(older, history)
+    return [item["filename"] for item in older]
+
+
 def file_receipt(item, name, asset):
     if not item or str(item.get("file_type")) != "1" or item.get("size") != asset[0] or not item.get("fid"):
         raise RuntimeError(f"夸克版本目录中的「{name}」尚未通过核对。")
     # The listing's prefix changes on each request. The final component identifies the file.
-    return {"fid": item["fid"].rsplit("|", 1)[-1], "updated_at": item.get("updated_at"), "sha256": asset[1]}
+    return {"fid": quark_id(item["fid"]), "updated_at": item.get("updated_at"), "sha256": asset[1]}
 
 
 def load_receipts(path, folder):
@@ -204,7 +262,7 @@ def publish(args):
     with tempfile.TemporaryDirectory(prefix="MemoLex-publish-") as directory:
         scratch = Path(directory).resolve()
         quark = QuarkDrive(Path(args.quark_cli).resolve(strict=True), args.node, scratch)
-        folder = quark.folder(version, quark.folder(QUARK_FOLDER, "0"))
+        root, latest, history, folder = quark_release_directories(quark, version)
         receipt_path = quark.cli.parent.parent / "memolex-release-sync" / f"{tag}.json"
         receipts, share_url = load_receipts(receipt_path, folder)
         initial = quark.contents(folder)
@@ -240,7 +298,7 @@ def publish(args):
             share_url = quark.share(folder, version)
             write_json(receipt_path, {"folder": folder, "files": receipts, "share_url": share_url})
         quark.verify_share(share_url, version, assets)
-        print(f"已核对夸克「{QUARK_FOLDER}/{version}」的三个软件包和公开链接。", flush=True)
+        print(f"已核对夸克「{QUARK_FOLDER}/{QUARK_LATEST}/{version}」的三个软件包和公开链接。", flush=True)
 
         prepare_site(site, args.node, version, share_url)
         current, current_assets = release_snapshot(args.gh, tag, names)
@@ -254,6 +312,9 @@ def publish(args):
             github(args.gh, ["edit", tag, "--draft=false", "--latest", "--notes-file", str(notes)])
             if release_snapshot(args.gh, tag, names)[0]["isDraft"]:
                 raise RuntimeError("GitHub 发布页仍为草稿，请检查后重试。")
+        archived = archive_quark_versions(quark, root, latest, history, version)
+        if archived:
+            print(f"已将 {len(archived)} 个旧版本移入「{QUARK_HISTORY}」。", flush=True)
     print(f"软件主页已生成 {version} 的下载入口，请将该版本部署到 Sites。")
     print(f"https://github.com/{REPOSITORY}/releases/tag/{tag}")
 
