@@ -45,7 +45,7 @@ struct SettingsView: View {
                     }.frame(maxHeight: .infinity)
                      .animation(reduceMotion ? nil : .easeOut(duration: 0.17), value: model.settingsPage)
                     if !status.isEmpty {
-                        Text(status).font(.footnote).foregroundStyle(.secondary)
+                        Text(status.statusMessage).font(.footnote).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading).padding([.horizontal, .bottom], 18)
                     }
                 }

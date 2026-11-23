@@ -55,5 +55,13 @@ internal static class InputDialog
         return dialog;
     }
     internal static void SetBody(Window dialog, UIElement content) => ((ContentControl)((Border)dialog.Content).Tag).Content = content;
-    internal static TextBlock Text(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, LineHeight = 23, Foreground = new SolidColorBrush(Color.FromRgb(100,126,147)) };
+    internal static TextBlock Text(string text, bool status = false)
+    {
+        var label = status ? new StatusLabel() : new TextBlock();
+        label.Text = text;
+        label.TextWrapping = TextWrapping.Wrap;
+        label.LineHeight = 23;
+        label.Foreground = new SolidColorBrush(Color.FromRgb(100,126,147));
+        return label;
+    }
 }

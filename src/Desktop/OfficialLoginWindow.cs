@@ -13,7 +13,7 @@ internal sealed class OfficialLoginWindow
 {
     private readonly Window _window;
     private readonly WebView2 _browser=new();
-    private readonly TextBlock _status=InputDialog.Text("正在打开墨墨官方登录页…");
+    private readonly TextBlock _status=InputDialog.Text("正在打开墨墨官方登录页…", status: true);
     private readonly TextBlock _address=InputDialog.Text("https://accounts.maimemo.com");
     private readonly Button _installBrowser=new(){Content="安装网页组件",Visibility=Visibility.Collapsed,Margin=new Thickness(10,0,0,0)};
     private readonly TokenStore _store;

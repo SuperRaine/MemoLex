@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:core="clr-namespace:MemoLex.Core"
+        xmlns:local="clr-namespace:MemoLex"
         Title="墨墨搜词 · MemoLex" Width="1160" Height="800" MinWidth="760" MinHeight="520"
         WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterScreen"
         Background="{StaticResource CanvasBrush}" Foreground="{StaticResource InkBrush}"
@@ -169,7 +170,7 @@
                     </Grid>
                 </Grid>
             </Grid>
-            <Border Grid.Row="2" Background="#F9FCFF" BorderBrush="#E5EDF5" BorderThickness="0,1,0,0" CornerRadius="0,0,11,11"><Grid Margin="20,0,22,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="StatusText" Text="正在准备词典…" FontSize="10" Foreground="#8CA1B3" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,15,0"/><TextBlock x:Name="DictionaryCountText" Grid.Column="1" Text="内置词库" FontSize="10" Foreground="#A0B1C0" VerticalAlignment="Center"/></Grid></Border>
+            <Border Grid.Row="2" Background="#F9FCFF" BorderBrush="#E5EDF5" BorderThickness="0,1,0,0" CornerRadius="0,0,11,11"><Grid Margin="20,0,22,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><local:StatusLabel x:Name="StatusText" Text="正在准备词典…" FontSize="10" Foreground="#8CA1B3" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,15,0"/><TextBlock x:Name="DictionaryCountText" Grid.Column="1" Text="内置词库" FontSize="10" Foreground="#A0B1C0" VerticalAlignment="Center"/></Grid></Border>
         </Grid>
     </Border>
 </Window>

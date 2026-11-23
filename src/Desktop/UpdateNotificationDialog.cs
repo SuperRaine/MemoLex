@@ -16,7 +16,7 @@ internal static class UpdateNotificationDialog
         if(!string.IsNullOrWhiteSpace(release.Notes))
             panel.Children.Add(new ScrollViewer{Content=InputDialog.Text(release.Notes.Trim()),MaxHeight=170,
                 VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Margin=new Thickness(0,16,0,6)});
-        var state=InputDialog.Text(updates.Status);state.Margin=new Thickness(0,14,0,16);panel.Children.Add(state);
+        var state=InputDialog.Text(updates.Status, status: true);state.Margin=new Thickness(0,14,0,16);panel.Children.Add(state);
         var automatic=new CheckBox{Content="以后发现新版时自动下载",Style=(Style)Application.Current.FindResource("SwitchCheckBox"),IsChecked=updates.AutomaticallyDownload,Margin=new Thickness(0,0,0,16)};
         automatic.Checked+=(_,_)=>updates.AutomaticallyDownload=true;automatic.Unchecked+=(_,_)=>updates.AutomaticallyDownload=false;panel.Children.Add(automatic);
         var buttons=new DockPanel();

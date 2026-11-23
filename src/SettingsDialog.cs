@@ -43,7 +43,7 @@ internal static class SettingsDialog
         var side=new Border {Background=new SolidColorBrush(Color.FromRgb(246,250,254)),BorderBrush=new SolidColorBrush(Color.FromRgb(229,237,245)),BorderThickness=new Thickness(0,0,1,0),Child=navigation};body.Children.Add(side);
         var right=new Grid();right.RowDefinitions.Add(new RowDefinition());right.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});Grid.SetColumn(right,1);body.Children.Add(right);
         var host=new ContentControl {HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Stretch};right.Children.Add(host);
-        var status=InputDialog.Text("");
+        var status=InputDialog.Text("", status: true);
         status.Visibility=Visibility.Collapsed;status.Margin=new Thickness(20,8,20,12);
         Grid.SetRow(status,1);right.Children.Add(status);
         void SetStatus(string? message)

@@ -21,7 +21,7 @@ internal static class MnemonicEditor
         category.Children.Add(type);category.Children.Add(guidance);body.Children.Add(category);dialog.RegisterName("MnemonicTypeDescription",guidance);
         var text=new TextBox {Text=initial,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,VerticalContentAlignment=VerticalAlignment.Top,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,MaxLength=20000,FontSize=15,FontFamily=new FontFamily("Microsoft YaHei UI")};
         Grid.SetRow(text,1);body.Children.Add(text);dialog.RegisterName("MnemonicText",text);dialog.RegisterName("MnemonicType",type);
-        var status=InputDialog.Text("保存到本地后可离线查看。联网查词时优先显示云端助记；同步到墨墨也会保留本地副本。");status.Margin=new Thickness(0,12,0,13);Grid.SetRow(status,2);body.Children.Add(status);
+        var status=InputDialog.Text("保存到本地后可离线查看。联网查词时优先显示云端助记；同步到墨墨也会保留本地副本。", status: true);status.Margin=new Thickness(0,12,0,13);Grid.SetRow(status,2);body.Children.Add(status);
         var buttons=new StackPanel {Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right};Grid.SetRow(buttons,3);body.Children.Add(buttons);
         var cancel=new Button {Content="取消",Margin=new Thickness(0,0,8,0)};cancel.Click+=(_,_)=>dialog.Close();buttons.Children.Add(cancel);
         var local=new Button {Content="保存到本地",Margin=new Thickness(0,0,8,0),IsDefault=true};buttons.Children.Add(local);dialog.RegisterName("SaveMnemonicLocal",local);

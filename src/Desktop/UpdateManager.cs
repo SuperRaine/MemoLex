@@ -167,7 +167,7 @@ internal sealed class UpdateManager:IDisposable
         var sources=GitHubUpdateClient.DownloadSources;var source=new ComboBox{ItemsSource=sources,SelectedItem=sources.FirstOrDefault(s=>s.Id==_preferences.UpdateSource)??sources[0],MinWidth=180,Height=36,VerticalAlignment=VerticalAlignment.Center};sourceRow.Children.Add(source);
         var autoDownload=new CheckBox{Content="发现新版后自动下载",Style=(Style)Application.Current.FindResource("SwitchCheckBox"),IsChecked=AutomaticallyDownload,Margin=new Thickness(18,0,0,0),VerticalAlignment=VerticalAlignment.Center};sourceRow.Children.Add(autoDownload);
         panel.Children.Add(InputDialog.Text("默认发现新版时只提醒，点击「下载更新」后开始下载。连接失败时会切换备用源。"));
-        var state=InputDialog.Text(Status);state.Margin=new Thickness(0,14,0,8);panel.Children.Add(state);
+        var state=InputDialog.Text(Status, status: true);state.Margin=new Thickness(0,14,0,8);panel.Children.Add(state);
         var bar=new ProgressBar{Minimum=0,Maximum=100,Height=5,Margin=new Thickness(0,0,0,16)};panel.Children.Add(bar);
         var last=InputDialog.Text("");panel.Children.Add(last);
         var buttons=new WrapPanel{Margin=new Thickness(0,10,0,6)};panel.Children.Add(buttons);

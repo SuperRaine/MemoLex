@@ -48,7 +48,7 @@ struct MainView: View {
                 }.frame(maxHeight: .infinity)
                 Divider().overlay(Palette.border)
                 HStack {
-                    Text(model.status).lineLimit(1).truncationMode(.tail)
+                    Text(model.status.statusMessage).lineLimit(1).truncationMode(.tail)
                     Spacer()
                     Text(dictionarySummary)
                 }.font(.caption).foregroundStyle(Palette.muted).padding(.horizontal, 18).frame(height: 27).background(Palette.chrome)

@@ -67,7 +67,7 @@ public partial class MainWindow
             stream.Write(audio);
         }
         var player = _pronunciationPlayer = new MediaPlayer();
-        var playing = $"正在播放{label}。";
+        var playing = $"正在播放{label}";
         player.MediaOpened += (_, _) =>
         {
             if (ReferenceEquals(_pronunciationPlayer, player)) StatusText.Text = playing;
@@ -76,7 +76,7 @@ public partial class MainWindow
         {
             if (!ReferenceEquals(_pronunciationPlayer, player)) return;
             ClearPronunciationPlayer();
-            if (StatusText.Text == playing) StatusText.Text = $"{label}播放完毕。";
+            if (StatusText.Text == playing) StatusText.Text = $"{label}播放完毕";
         };
         player.MediaFailed += (_, _) =>
         {

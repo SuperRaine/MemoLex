@@ -422,7 +422,7 @@ struct UpdatesSettings: View {
                 Text("自动选择会在连接失败时切换下载源。").font(.footnote).foregroundStyle(Palette.muted)
             }
             SettingsCard(title: "当前版本 \(AppPaths.version)") {
-                Text(updates.status).font(.callout).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+                Text(updates.status.statusMessage).font(.callout).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
                 if updates.downloading, let received = updates.receivedBytes, updates.downloadSize > 0 {
                     HStack(spacing: 10) {
                         ProgressView(value: Double(received), total: Double(updates.downloadSize)).tint(Palette.accent)

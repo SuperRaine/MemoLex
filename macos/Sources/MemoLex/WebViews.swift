@@ -159,7 +159,7 @@ struct LoginView: View {
                 .font(.system(size: 12)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading).padding(14)
             ZStack {
                 BrowserHost(browser: login.browser, hidden: !login.showsLoginForm)
-                if !login.showsLoginForm { Text(login.status).foregroundStyle(.secondary) }
+                if !login.showsLoginForm { Text(login.status.statusMessage).foregroundStyle(.secondary) }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
             HStack { Spacer(); if login.busy { ProgressView().controlSize(.small) }; Button("重新打开") { login.retry() }.disabled(login.busy); Button("取消") { model.showLogin = false }.keyboardShortcut(.cancelAction) }.padding(15)
         }.frame(width: min(740, (NSScreen.main?.visibleFrame.width ?? 900) - 60), height: min(760, (NSScreen.main?.visibleFrame.height ?? 860) - 65)).background(Palette.canvas).onDisappear { login.stop() }
@@ -193,7 +193,7 @@ struct HaiciView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) { Button("←") { browser.browser.goBack() }.disabled(!browser.canGoBack); Button("→") { browser.browser.goForward() }.disabled(!browser.canGoForward); Button("刷新") { browser.browser.reload() }; Text(browser.url.absoluteString).lineLimit(1).truncationMode(.middle).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading); Button("用默认浏览器打开") { if HaiciBrowser.allowed(browser.url) { NSWorkspace.shared.open(browser.url) } } }.buttonStyle(MemoButtonStyle(compact: true)).padding(12)
             BrowserHost(browser: browser.browser)
-            Text(browser.status).font(.system(size: 11)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            Text(browser.status.statusMessage).font(.system(size: 11)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading).padding(12)
         }.background(Palette.paper)
     }
 }

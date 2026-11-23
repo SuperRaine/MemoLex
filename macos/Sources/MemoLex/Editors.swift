@@ -131,7 +131,7 @@ struct StubbornView: View {
                     } }
                 }.overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border))
                 if model.stubbornLoading { ProgressView().controlSize(.small) }
-                Text(stubbornStatus).font(.footnote).foregroundStyle(.secondary)
+                Text(stubbornStatus.statusMessage).font(.footnote).foregroundStyle(.secondary)
             }.padding(23)
         }.frame(width: 730, height: min(650, (NSScreen.main?.visibleFrame.height ?? 760) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep)
             .task { await model.refreshStubborn() }

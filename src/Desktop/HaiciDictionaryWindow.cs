@@ -29,7 +29,7 @@ internal static class HaiciDictionary
 internal sealed class HaiciDictionaryWindow
 {
     private readonly WebView2 _browser=new();
-    private readonly TextBlock _status=InputDialog.Text("正在打开海词词典…");
+    private readonly TextBlock _status=InputDialog.Text("正在打开海词词典…", status: true);
     private readonly TextBlock _address=InputDialog.Text("");
     private readonly Button _back,_forward;
     private readonly Button _installBrowser=new(){Content="安装网页组件",Visibility=Visibility.Collapsed,Margin=new Thickness(10,0,0,0)};

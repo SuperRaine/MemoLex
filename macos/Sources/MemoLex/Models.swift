@@ -185,6 +185,10 @@ enum AppPaths {
 
 extension String {
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+    var statusMessage: String {
+        let text = trimmed
+        return text.last == "。" ? String(text.dropLast()) : text
+    }
     var decodedLines: String { replacingOccurrences(of: "\\n", with: "\n") }
 }
 

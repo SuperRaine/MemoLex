@@ -62,7 +62,7 @@ internal static class NotepadEditor
         browse.SizeChanged+=(_,e)=>upperScroll.MaxHeight=Math.Max(100,e.NewSize.Height-150);
         tabs.Items.Add(new TabItem {Header="单词与释义",Content=browse});
         tabs.Items.Add(new TabItem {Header="编辑词本",Content=metadata});
-        var status=InputDialog.Text("单击选择 · 按住 Ctrl 多选 · Shift 连选 · Delete 删除 · 双击查词。修改后点击「保存到云词本」。");status.Margin=new Thickness(0,9,0,10);Grid.SetRow(status,1);root.Children.Add(status);
+        var status=InputDialog.Text("单击选择 · 按住 Ctrl 多选 · Shift 连选 · Delete 删除 · 双击查词。修改后点击「保存到云词本」。", status: true);status.Margin=new Thickness(0,9,0,10);Grid.SetRow(status,1);root.Children.Add(status);
         tabs.SelectionChanged+=(_,e)=>
         {
             if(ReferenceEquals(e.Source,tabs))status.Text=tabs.SelectedIndex==0?"单击选择 · 按住 Ctrl 多选 · Shift 连选 · Delete 删除 · 双击查词。":"修改云词本名称和简介，标签和公开状态保持不变。";
@@ -205,7 +205,7 @@ internal static class NotepadEditor
             if(NotepadContent.Words(draftContent).Count==0)
             {
                 await DeleteBook();
-                if(!closed){var message=status.Text;await SetContent(lastNonEmptyContent);status.Text=message+" 已恢复删除前的词表。";}
+                if(!closed){var message=status.Text;await SetContent(lastNonEmptyContent);status.Text=message+" · 已恢复删除前的词表";}
                 return;
             }
             Busy(true);status.Text="正在保存到云端…";

@@ -14,7 +14,7 @@ public partial class MainWindow
     {
         if(_updateChecksStarted||(!_desktopIntegration&&_updates==null))return;
         _updateChecksStarted=true;_updates??=new(_preferences,ExitApplication);
-        _updates.Changed+=()=>{if(_updates.CanInstall)StatusText.Text=_updates.Status+" 设置 → 软件更新";};
+        _updates.Changed+=()=>{if(_updates.CanInstall)StatusText.Text=_updates.Status.TrimEnd('。')+" · 设置 → 软件更新";};
         _updates.NewVersionAvailable+=release=>{_pendingUpdateNotice=release;QueuePendingUpdateNotice();};
         _=_updates.Start();
     }
