@@ -5,7 +5,10 @@ namespace MemoLex.Services;
 
 public enum TodayStudyStatus { Added, AlreadyToday, AlreadyLearned, NotAdded, PendingVerification, Planned, SyncRequired }
 public sealed record TodayStudyResult(TodayStudyStatus Status,int? AddedCount=null);
-public sealed record TodayStudyItem(string Id,string Spelling,bool IsNew,bool IsFinished,bool Responded,int Order);
+public sealed record TodayStudyItem(string Id,string Spelling,bool IsNew,bool IsFinished,bool Responded,int Order)
+{
+    public string Kind => IsNew ? "新学" : "复习";
+}
 internal sealed class StudyAddUncertainException(string message) : MaiMemoException(message);
 
 public sealed partial class MaiMemoClient

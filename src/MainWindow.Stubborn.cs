@@ -35,7 +35,7 @@ public partial class MainWindow
 
     private void RestoreStubbornWords()
     {
-        if (_allowCloud && _tokens.ActiveAccount is { } account)
+        if (_allowCloud && (_tokens.ActiveAccount ?? _tokens.ExpiredAccount) is { } account)
             _stubbornWords = StubbornWordCache.Load(_tokens.ProfileDirectory, account.Id);
         ApplyStubbornOrder();
     }
@@ -51,20 +51,20 @@ public partial class MainWindow
     {
         if(StubbornWordText==null)return;
         var online=_allowCloud&&_tokens.HasToken;
-        if(!online)StubbornWordText.Text="登录";
-        else if(_stubbornRotation.Current is {} word)StubbornWordText.Text=word.Spelling;
+        if(_stubbornRotation.Current is {} word)StubbornWordText.Text=word.Spelling;
+        else if(!online)StubbornWordText.Text="登录";
         else
         {
             StubbornWordText.Text=_stubbornLoading?"刷新中…":_stubbornError!=null?"重试":"暂无";
         }
-        var showCount=StubbornCard.Width>=210;
+        var shownCount = online ? _stubbornWords?.Total : _stubbornWords?.Words.Count;
         StubbornCountText.Text=online&&_stubbornLoading&&_stubbornRotation.Current!=null
-            ?"刷新中…":showCount&&_stubbornWords!=null?$"全部 {_stubbornWords.Total}":"全部";
-        AllStubbornButton.ToolTip=_stubbornWords!=null?$"查看全部 {_stubbornWords.Total} 个顽固单词":"查看全部顽固单词";
+            ?"刷新中…":shownCount is int count?$"全部 {count}":"全部";
+        AllStubbornButton.ToolTip=shownCount is int total?$"查看全部 {total} 个顽固单词":"查看全部顽固单词";
         ShuffleStubbornButton.IsEnabled=online&&_stubbornRotation.Words.Count>1;
         ShuffleStubbornButton.ToolTip=StubbornMode==StubbornSortMode.Random?"下一个顽固单词（本轮不重复）":"下一个顽固单词";
         StubbornNextGlyph.Text=StubbornMode==StubbornSortMode.Random?"\uE8B1":"\uE72A";
-        StubbornPreviewButton.ToolTip=_stubbornError??(!online?"登录后查看顽固单词":_stubbornRotation.Current==null?"查看顽固单词列表":$"查看 {_stubbornRotation.Current.Spelling} 的释义");
+        StubbornPreviewButton.ToolTip=_stubbornError??(_stubbornRotation.Current is { } current ? $"查看 {current.Spelling} 的释义" : !online?"登录后查看顽固单词":"查看顽固单词列表");
         AutomationProperties.SetName(StubbornPreviewButton,$"顽固单词：{StubbornWordText.Text}，点击查词");
     }
     private void HeaderCenterGrid_SizeChanged(object sender,SizeChangedEventArgs e)
@@ -75,7 +75,6 @@ public partial class MainWindow
     }
     private async void StubbornWordButton_Click(object sender,RoutedEventArgs e)
     {
-        if(!_allowCloud||!_tokens.HasToken){AccountButton_Click(sender,e);return;}
         if(_stubbornRotation.Current is {} word)await SearchAsync(word.Spelling);
         else StubbornPreviewButton_Click(sender,e);
     }
@@ -128,7 +127,7 @@ public partial class MainWindow
     }
     private async void StubbornPreviewButton_Click(object sender,RoutedEventArgs e)
     {
-        if(!_allowCloud||!_tokens.HasToken){AccountButton_Click(sender,e);return;}
+        if((!_allowCloud||!_tokens.HasToken) && _stubbornWords == null){AccountButton_Click(sender,e);return;}
         if(_stubbornDialog!=null){_stubbornDialog.Activate();return;}
         var account=_accountVersion;var credential=_accountCredentialKey;string? chosen=null;
         var dialog=InputDialog.Shell(this,"顽固单词",out _);_stubbornDialog=dialog;
@@ -185,10 +184,11 @@ public partial class MainWindow
                 visibleCount=visible.Length;
             }
             var progress=_stubbornTotal>0?$" · {_stubbornLoaded}/{_stubbornTotal}":"";
-            count.Text=_stubbornLoading?$"刷新中…{progress}":$"{_tokens.ActiveAccount?.Name??"当前账号"} · {visibleCount} 个单词";
-            refresh.Content=_stubbornLoading?"刷新中…":"刷新";
+            var offline = !_tokens.HasToken;
+            count.Text=_stubbornLoading?$"刷新中…{progress}":$"{(_tokens.ActiveAccount ?? _tokens.ExpiredAccount)?.Name??"当前账号"} · {visibleCount} 个单词" + (offline ? " · 本地缓存" : "");
+            refresh.Content=offline ? "重新登录" : _stubbornLoading?"刷新中…":"刷新";
             refresh.IsEnabled=!_stubbornLoading;
-            hint.Text=_stubbornError!=null?"刷新未完成："+_stubbornError:displayed is {Complete:false}?$"已获取 {displayed.Words.Count}/{displayed.Total}，部分记录受接口单次上限影响，可稍后刷新。":entries.Count==0&&!_stubbornLoading?"还没有已同步的顽固单词，在墨墨 App 同步后刷新。":_preferences.HideStubbornMeanings?"点击释义区域揭示答案，点击单词查词。":"点击单词查词；手机端同步学习数据后刷新。";
+            hint.Text=offline ? "当前显示本地缓存。重新登录后可刷新" : _stubbornError!=null?"刷新未完成："+_stubbornError:displayed is {Complete:false}?$"已获取 {displayed.Words.Count}/{displayed.Total}，部分记录受接口单次上限影响，可稍后刷新。":entries.Count==0&&!_stubbornLoading?"还没有已同步的顽固单词，在墨墨 App 同步后刷新。":_preferences.HideStubbornMeanings?"点击释义区域揭示答案，点击单词查词。":"点击单词查词；手机端同步学习数据后刷新。";
         }
         sort.SelectionChanged+=(_,_)=>
         {
@@ -202,7 +202,12 @@ public partial class MainWindow
             foreach(var entry in entries.Values)entry.SetConceal(_preferences.HideStubbornMeanings);Render();
         }
         conceal.Checked+=ToggleConceal;conceal.Unchecked+=ToggleConceal;
-        refresh.Click+=async(_,_)=>await RefreshStubbornWordsAsync(true);filter.TextChanged+=(_,_)=>Render();StubbornChanged+=Render;
+        refresh.Click += async (_, _) =>
+        {
+            if (_tokens.HasToken) await RefreshStubbornWordsAsync(true);
+            else { dialog.Close(); _ = Dispatcher.BeginInvoke(new Action(() => EditSettings("墨墨账号"))); }
+        };
+        filter.TextChanged+=(_,_)=>Render();StubbornChanged+=Render;
         dialog.RegisterName("StubbornWordsList",list);dialog.RegisterName("StubbornFilter",filter);dialog.RegisterName("RefreshStubbornWords",refresh);dialog.RegisterName("StubbornListCount",count);
         dialog.RegisterName("StubbornSort",sort);dialog.RegisterName("StubbornSortDirection",direction);dialog.RegisterName("HideStubbornMeanings",conceal);dialog.RegisterName("StubbornOptions",options);
         var editing=_editingSettings;_editingSettings=true;ReleaseGlobalShortcut();if(_hover!=null)_hover.Enabled=false;

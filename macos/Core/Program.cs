@@ -212,6 +212,9 @@ internal sealed class CoreService : IDisposable
             case "study.add":
                 var verifyOnly = p.ValueKind == JsonValueKind.Object && p.TryGetProperty("verifyOnly", out var verify) && verify.ValueKind == JsonValueKind.True;
                 return await _api.AddToTodayAsync(await RequireWord(word, cancellation), verifyOnly, cancellation);
+            case "study.todayPlan": return await _api.GetTodayPlanAsync(cancellation);
+            case "study.candidates": return await _api.GetTodayCandidatesAsync(Null(T(p, "notepadId")), Null(T(p, "input")), cancellation);
+            case "study.addBatch": return await _api.AddTodayBatchAsync(Program.Decode<string[]>(p.GetProperty("ids")), T(p, "day"), cancellation);
             case "stubborn": return await _api.GetStubbornWordsAsync(cancellationToken: cancellation);
             case "notepads.list": return await _api.ListNotepadsAsync(cancellation);
             case "notepads.get": return await _api.GetNotepadAsync(T(p, "id"), cancellation);

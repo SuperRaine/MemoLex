@@ -70,6 +70,7 @@ struct MainView: View {
             case .stubborn: StubbornView(model: model)
             case .mnemonic: MnemonicView(model: model)
             case .notepad: NotebookView(model: model)
+            case .todayPlan: TodayStudyView(model: model)
             }
         }
         .onAppear { model.focusSearch = { searchFocused = true } }
@@ -102,6 +103,10 @@ struct MainView: View {
                     Button("段落翻译") { model.enterTranslation() }
                     Button("截图翻译") { model.captureScreen?() }.tourTarget("screenshot")
                 }.buttonStyle(LookupButtonStyle(small: true, expands: true))
+                Button("今日学习") {
+                    if model.loggedIn { model.sheet = .todayPlan }
+                    else { model.openAccountSettings() }
+                }.buttonStyle(LookupButtonStyle(small: true, expands: true)).tourTarget("today-plan")
             }
             VStack(alignment: .leading, spacing: 7) {
                 Text("单词建议").sectionLabel()
@@ -207,7 +212,7 @@ private struct MainTitlebar: View {
                 model.sheet = .stubborn
             }
                 .font(.caption).buttonStyle(.plain).fixedSize().foregroundStyle(Palette.deep)
-                .help(model.showingCachedStubborn ? "查看本地缓存的顽固单词" : "查看全部顽固单词")
+                .help("查看全部顽固单词")
             titleButton(preferences.stubbornSort == "random" ? "shuffle" : "arrow.right", label: "下一个顽固单词") { model.nextStubborn() }
                 .disabled(model.stubbornOrder.count < 2)
         }.padding(.leading, 9).padding(.trailing, 2).frame(height: 29)
@@ -215,7 +220,9 @@ private struct MainTitlebar: View {
     }
     private var stubbornListLabel: String {
         if model.stubbornLoading && !model.stubbornCurrent.isEmpty { return "刷新中…" }
-        return model.showingCachedStubborn ? "缓存" : "全部"
+        if model.showingCachedStubborn { return "全部 \(model.stubbornWords.count)" }
+        if model.canBrowseStubborn { return "全部 \(model.stubbornTotal)" }
+        return "全部"
     }
 
     private func countdown(at date: Date) -> some View {

@@ -4,7 +4,7 @@ import Combine
 import Foundation
 import SwiftUI
 
-enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad; var id: String { rawValue } }
+enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan; var id: String { rawValue } }
 struct Notice: Identifiable {
     let id = UUID()
     var title: String
@@ -259,7 +259,7 @@ enum EnglishAccent: String, CaseIterable {
     private func currentCloudWord(_ query: String, version: Int, generation: Int) -> Bool {
         !Task.isCancelled && loggedIn && page == .word && word == query && version == wordVersion && generation == accountVersion
     }
-    private func refreshTodayStatus() {
+    func refreshTodayStatus() {
         guard loggedIn, page == .word, !word.isEmpty else { return }
         studyStatusTask?.cancel()
         todayStatus = "Loading"

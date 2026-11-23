@@ -97,6 +97,23 @@ public sealed partial class TokenStore
         lock(_accountGate){var d=ReadAccounts();return d.Accounts.Select(a=>Describe(a,d.ActiveId)).ToArray();}
     }
     public SavedAccount? ActiveAccount {get{try{return GetAccounts().FirstOrDefault(a=>a.Active);}catch{return null;}}}
+    internal SavedAccount? ExpiredAccount
+    {
+        get
+        {
+            try
+            {
+                lock (_accountGate)
+                {
+                    var document = ReadAccounts();
+                    var id = document.ExpiredId ?? document.ActiveId;
+                    var account = document.Accounts.FirstOrDefault(item => item.Id == id && NeedsLogin(item));
+                    return account == null ? null : Describe(account, document.ActiveId);
+                }
+            }
+            catch { return null; }
+        }
+    }
     public bool HasExpiredSession
     {
         get{try{lock(_accountGate){var d=ReadAccounts();return d.ExpiredId!=null||d.Accounts.Any(a=>a.Id==d.ActiveId&&NeedsLogin(a));}}catch{return false;}}
