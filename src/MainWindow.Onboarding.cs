@@ -45,7 +45,7 @@ public partial class MainWindow
         }
         // 新增用户功能时同步补充页面聚焦引导，说明保持简短。
         _onboardingTour=new([
-            new("查词与阅读","输入英文或中文，按 Enter 查词。点击英文单词可查看释义，点击「英音」或「美音」听发音。",()=>MainPage(false,BodyGrid)),
+            new("查词与阅读","输入英文查释义，或用中文找单词。点击「英音」或「美音」听发音。",()=>MainPage(false,BodyGrid)),
             new("登录与切换账号","在这里登录墨墨。选择已保存的账号即可切换。",()=>SettingsPage("墨墨账号","OfficialLoginButton")),
             new("顽固单词","点击顶部单词查词，右侧箭头可换词。在“全部”中选择排序，也可遮住释义，点击揭示答案。",()=>MainPage(false,StubbornCard)),
             new("收藏与管理云词本","点击“加入云词本”收藏，进入“查看 / 编辑”管理单词和查看释义。",()=>MainPage(false,CloudNotepadCard)),
@@ -54,7 +54,8 @@ public partial class MainWindow
             new("截图翻译","按 "+ShortcutLabel("screenshot")+"，框选屏幕上的英文即可翻译。",()=>MainPage(true,ScreenshotButton)),
             new("鼠标取词","开启后，将鼠标停在英文单词上即可查看释义。",()=>SettingsPage("鼠标取词","HoverLookupEnabled")),
             new("剪贴板查词","开启后，选中文字连按两次 Ctrl+C，或按 "+ShortcutLabel("clipboard")+" 查询。",()=>SettingsPage("常规","DoubleCopyEnabled")),
-            new("考试倒计时","开启后填写考试名称和日期，即可在标题栏查看倒计时。",()=>SettingsPage("常规","ShowExamCountdown"))
+            new("考试倒计时","开启后填写考试名称和日期，即可在标题栏查看倒计时。",()=>SettingsPage("常规","ShowExamCountdown")),
+            new("主页与下载","在这里打开软件主页，也可以直接去夸克下载新版。",()=>SettingsPage("关于与赞助","SupportQuarkButton"))
         ],Finished,_desktopIntegration);
         _onboardingTour.Start();
     }

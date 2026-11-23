@@ -175,7 +175,13 @@ internal sealed class UpdateManager:IDisposable
         var download=Button("下载更新","DownloadUpdateButton",async()=>await DownloadAsync());
         var install=Button("更新并重启","InstallUpdateButton",async()=>await InstallAsync(owner));
         var cancel=Button("取消当前操作","CancelUpdateButton",Cancel);
-        Button("前往下载页面","UpdateReleasePage",()=>{try{Process.Start(new ProcessStartInfo(_release?.Page.AbsoluteUri??GitHubUpdateClient.Repository+"/releases/latest"){UseShellExecute=true});}catch{state.Text="无法打开浏览器。";}});
+        void OpenDownloadPage(string address)
+        {
+            try { Process.Start(new ProcessStartInfo(address) { UseShellExecute = true }); }
+            catch { state.Text = "无法打开浏览器。"; }
+        }
+        Button("GitHub 下载","UpdateReleasePage",()=>OpenDownloadPage(_release?.Page.AbsoluteUri??GitHubUpdateClient.Repository+"/releases/latest"));
+        Button("夸克下载","UpdateQuarkPage",()=>OpenDownloadPage(SettingsDialog.QuarkDownloadUrl));
         var notes=new TextBox{IsReadOnly=true,TextWrapping=TextWrapping.Wrap,MaxHeight=130,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
         var notesSection=new Expander{Header="更新说明",Content=notes,Visibility=Visibility.Collapsed};panel.Children.Add(notesSection);
         var directory=ApplicationPaths.InstallDirectory;

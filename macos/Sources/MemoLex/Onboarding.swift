@@ -15,7 +15,7 @@ struct TourStep {
 }
 @MainActor extension AppModel {
     static let tourSteps: [TourStep] = [
-        .init(title: "查词与阅读", text: "输入英文或中文，按回车查词。点击英文单词可查看释义，点击「英音」或「美音」听发音。", target: "search"),
+        .init(title: "查词与阅读", text: "输入英文查释义，或用中文找单词。点击「英音」或「美音」听发音。", target: "search"),
         .init(title: "登录与切换账号", text: "在这里登录墨墨。选择已保存的账号即可切换。", target: "login", settings: "墨墨账号"),
         .init(title: "顽固单词", text: "点击顶部单词查词。在“全部”中选择排序，或遮住释义自测。", target: "stubborn"),
         .init(title: "收藏与管理云词本", text: "点击“加入云词本”收藏，进入“查看 / 编辑”管理单词和查看释义。", target: "cloud"),
@@ -26,6 +26,7 @@ struct TourStep {
         .init(title: "剪贴板查词", text: "开启后，选中文字连按两次 ⌘C，唤起软件查词或翻译。", target: "clipboard", settings: "常规"),
         .init(title: "考试倒计时", text: "设置考试名称，分别选择或输入年、月、日。开启后可在标题栏看到剩余天数。", target: "countdown", settings: "常规"),
         .init(title: "软件更新", text: "在这里检查新版。下载完成后，点击“更新并重启”安装。", target: "updates", settings: "软件更新"),
+        .init(title: "主页与下载", text: "在这里打开软件主页，也可以直接去夸克下载新版。", target: "download-links", settings: "关于与赞助"),
         .init(title: "系统权限", text: "在这里查看取词和截图权限。更新后若无法授权，可重置对应的旧授权。", target: "permissions", settings: "系统权限")
     ]
     func startTour() { showWindow?(); setTourStep(0) }

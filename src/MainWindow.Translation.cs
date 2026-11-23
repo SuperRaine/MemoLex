@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using MemoLex.Core;
+using MemoLex.Desktop;
 
 namespace MemoLex;
 
@@ -28,6 +29,7 @@ public partial class MainWindow
         CancelChineseSearch();ChineseSearchView.Visibility=Visibility.Collapsed;
         _lookupCts?.Cancel();_examplesCts?.Cancel();++_wordVersion;++_membershipVersion;
         _viewTarget=ViewTarget.Translation;ResultScroll.Visibility=Visibility.Collapsed;TranslationView.Visibility=Visibility.Visible;
+        UiMotion.Reveal(TranslationView);
         UpdateHeader();
     }
     private void TranslationModeButton_Click(object sender,RoutedEventArgs e)
@@ -57,8 +59,8 @@ public partial class MainWindow
     }
     private void RenderTranslationText()
     {
-        FillWordLinks(TranslationSourceText,_translatedSource.Length>0?_translatedSource:"翻译后在这里阅读原文",EmptyMatches,_word,navigate:NavigateTranslationWordAsync);
-        FillWordLinks(TranslationOutputText,_translatedText.Length>0?_translatedText:"译文将在这里显示",EmptyMatches,_word,navigate:NavigateTranslationWordAsync);
+        FillWordLinks(TranslationSourceText,_translatedSource.Length>0?_translatedSource:"在上方输入或粘贴原文。",EmptyMatches,_word,navigate:NavigateTranslationWordAsync);
+        FillWordLinks(TranslationOutputText,_translatedText.Length>0?_translatedText:"点击「翻译」后在这里看译文。",EmptyMatches,_word,navigate:NavigateTranslationWordAsync);
     }
     private async void TranslateButton_Click(object sender,RoutedEventArgs e)=>await TranslateParagraphAsync();
     private async Task TranslateParagraphAsync()
@@ -68,13 +70,14 @@ public partial class MainWindow
         if(!_allowCloud){TranslationHintText.Text="离线模式下无法联网翻译。";return;}
         CancelTranslation();_translationCts=new CancellationTokenSource();var cancellation=_translationCts.Token;var version=_translationVersion;
         _translatedSource=text;_translatedText="";RenderTranslationText();
-        TranslateButton.IsEnabled=false;TranslateButton.Content="翻译中…";TranslationHintText.Text="正在翻译，请稍候…";
+        TranslateButton.IsEnabled=false;TranslateButton.Content="翻译中…";TranslationHintText.Text="正在翻译…";
         RememberCurrentView();
         try
         {
             var translated=await _translation.TranslateAsync(text,pair,cancellation);
             if(version!=_translationVersion||_viewTarget!=ViewTarget.Translation)return;
             _translatedText=translated.Text;_translatedProvider=translated.Provider;RenderTranslationText();
+            UiMotion.Reveal(TranslationOutputText);
             TranslationHintText.Text=_translatedProvider+" · 点击原文或译文中的英文单词可查看释义。";
             TranslationScroll.ScrollToTop();RememberCurrentView();
         }

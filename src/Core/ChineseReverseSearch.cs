@@ -171,7 +171,7 @@ public sealed class ChineseReverseSearch(LocalDictionary dictionary,string? dire
         var literalQuery=LiteralChinese(raw);
         if(query.Length is <1 or >40||raw.Length>100)throw new ArgumentException("请输入 1–40 个汉字的中文含义。");
         if(new[]{"的","了","和","是","一个","什么"}.Contains(query))return new ChineseSearchPage(raw,[],0);
-        if(!Available)throw new IOException("中文反查词库未就绪，请使用完整运行包。");
+        if(!Available)throw new IOException("用中文找单词所需的词库还没加载好。请确认软件包已完整解压或安装。");
         var variants=Variants(query);var candidates=new Dictionary<string,double>(StringComparer.OrdinalIgnoreCase);
         void AddSource(int id,double score=0)
         {

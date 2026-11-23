@@ -33,7 +33,7 @@ public partial class MainWindow
     {
         if (e.VerticalChange!=0&&ReferenceEquals(e.Source, ResultScroll)&&_viewTarget is ViewTarget.Word or ViewTarget.Examples) RememberCurrentView();
     }
-    private void UpdateHeader() => Title=(_viewTarget==ViewTarget.Translation?"段落翻译":_viewTarget==ViewTarget.ChineseSearch?"中文反查 · "+_chineseQuery:_word)+" · 墨墨搜词";
+    private void UpdateHeader() => Title=(_viewTarget==ViewTarget.Translation?"段落翻译":_viewTarget==ViewTarget.ChineseSearch?"「"+_chineseQuery+"」的英文表达":_word)+" · 墨墨搜词";
     private void QueueViewRestore(int version, Action restore) => Dispatcher.BeginInvoke(DispatcherPriority.Loaded,
         new Action(() => { if (version == _wordVersion) restore(); }));
     private void QueueExamplesScroll(int wordVersion, int exampleVersion) => QueueViewRestore(wordVersion, () =>

@@ -15,12 +15,14 @@ namespace MemoLex;
 internal static class SettingsDialog
 {
     internal const string RepositoryUrl="https://github.com/SuperRaine/MemoLex";
+    internal const string HomepageUrl = "https://memolex.silverchina5.chatgpt.site/";
+    internal const string QuarkDownloadUrl = HomepageUrl + "quark.html";
     internal const string FeedbackEmail="1623255609@qq.com";
     internal const string FeedbackQqGroup="1132371819";
     internal const string BugReportUrl=RepositoryUrl+"/issues/new?template=bug_report.yml";
     internal const string FeatureRequestUrl=RepositoryUrl+"/issues/new?template=feature_request.yml";
     internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
-    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"1.1.0";
+    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.0.0";
     [Flags]
     private enum SettingsArea { None=0, General=1, Hover=2, Shortcuts=4 }
     public static void Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null)
@@ -152,10 +154,23 @@ internal static class SettingsDialog
         var supportHeading=new StackPanel();
         foreach(var child in support.Children.Cast<UIElement>().ToArray()){support.Children.Remove(child);supportHeading.Children.Add(child);}
         ((FrameworkElement)supportHeading.Children[1]).Margin=new Thickness(0,4,0,10);
-        var sourceLink=new Button {Content="GitHub",HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top};
-        sourceLink.Click+=(_,_)=>OpenLink(RepositoryUrl,"无法打开浏览器，请稍后重试。");
-        var supportHeader=new DockPanel();DockPanel.SetDock(sourceLink,Dock.Right);supportHeader.Children.Add(sourceLink);supportHeader.Children.Add(supportHeading);
-        supportLayout.Children.Add(supportHeader);dialog.RegisterName("SupportRepositoryButton",sourceLink);
+        var supportLinks = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top };
+        foreach (var (label, url, name) in new[] {
+            ("软件主页", HomepageUrl, "SupportHomepageButton"),
+            ("夸克下载", QuarkDownloadUrl, "SupportQuarkButton"),
+            ("GitHub", RepositoryUrl, "SupportRepositoryButton")
+        })
+        {
+            var link = new Button { Content = label, Margin = new Thickness(6, 0, 0, 0), Tag = url };
+            link.Click += (_, _) => OpenLink(url, "无法打开浏览器，请稍后重试。");
+            supportLinks.Children.Add(link);
+            dialog.RegisterName(name, link);
+        }
+        var supportHeader = new DockPanel();
+        DockPanel.SetDock(supportLinks, Dock.Right);
+        supportHeader.Children.Add(supportLinks);
+        supportHeader.Children.Add(supportHeading);
+        supportLayout.Children.Add(supportHeader);
         var supportIntro=new StackPanel();Grid.SetRow(supportIntro,1);supportLayout.Children.Add(supportIntro);
         var projectNotice=InputDialog.Text(IndependenceNotice);
         supportIntro.Children.Add(new Border {Child=projectNotice,Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
@@ -195,7 +210,12 @@ internal static class SettingsDialog
         var pageOrder=new[]{"常规","墨墨账号","鼠标取词","快捷键","软件更新","反馈","关于与赞助"};
         pages=pageOrder.Select(title=>pages.Single(page=>page.Title==title)).ToList();
         foreach(var page in pages)navigation.Items.Add(page.Title);
-        navigation.SelectionChanged+=(_,_)=>{if(navigation.SelectedIndex>=0)host.Content=pages[navigation.SelectedIndex].View;};
+        navigation.SelectionChanged += (_, _) =>
+        {
+            if (navigation.SelectedIndex < 0) return;
+            host.Content = pages[navigation.SelectedIndex].View;
+            UiMotion.Reveal(host);
+        };
         navigation.SelectedIndex=Math.Max(0,pages.FindIndex(page=>page.Title==initialPage));
 
         var pending=SettingsArea.None;

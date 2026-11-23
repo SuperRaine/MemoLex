@@ -10,6 +10,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using MemoLex.Core;
+using MemoLex.Desktop;
 using MemoLex.Services;
 
 namespace MemoLex;
@@ -248,6 +249,7 @@ public partial class MainWindow : Window
         if (hasLocalMeaning && int.TryParse(entry?.bnc, out var frequency) && frequency > 0) WordMetaText.Text += $"  /  BNC 词频 #{frequency:N0}";
         RenderTags(entry);
         ResultScroll.ScrollToTop();
+        UiMotion.Reveal(DefinitionSection);
         ResetExampleView();
         if (recordHistory)
         {
@@ -281,11 +283,12 @@ public partial class MainWindow : Window
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return; }
         if (version != _wordVersion || cancellation.IsCancellationRequested) return;
 
-        FillWordLinks(DefinitionText, definition?.Meaning ?? "暂未找到中文释义，可打开海词词典继续查找。",
+        FillWordLinks(DefinitionText, definition?.Meaning ?? "还没有找到中文释义，可以去海词词典看看。",
             EmptyMatches, word, skipPartOfSpeech: true);
-        StatusText.Text = definition == null ? "暂未找到中文释义。" : "已补充联网释义。";
+        StatusText.Text = definition == null ? "还没有找到中文释义。" : "已找到在线释义。";
         if (definition == null) return;
 
+        UiMotion.Reveal(DefinitionText, distance: 0);
         WordMetaText.Text = definition.SourceLabel;
         WordMetaText.ToolTip = definition.SourceAttribution;
     }

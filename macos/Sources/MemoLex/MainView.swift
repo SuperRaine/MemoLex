@@ -14,6 +14,7 @@ struct MainView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var preferences: Preferences
     @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(model: AppModel) {
         self.model = model
@@ -29,13 +30,21 @@ struct MainView: View {
                 HStack(spacing: 0) {
                     sidebar(compact: compact).frame(width: compact ? 220 : 264)
                     Divider().overlay(Palette.border)
-                    Group {
-                        switch model.page {
-                        case .word: WordPage(model: model, compact: compact)
-                        case .chinese: ChinesePage(model: model)
-                        case .translation: TranslationPage(model: model)
+                    ZStack {
+                        Group {
+                            switch model.page {
+                            case .word: WordPage(model: model, compact: compact)
+                            case .chinese: ChinesePage(model: model)
+                            case .translation: TranslationPage(model: model)
+                            }
                         }
-                    }.padding(compact ? 16 : 25).frame(maxWidth: .infinity, maxHeight: .infinity).tourTarget("reading")
+                        .id(model.page)
+                        .transition(.opacity)
+                    }
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.17), value: model.page)
+                    .padding(compact ? 16 : 25)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .tourTarget("reading")
                 }.frame(maxHeight: .infinity)
                 Divider().overlay(Palette.border)
                 HStack {
@@ -80,7 +89,8 @@ struct MainView: View {
                 HStack { Text("快速查词").sectionLabel(); Spacer(); Text(model.preferences.shortcuts["search"]?.label ?? "").font(.system(size: 10)).foregroundStyle(Palette.muted) }
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("英文或中文", text: $model.search).textFieldStyle(.plain)
+                    TextField("输入英文或中文", text: $model.search).textFieldStyle(.plain)
+                        .help("输入英文查释义，或用中文找单词")
                         .focused($searchFocused).onSubmit { model.lookup(model.search) }
                         .onChange(of: model.search) { _ in model.suggest() }
                     Button { model.lookup(model.search) } label: { Image(systemName: "return") }
@@ -248,6 +258,7 @@ private struct MainTitlebar: View {
 private struct WordPage: View {
     @ObservedObject var model: AppModel
     var compact: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private static let tagNames = ["zk": "中考", "gk": "高考", "cet4": "CET-4", "cet6": "CET-6",
                                    "ky": "考研", "toefl": "TOEFL", "ielts": "IELTS", "gre": "GRE"]
     var body: some View {
@@ -255,7 +266,16 @@ private struct WordPage: View {
             Card(padding: compact ? 20 : 28) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .center, spacing: 15) {
-                        Text(model.word.isEmpty ? "查词" : model.word).font(.system(size: compact ? 32 : 42, weight: .semibold)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                        ZStack(alignment: .leading) {
+                            Text(model.word.isEmpty ? "查词" : model.word)
+                                .font(.system(size: compact ? 32 : 42, weight: .semibold))
+                                .lineLimit(2)
+                                .textSelection(.enabled)
+                                .id(model.word)
+                                .transition(.opacity)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.17), value: model.word)
                         if compact { VStack(spacing: 6) { actions } } else { HStack(spacing: 8) { actions } }
                     }
                     HStack(spacing: 8) {
@@ -288,19 +308,19 @@ private struct WordPage: View {
                             ("CET6", "大学六级"), ("COLLEGE_ENTRANCE_EXAM", "高考")
                         ], height: 30).frame(width: 125)
                     }.onChange(of: model.examplePaper) { _ in Task { await model.loadExamples(reset: true) } }
-                    Text("点击英文单词可查看释义").font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.top, 8).padding(.bottom, 12)
+                    Text("点击例句里的英文单词查看释义。").font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.top, 8).padding(.bottom, 12)
                     ExamplesView(model: model)
                 }
             }.padding(.trailing, 5)
         }
     }
     private var definitionText: String {
-        if model.word.isEmpty { return "在左侧输入单词，即可查看释义。" }
+        if model.word.isEmpty { return "在左侧输入英文查释义，或用中文找单词。" }
         let local = model.entry["translation"].text.decodedLines
         if !local.trimmed.isEmpty { return local }
         if model.definitionLoading { return "正在查找释义…" }
         let online = model.onlineDefinition["meaning"].text
-        return online.isEmpty ? "暂未找到中文释义，可打开海词词典继续查找。" : online
+        return online.isEmpty ? "还没有找到中文释义，可以去海词词典看看。" : online
     }
     @ViewBuilder private var definitionSource: some View {
         if !model.entry["translation"].text.trimmed.isEmpty {
@@ -361,6 +381,7 @@ private struct ExchangeView: View {
 
 private struct RelationsView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let groups = [("synonyms", "近义词"), ("similar", "形近词"), ("derivatives", "派生词"), ("phrases", "常用短语")]
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -370,11 +391,22 @@ private struct RelationsView: View {
             }
             ForEach(groups, id: \.0) { key, title in if model.expandedRelations.contains(key) {
                 VStack(alignment: .leading, spacing: 10) { Text(title).font(.system(size: 11, weight: .semibold)); if model.relations[key].list.isEmpty { Text("暂无相关词条").foregroundStyle(Palette.muted) }; ForEach(model.relations[key].list, id: \.wordText) { related in LinkedText(text: related["word"].text + "  " + related["meaning"].text.decodedLines, size: 14) } }.padding(13).frame(maxWidth: .infinity, alignment: .leading).background(Palette.wash, in: RoundedRectangle(cornerRadius: 9))
+                    .transition(.opacity)
             } }
         }
     }
     private func relationButton(_ key: String, _ title: String) -> some View {
-        Button { if model.expandedRelations.contains(key) { model.expandedRelations.remove(key) } else { model.expandedRelations.insert(key) } } label: { HStack(spacing: 6) { Text("\(title) · \(model.relations[key].list.count)"); Image(systemName: model.expandedRelations.contains(key) ? "chevron.up" : "chevron.down").font(.system(size: 8)) } }.buttonStyle(MemoButtonStyle(compact: true)).fixedSize()
+        Button {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.17)) {
+                if model.expandedRelations.contains(key) { model.expandedRelations.remove(key) }
+                else { model.expandedRelations.insert(key) }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text("\(title) · \(model.relations[key].list.count)")
+                DropdownChevron(expanded: model.expandedRelations.contains(key))
+            }
+        }.buttonStyle(MemoButtonStyle(compact: true)).fixedSize()
     }
 }
 extension J { var wordText: String { self["word"].text } }
@@ -393,7 +425,7 @@ private struct ExamplesView: View {
             if model.examplesLoading { ProgressView().controlSize(.small).frame(maxWidth: .infinity) }
             else if !model.examplesError.isEmpty { Text(model.examplesError).font(.system(size: 12)).foregroundStyle(Palette.muted); Button("重试") { Task { await model.loadExamples(reset: model.examples.isEmpty) } }.buttonStyle(MemoButtonStyle()) }
             else if model.exampleOffset < model.exampleTotal { Button("加载更多例句") { Task { await model.loadExamples(reset: false) } }.buttonStyle(MemoButtonStyle()).frame(maxWidth: .infinity) }
-            else if model.examples.isEmpty { Text(model.word.isEmpty ? "查词后载入相关真题" : "暂未找到相关例句，可切换考试类型再试。").font(.system(size: 11)).foregroundStyle(Palette.muted) }
+            else if model.examples.isEmpty { Text(model.word.isEmpty ? "查词后可查看真题例句" : "还没找到例句，可以换个考试类型再试。").font(.system(size: 11)).foregroundStyle(Palette.muted) }
         }
     }
 }
@@ -402,8 +434,8 @@ private struct ChinesePage: View {
     @ObservedObject var model: AppModel
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("中文反查 · \(model.search)").font(.system(size: 25, weight: .semibold))
-            Text("找到 \(model.chineseTotal) 个相关结果，点击一行查看完整释义。").font(.system(size: 12)).foregroundStyle(Palette.muted)
+            Text("「\(model.chineseQuery)」的英文表达").font(.system(size: 25, weight: .semibold))
+            Text(model.chineseHint).font(.system(size: 12)).foregroundStyle(Palette.muted)
             ScrollView {
                 LazyVStack(spacing: 5) {
                     ForEach(model.chineseResults, id: \.wordText) { row in
@@ -431,6 +463,7 @@ private struct ChinesePage: View {
 
 private struct TranslationPage: View {
     @ObservedObject var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 9) {
@@ -443,7 +476,26 @@ private struct TranslationPage: View {
             }
             TextEditor(text: $model.translationInput).font(.system(size: 15)).padding(8).frame(height: 140).background(Palette.paper, in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.border)).tourTarget("translation")
             Text((model.translationProvider.isEmpty ? "" : "\(model.translationProvider) · ") + "点击英文单词可查看释义。").font(.system(size: 11)).foregroundStyle(Palette.muted)
-            ScrollView { VStack(spacing: 14) { Card { VStack(alignment: .leading, spacing: 12) { Text("原文").sectionLabel(); LinkedText(text: model.translationSource.isEmpty ? "翻译后在这里阅读原文" : model.translationSource, size: 16) } }; Card { VStack(alignment: .leading, spacing: 12) { Text("译文").sectionLabel(); LinkedText(text: model.translationOutput.isEmpty ? "译文将在这里显示" : model.translationOutput, size: 16) } } } }
+            ScrollView {
+                VStack(spacing: 14) {
+                    Card {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("原文").sectionLabel()
+                            LinkedText(text: model.translationSource.isEmpty ? "在上方输入或粘贴原文。" : model.translationSource, size: 16)
+                        }
+                    }
+                    Card {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("译文").sectionLabel()
+                            if model.translationOutput.isEmpty {
+                                Text("点击「翻译」后在这里看译文。").foregroundStyle(Palette.muted)
+                            } else {
+                                LinkedText(text: model.translationOutput, size: 16).transition(.opacity)
+                            }
+                        }.animation(reduceMotion ? nil : .easeOut(duration: 0.17), value: model.translationOutput.isEmpty)
+                    }
+                }
+            }
         }
     }
 }

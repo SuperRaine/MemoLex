@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using MemoLex.Core;
+using MemoLex.Desktop;
 
 namespace MemoLex;
 
@@ -31,7 +32,7 @@ public partial class MainWindow
             {
                 panel.Children.Add(new TextBlock
                 {
-                    Text = items == null ? "相关词条加载失败" : "暂未找到相关单词",
+                    Text = items == null ? "没能加载相关词，请再查一次。" : "没找到相关词。",
                     FontSize = 12, Foreground = Brush("#91A7BA")
                 });
                 return;
@@ -50,4 +51,10 @@ public partial class MainWindow
         }
     }
     private void RelationsExpansion_Changed(object sender,RoutedEventArgs e)=>RememberCurrentView();
+
+    private void RelationDetails_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (!_navigating && e.NewValue is true && sender is Border { IsLoaded: true } details)
+            UiMotion.Reveal(details, distance: 3);
+    }
 }

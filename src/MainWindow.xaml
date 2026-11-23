@@ -72,7 +72,7 @@
                           <StackPanel>
                             <Grid Margin="1,0,1,12"><TextBlock Text="快速查词" Foreground="#58718A" FontWeight="SemiBold" FontSize="12"/><TextBlock x:Name="SearchShortcutHint" Text="Ctrl+L" HorizontalAlignment="Right" Foreground="#A5B4C2" FontFamily="Segoe UI" FontSize="11"/></Grid>
                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="43"/></Grid.ColumnDefinitions>
-                                <TextBox x:Name="SearchBox" Height="43" TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="15" ToolTip="输入英文单词或中文含义，按 Enter 查词" Margin="0,0,6,0" AutomationProperties.Name="搜索单词或中文含义"/>
+                                <TextBox x:Name="SearchBox" Height="43" TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="15" ToolTip="输入英文查释义，或用中文找单词" Margin="0,0,6,0" AutomationProperties.Name="输入英文或中文查词"/>
                                 <Button x:Name="SearchButton" Grid.Column="1" Click="SearchButton_Click" Style="{StaticResource AccentButton}" Padding="0" ToolTip="查询单词" AutomationProperties.Name="查询"><TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="17"/></Button>
                             </Grid>
                             <Grid Margin="0,10,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><Button x:Name="TranslationModeButton" Content="段落翻译" Click="TranslationModeButton_Click" Margin="0,0,4,0" Padding="5,8" FontSize="11" Background="#EFF8FE" BorderBrush="#DFEEF8" ToolTip="段落翻译（Ctrl+T）"/><Button x:Name="ScreenshotButton" Grid.Column="1" Content="截图翻译" Click="ScreenshotButton_Click" Margin="4,0,0,0" Padding="5,8" FontSize="11" Background="#EFF8FE" BorderBrush="#DFEEF8"/></Grid>
@@ -102,7 +102,7 @@
                                 <Border x:Name="WordCard" Background="White" BorderBrush="#E2EBF3" BorderThickness="1" CornerRadius="14" Padding="27,23,27,24">
                                     <StackPanel x:Name="ResultDocument">
                                       <StackPanel x:Name="DefinitionSection">
-                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="WordText" Text="Welcome" FontFamily="Segoe UI" FontSize="42" FontWeight="SemiBold" Foreground="#233D53" TextWrapping="Wrap" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="WordText" Text="查词" FontFamily="Segoe UI" FontSize="42" FontWeight="SemiBold" Foreground="#233D53" TextWrapping="Wrap" Margin="0,0,15,0" VerticalAlignment="Center"/>
                                           <StackPanel x:Name="WordActions" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                             <Button x:Name="AddButton" Content="＋ 加入云词本" Style="{StaticResource AccentButton}" Click="AddButton_Click" Padding="15,11" FontSize="12" ToolTip="加入选中的云词本（Ctrl+Enter）"/>
                                             <Button x:Name="AddTodayButton" Content="＋ 今日新学" Click="AddTodayButton_Click" Margin="8,0,0,0" Padding="12,11" FontSize="12" Background="#EAF7FF" Foreground="#087FAF" AutomationProperties.Name="添加到今日新学单词"/>
@@ -115,10 +115,10 @@
                                           <Button x:Name="HaiciButton" Content="海词词典" Click="HaiciButton_Click" Margin="8,0,0,7" Padding="9,5" VerticalAlignment="Center" FontSize="11" BorderThickness="0" Background="#EAF7FF" Foreground="#087FAF" ToolTip="在软件内打开海词词典"/>
                                         </WrapPanel>
                                         <WrapPanel x:Name="TagsPanel" Margin="0,0,0,4"/>
-                                        <TextBlock x:Name="WordMetaText" Text="输入一个英文单词，开始查询。" Foreground="#9AAABA" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="WordMetaText" Foreground="#9AAABA" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                         <Border Background="#EDF2F7" Height="1" Margin="0,23,0,23"/>
                                         <TextBlock Text="中文释义" Style="{StaticResource SectionLabel}"/>
-                                        <TextBlock x:Name="DefinitionText" Text="在左侧输入单词，即可查看释义。" FontSize="17" LineHeight="31" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="DefinitionText" Text="在左侧输入英文查释义，或用中文找单词。" FontSize="17" LineHeight="31" TextWrapping="Wrap"/>
                                         <Border x:Name="ExchangeCard" Background="#F3F9FE" CornerRadius="9" Padding="13,10" Margin="0,23,0,0"><TextBlock x:Name="ExchangeText" FontSize="12" LineHeight="25" TextWrapping="Wrap" Foreground="#718EA5"/></Border>
                                         <StackPanel x:Name="RelatedSection" Margin="0,16,0,0">
                                           <WrapPanel>
@@ -127,23 +127,23 @@
                                             <ToggleButton x:Name="DerivativesToggle" Content="派生词" Style="{StaticResource RelationToggle}" Checked="RelationsExpansion_Changed" Unchecked="RelationsExpansion_Changed"/>
                                             <ToggleButton x:Name="PhrasesToggle" Content="常用短语" Style="{StaticResource RelationToggle}" Checked="RelationsExpansion_Changed" Unchecked="RelationsExpansion_Changed" ToolTip="显示常用固定短语、动词短语和介词搭配，排除普通名词组合。包含词形变化，最多显示 24 条；点击可查看完整释义。"/>
                                           </WrapPanel>
-                                          <Border Style="{StaticResource RelationDetails}" DataContext="{Binding ElementName=SynonymsToggle}"><StackPanel><TextBlock Text="近义词" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="SynonymsPanel"/></StackPanel></Border>
-                                          <Border Style="{StaticResource RelationDetails}" DataContext="{Binding ElementName=SimilarToggle}"><StackPanel><TextBlock Text="形近词" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="SimilarPanel"/></StackPanel></Border>
-                                          <Border Style="{StaticResource RelationDetails}" DataContext="{Binding ElementName=DerivativesToggle}"><StackPanel><TextBlock Text="派生词" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="DerivativesPanel"/></StackPanel></Border>
-                                          <Border Style="{StaticResource RelationDetails}" DataContext="{Binding ElementName=PhrasesToggle}"><StackPanel><TextBlock Text="常用短语" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="PhrasesPanel"/></StackPanel></Border>
+                                          <Border Style="{StaticResource RelationDetails}" IsVisibleChanged="RelationDetails_IsVisibleChanged" DataContext="{Binding ElementName=SynonymsToggle}"><StackPanel><TextBlock Text="近义词" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="SynonymsPanel"/></StackPanel></Border>
+                                          <Border Style="{StaticResource RelationDetails}" IsVisibleChanged="RelationDetails_IsVisibleChanged" DataContext="{Binding ElementName=SimilarToggle}"><StackPanel><TextBlock Text="形近词" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="SimilarPanel"/></StackPanel></Border>
+                                          <Border Style="{StaticResource RelationDetails}" IsVisibleChanged="RelationDetails_IsVisibleChanged" DataContext="{Binding ElementName=DerivativesToggle}"><StackPanel><TextBlock Text="派生词" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="DerivativesPanel"/></StackPanel></Border>
+                                          <Border Style="{StaticResource RelationDetails}" IsVisibleChanged="RelationDetails_IsVisibleChanged" DataContext="{Binding ElementName=PhrasesToggle}"><StackPanel><TextBlock Text="常用短语" Foreground="#426B89" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"/><StackPanel x:Name="PhrasesPanel"/></StackPanel></Border>
                                         </StackPanel>
                                       </StackPanel>
                                       <Border Background="#EDF2F7" Height="1" Margin="0,25,0,22"/>
                                       <StackPanel x:Name="NotesSection">
                                         <DockPanel Margin="0,0,0,10"><Button x:Name="EditNotesButton" Content="编辑助记" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="EditNotesButton_Click" FontSize="11" Padding="9,5" Background="#EAF7FF" BorderThickness="0"/><StackPanel Orientation="Horizontal"><Border Background="#E5F6FF" CornerRadius="7" Width="28" Height="28" Margin="0,0,10,0"><TextBlock Text="记" Foreground="#108DC4" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="我的助记" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/></StackPanel></DockPanel>
-                                        <TextBlock x:Name="NotesHintText" Text="查词后载入你的墨墨助记" FontSize="12" Foreground="#8AA0B3" TextWrapping="Wrap" LineHeight="23" Margin="0,0,0,5"/>
+                                        <TextBlock x:Name="NotesHintText" Text="查词后可查看助记" FontSize="12" Foreground="#8AA0B3" TextWrapping="Wrap" LineHeight="23" Margin="0,0,0,5"/>
                                         <StackPanel x:Name="NotesPanel"/>
                                       </StackPanel>
                                       <Border Background="#EDF2F7" Height="1" Margin="0,25,0,22"/>
                                       <StackPanel x:Name="ExamplesSection">
                                         <Grid Margin="0,0,0,9"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="真题例句" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/><ComboBox x:Name="ExamplePaperCombo" Grid.Column="1" Width="137" Height="33" DisplayMemberPath="Label" SelectionChanged="ExamplePaperCombo_SelectionChanged" AutomationProperties.Name="例句考试类型"/></Grid>
                                         <TextBlock Text="点击英文单词可查看释义" Foreground="#7894A9" FontSize="11" Margin="0,0,0,5"/>
-                                        <TextBlock x:Name="ExamplesHintText" Text="查询单词后载入相关真题" Foreground="#9AAABA" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,15"/>
+                                        <TextBlock x:Name="ExamplesHintText" Text="查词后可查看真题例句" Foreground="#9AAABA" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,15"/>
                                         <StackPanel x:Name="ExamplesPanel"/>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,3,0,0"><Button x:Name="MoreExamplesButton" Content="加载更多例句" Click="MoreExamplesButton_Click" Padding="20,9" Visibility="Collapsed" Background="#E6F5FF" Foreground="#087FAF" BorderThickness="0"/><Button x:Name="RetryExamplesButton" Content="重试" Click="RetryExamplesButton_Click" Padding="20,9" Visibility="Collapsed"/></StackPanel>
                                       </StackPanel>
@@ -155,14 +155,14 @@
                         <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="段落翻译" FontSize="23" FontWeight="SemiBold" VerticalAlignment="Center"/><ComboBox x:Name="TranslationDirectionCombo" Grid.Column="1" Width="112" Height="36" VerticalAlignment="Center" Margin="0,0,10,0" SelectedIndex="0"><ComboBoxItem Content="英译中" Tag="en|zh-CN"/><ComboBoxItem Content="中译英" Tag="zh-CN|en"/></ComboBox><Button x:Name="TranslateButton" Grid.Column="2" Content="翻译" Height="36" VerticalAlignment="Center" Style="{StaticResource AccentButton}" Click="TranslateButton_Click" Padding="18,6"/></Grid>
                         <StackPanel Grid.Row="1" Margin="0,0,0,17"><TextBox x:Name="TranslationInput" AcceptsReturn="True" VerticalContentAlignment="Top" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="145" FontSize="15" MaxLength="5000" ToolTip="输入待翻译段落，最多 5000 个字符"/><TextBlock x:Name="TranslationHintText" Text="点击原文或译文中的英文单词可查看释义。" TextWrapping="Wrap" FontSize="11" Foreground="#8AA0B3" Margin="0,9,0,0"/></StackPanel>
                         <ScrollViewer x:Name="TranslationScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" ScrollChanged="TranslationScroll_ScrollChanged"><StackPanel>
-                            <Border Background="White" BorderBrush="#E2EBF3" BorderThickness="1" CornerRadius="12" Padding="22" Margin="0,0,8,15"><StackPanel><TextBlock Text="原文 · 点击单词查看释义" Style="{StaticResource SectionLabel}"/><TextBlock x:Name="TranslationSourceText" Text="翻译后在这里阅读原文" TextWrapping="Wrap" FontSize="16" LineHeight="29"/></StackPanel></Border>
-                            <Border Background="White" BorderBrush="#E2EBF3" BorderThickness="1" CornerRadius="12" Padding="22" Margin="0,0,8,0"><StackPanel><TextBlock Text="译文" Style="{StaticResource SectionLabel}"/><TextBlock x:Name="TranslationOutputText" Text="译文将在这里显示" TextWrapping="Wrap" FontSize="16" LineHeight="29"/></StackPanel></Border>
+                            <Border Background="White" BorderBrush="#E2EBF3" BorderThickness="1" CornerRadius="12" Padding="22" Margin="0,0,8,15"><StackPanel><TextBlock Text="原文" Style="{StaticResource SectionLabel}"/><TextBlock x:Name="TranslationSourceText" Text="在上方输入或粘贴原文。" TextWrapping="Wrap" FontSize="16" LineHeight="29"/></StackPanel></Border>
+                            <Border Background="White" BorderBrush="#E2EBF3" BorderThickness="1" CornerRadius="12" Padding="22" Margin="0,0,8,0"><StackPanel><TextBlock Text="译文" Style="{StaticResource SectionLabel}"/><TextBlock x:Name="TranslationOutputText" Text="点击「翻译」后在这里看译文。" TextWrapping="Wrap" FontSize="16" LineHeight="29"/></StackPanel></Border>
                         </StackPanel></ScrollViewer>
                     </Grid>
                     <Grid x:Name="ChineseSearchView" Visibility="Collapsed">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                        <TextBlock x:Name="ChineseQueryTitle" Text="中文反查" FontSize="25" FontWeight="SemiBold" Foreground="#253E54" Margin="0,0,0,10" TextWrapping="Wrap"/>
-                        <TextBlock x:Name="ChineseSearchHint" Grid.Row="1" Text="按相关性排列单词和同义词，点击可查看释义。" Foreground="#829BAE" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,17"/>
+                        <TextBlock x:Name="ChineseQueryTitle" Text="用中文找单词" FontSize="25" FontWeight="SemiBold" Foreground="#253E54" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="ChineseSearchHint" Grid.Row="1" Text="点击一个结果查看释义。" Foreground="#829BAE" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,17"/>
                         <ScrollViewer x:Name="ChineseSearchScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" ScrollChanged="ChineseSearchScroll_ScrollChanged" Padding="0,0,8,0">
                             <StackPanel><StackPanel x:Name="ChineseResultsPanel"/><Button x:Name="MoreChineseResultsButton" Content="显示更多结果" Click="MoreChineseResultsButton_Click" Visibility="Collapsed" Margin="0,6,0,10" HorizontalAlignment="Center" Background="#E8F7FF"/></StackPanel>
                         </ScrollViewer>

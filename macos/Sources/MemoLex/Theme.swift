@@ -5,6 +5,7 @@ struct MemoButtonStyle: ButtonStyle {
     var accent = false
     var compact = false
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: compact ? 12 : 13, weight: accent ? .semibold : .medium))
@@ -16,6 +17,8 @@ struct MemoButtonStyle: ButtonStyle {
                 in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(accent ? Color.clear : Palette.border, lineWidth: 0.65))
             .opacity(enabled ? 1 : 0.38)
+            .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.98 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }
 
@@ -25,6 +28,7 @@ struct LookupButtonStyle: ButtonStyle {
     var expands = false
     var fixedWidth: CGFloat?
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -40,6 +44,8 @@ struct LookupButtonStyle: ButtonStyle {
             .overlay(shape.strokeBorder(primary ? Palette.accent : Palette.border, lineWidth: 0.75))
             .contentShape(shape)
             .opacity(enabled ? 1 : 0.43)
+            .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.98 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }
 
@@ -76,6 +82,7 @@ struct MemoPicker<Value: Hashable>: View {
 
 struct DropdownChevron: View {
     var expanded: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Image(systemName: "chevron.down")
@@ -84,6 +91,7 @@ struct DropdownChevron: View {
             .foregroundStyle(expanded ? Palette.deep : Palette.muted)
             .frame(width: 14, height: 14)
             .accessibilityHidden(true)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.17), value: expanded)
     }
 }
 

@@ -1,10 +1,10 @@
 # 墨墨搜词 MemoLex
 
-适用于 Windows 和 Mac 的英汉查词工具，支持离线查词、中文反查、助记、真题例句和墨墨云词本。
+适用于 Windows 和 Mac 的桌面英汉词典。可离线查释义，也能用中文找英文单词。查词时可以一起看助记、真题例句，或把生词加入墨墨云词本。
 
 **本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。**
 
-[下载软件](https://github.com/SuperRaine/MemoLex/releases/latest) · [使用说明](使用说明.md) · [问题反馈](https://github.com/SuperRaine/MemoLex/issues/new?template=bug_report.yml) · [功能建议](https://github.com/SuperRaine/MemoLex/issues/new?template=feature_request.yml)
+[软件主页](https://memolex.silverchina5.chatgpt.site/) · [夸克下载](https://memolex.silverchina5.chatgpt.site/#download) · [GitHub 下载](https://github.com/SuperRaine/MemoLex/releases/latest) · [使用说明](使用说明.md)
 
 ## 下载与安装
 
@@ -12,9 +12,9 @@
 
 | 版本 | 使用方法 |
 | --- | --- |
-| [安装版](https://github.com/SuperRaine/MemoLex/releases/download/v1.20.0/MemoLex-1.20.0-Windows-x64-Setup.msi)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.20.0/MemoLex-1.20.0-Windows-x64-Setup.msi)） | 自动创建软件文件夹，可选择是否创建桌面快捷方式。 |
-| [便携版](https://github.com/SuperRaine/MemoLex/releases/download/v1.20.0/MemoLex-1.20.0-Windows-x64.zip)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.20.0/MemoLex-1.20.0-Windows-x64.zip)） | 完整解压后，运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
-| [Mac 安装包](https://github.com/SuperRaine/MemoLex/releases/download/v1.20.0/MemoLex-1.20.0-macOS-universal.dmg)（[GHFast 备用下载](https://ghfast.top/https://github.com/SuperRaine/MemoLex/releases/download/v1.20.0/MemoLex-1.20.0-macOS-universal.dmg)） | 打开后将 `MemoLex` 拖到「应用程序」。 |
+| Windows 安装版（MSI） | 打开安装包，按向导操作。可选择创建桌面快捷方式。 |
+| Windows 便携版（ZIP） | 完整解压后运行 `MemoLex/MemoLex.exe`，保留配套文件。 |
+| Mac 通用安装包（DMG） | 打开后将 `MemoLex` 拖到「应用程序」。 |
 
 Windows 登录和海词词典需要网页组件，缺少时按提示联网安装即可；Mac 使用系统网页组件。
 
@@ -22,7 +22,7 @@ Windows 登录和海词词典需要网页组件，缺少时按提示联网安装
 
 ## 可以做什么
 
-- **查词与中文反查**：输入英文或中文查词，查看释义和相关词，也可以听百度翻译的英音和美音。
+- **查释义和发音**：输入英文查看释义，用中文找单词。可以听百度翻译的英音和美音。
 - **助记与例句**：查看或编辑助记，按考研、四级、六级、高考筛选真题例句。
 - **墨墨云功能**：收藏和管理云词本，添加今日新学，保存并切换多个账号。
 - **顽固单词**：在顶部查看顽固词，按复习时间、字母或随机顺序轮换，也可遮住释义自测。

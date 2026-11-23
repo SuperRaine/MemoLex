@@ -5,8 +5,8 @@
 1. 从已解压的便携包复制完整 `app/data` 文件夹到仓库根目录的 `data`，也可构建时通过 `-DataDirectory` 指定其路径。确认 `src/Bootstrapper` 中保留已校验的微软网页组件安装引导程序。
 2. 执行 `powershell -File tools/build_release.ps1`，生成 `dist/MemoLex`。使用 Windows 自带的 .NET Framework 编译启动与卸载入口，将 .NET 8.0.34 和 WPF 运行组件合并到 `app/MemoLex.exe`。
 3. 在仓库根目录执行 `dotnet tool install wix --version 5.0.2 --tool-path .tools/wix`，然后 `.tools/wix/wix.exe extension add WixToolset.UI.wixext/5.0.2`。
-4. 执行 `powershell -File installer/build.ps1 -PayloadDirectory dist/MemoLex -OutputFile dist/MemoLex-1.20.0-Windows-x64-Setup.msi -WixCommand .tools/wix/wix.exe`。
-5. 执行 `python tools/package_portable.py dist/MemoLex dist/MemoLex-1.20.0-Windows-x64.zip`，生成便携包。
+4. 按当前版本命名安装包。例如执行 `powershell -File installer/build.ps1 -PayloadDirectory dist/MemoLex -OutputFile dist/MemoLex-2.0.0-Windows-x64-Setup.msi -WixCommand .tools/wix/wix.exe`。
+5. 执行 `python tools/package_portable.py dist/MemoLex dist/MemoLex-2.0.0-Windows-x64.zip`，生成同版本便携包。
 
 安装包与便携包使用同一份文件。主目录仅保留 `MemoLex.exe`、`MemoLex.dll`、`Uninstall.exe` 和 `app` 文件夹。离线词库、助记及许可证均位于 `app`；运行组件首次启动时解压到 `%LOCALAPPDATA%/MemoLex/runtime`。
 
@@ -18,15 +18,17 @@ GitHub Releases 只上传软件包。Windows 提供 `.msi` 和 `-Windows-x64.zip
 
 每个发布页的「备用下载（GHFast）」列出该版本的实际附件，链接是在官方附件地址前加 `https://ghfast.top/`。
 
-## 同步夸克并发布
+## 同步 GitHub、夸克和软件主页
 
-正式发布统一从已上传三个附件的 GitHub 发布草稿开始。用发布电脑上已授权的夸克网盘官方工具同步，再公开发布页：
+从 2.0.0 开始，每次更新都发布三个平台软件包，版本只增加最后一位，如 2.0.1、2.0.2。先创建 GitHub 发布草稿并上传三个附件，再打开软件主页的 Sites 源码目录。使用发布电脑上已授权的夸克网盘官方工具：
 
 ```powershell
-python tools/publish_release.py v1.20.0 --quark-cli <quark-drive.cjs路径> --packages dist
+python tools/publish_release.py v2.0.0 --quark-cli <quark-drive.cjs路径> --site work/sites/memolex --packages dist
 ```
 
-脚本会按 GitHub 的 SHA-256 校验软件包，将文件放在夸克网盘「墨墨搜词 / 版本号」并核对三个条目。同步失败时草稿保持待发布状态，在原发布电脑重新运行可以复用已核对的文件。`--packages` 可省略，脚本会下载缺少的附件。夸克授权和同步记录都保存在发布电脑上。
+脚本会核对 GitHub 附件的 SHA-256，把文件同步到夸克「墨墨搜词 / 版本号」，再检查公开分享页里的三个包。脚本用同一版本和分享链接生成主页的下载区及软件内「夸克下载」使用的跳转页，然后公开 GitHub 发布。发布电脑可以复用已核对的文件和分享链接。`--packages` 可省略，脚本会下载缺少的附件。
+
+将生成的主页部署到现有的墨墨搜词 Sites。打开线上主页，确认版本号、三个 GitHub 下载入口和 `quark.html` 都指向这次发布，发布才算完成。
 
 Windows 如使用可信的代码签名证书，在构建应用文件和 MSI 时传入同一个 `-SigningThumbprint`。若 Windows SDK 的 SignTool 未加入 PATH，另传 `-SignToolCommand` 指定其路径。脚本会添加时间戳并核验签名。
 

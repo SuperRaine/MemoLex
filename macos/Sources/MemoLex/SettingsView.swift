@@ -8,6 +8,7 @@ struct SettingsView: View {
     }
     @ObservedObject var model: AppModel
     @State private var status = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let pages = [
         ("常规", "gearshape"), ("墨墨账号", "person.crop.circle"),
         ("鼠标取词", "cursorarrow"), ("系统权限", "lock.shield"), ("快捷键", "keyboard"),
@@ -38,10 +39,11 @@ struct SettingsView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 17) {
                             settingsHeading
-                            pageContent
+                            pageContent.id(model.settingsPage).transition(.opacity)
                         }.padding(24).frame(maxWidth: 780, alignment: .leading)
                          .frame(maxWidth: .infinity, alignment: .leading)
                     }.frame(maxHeight: .infinity)
+                     .animation(reduceMotion ? nil : .easeOut(duration: 0.17), value: model.settingsPage)
                     if !status.isEmpty {
                         Text(status).font(.footnote).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading).padding([.horizontal, .bottom], 18)
@@ -59,7 +61,14 @@ struct SettingsView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 5) { Text(model.settingsPage).font(.system(size: 21, weight: .semibold)); Text(description).font(.system(size: 12)).foregroundStyle(Palette.muted) }
             Spacer()
-            if model.settingsPage == "关于与赞助" { Button("GitHub") { open(AppPaths.repository) }.buttonStyle(MemoButtonStyle()) }
+            if model.settingsPage == "关于与赞助" {
+                HStack(spacing: 6) {
+                    Button("软件主页") { open(AppPaths.homepage) }
+                    Button("夸克下载") { open(AppPaths.quarkDownload) }
+                    Button("GitHub") { open(AppPaths.repository) }
+                }.buttonStyle(MemoButtonStyle(compact: true)).fixedSize()
+                    .tourTarget("download-links")
+            }
         }
     }
     private var description: String {

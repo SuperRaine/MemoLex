@@ -39,6 +39,8 @@ enum EnglishAccent: String, CaseIterable {
     @Published var history: [SearchRecord] = []
     @Published var page: ViewLocation.Page = .word
     @Published var chineseResults: [J] = []
+    @Published private(set) var chineseQuery = ""
+    @Published private(set) var chineseHint = ""
     @Published var chineseLimit = 160
     @Published var chineseTotal = 0
     @Published var examples: [J] = []
@@ -178,11 +180,18 @@ enum EnglishAccent: String, CaseIterable {
             do {
                 let chinese = query.range(of: "[\\p{Han}]", options: .regularExpression) != nil
                 if chinese {
+                    chineseQuery = query
+                    chineseHint = "正在找意思相近的英文词…"
+                    chineseResults = []
+                    chineseTotal = 0
                     page = .chinese; chineseLimit = 160
                     let result = try await core.request("dictionary.reverse", ["query": .string(query), "limit": .number(Double(chineseLimit))])
-                    guard version == wordVersion else { return }
+                    guard version == wordVersion, !Task.isCancelled else { return }
                     chineseResults = result["items"].list; chineseTotal = result["total"].integer
-                    status = "找到 \(chineseTotal) 个相关结果。"
+                    chineseHint = chineseTotal == 0
+                        ? "没找到意思相近的词。试试「快乐」「管理」这类更简短的说法。"
+                        : "找到 \(chineseTotal) 个相关词。点击一行查看释义。"
+                    status = "查词完成。"
                 } else {
                     page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = loggedIn ? "Loading" : ""
                     refreshMembership()
@@ -206,16 +215,25 @@ enum EnglishAccent: String, CaseIterable {
                     guard version == wordVersion, page == .word, !Task.isCancelled else { return }
                     onlineDefinition = result ?? .null
                     definitionLoading = false
-                    status = onlineDefinition == .null ? "暂未找到中文释义。" : "已补充联网释义。"
+                    status = onlineDefinition == .null ? "还没有找到中文释义。" : "已找到在线释义。"
                 }
             } catch {
-                if version == wordVersion, !Task.isCancelled { definitionLoading = false; fail(error) }
+                if version == wordVersion, !Task.isCancelled {
+                    if page == .chinese { chineseHint = "暂时找不到结果，请再试一次。" }
+                    definitionLoading = false
+                    fail(error)
+                }
             }
         }
     }
     func moreChinese() async {
-        chineseLimit += 160
-        if let result = try? await core.request("dictionary.reverse", ["query": .string(search), "limit": .number(Double(chineseLimit))]) { chineseResults = result["items"].list }
+        let query = chineseQuery
+        let version = wordVersion
+        let limit = chineseLimit + 160
+        guard let result = try? await core.request("dictionary.reverse", ["query": .string(query), "limit": .number(Double(limit))]),
+              version == wordVersion, page == .chinese else { return }
+        chineseLimit = limit
+        chineseResults = result["items"].list
     }
     private func cancelCloudWordLookup() {
         cloudNotesTask?.cancel()

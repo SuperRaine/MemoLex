@@ -468,7 +468,9 @@ struct UpdatesSettings: View {
         Button(updates.downloaded == nil ? "下载并安装" : "更新并重启") { Task { await updates.install() } }
             .buttonStyle(MemoButtonStyle(accent: updates.downloaded != nil, compact: true))
             .disabled(updates.busy || !updates.hasUpdate)
-        Button("前往下载页面") { NSWorkspace.shared.open(URL(string: AppPaths.repository + "/releases/latest")!) }
+        Button("GitHub 下载") { NSWorkspace.shared.open(URL(string: AppPaths.repository + "/releases/latest")!) }
+            .buttonStyle(MemoButtonStyle(compact: true))
+        Button("夸克下载") { NSWorkspace.shared.open(URL(string: AppPaths.quarkDownload)!) }
             .buttonStyle(MemoButtonStyle(compact: true))
     }
 }
