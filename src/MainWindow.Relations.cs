@@ -38,23 +38,44 @@ public partial class MainWindow
                 return;
             }
             Grid.SetIsSharedSizeScope(panel, true);
-            foreach (var item in items)
+            for (var index = 0; index < items.Count; index++)
             {
-                var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "Headword" });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var item = items[index];
+                var row = new Grid();
+                // Use the same inset for every group while leaving room for the definition on narrow windows.
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MaxWidth = 166 });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2.25, GridUnitType.Star) });
                 var headword = new TextBlock { TextWrapping = TextWrapping.Wrap, MaxWidth = 165,
-                    FontSize = 13, LineHeight = 21, Margin = new Thickness(0, 0, 14, 0) };
-                var meaning = new TextBlock { Text = item.Meaning, TextWrapping = TextWrapping.Wrap,
-                    FontSize = 13, LineHeight = 21, Foreground = Brush("#426B89") };
+                    FontSize = 13, LineHeight = 21, Margin = new Thickness(0, 0, 16, 0) };
                 var link = new Hyperlink(new Run(item.Word)) { Foreground = Brush("#087FAF"), TextDecorations = null,
                     FontWeight = FontWeights.SemiBold, ToolTip = "查询 " + item.Word, ContextMenu = HaiciWordMenu(item.Word) };
                 link.Click += async (_, _) => await NavigateLinkedWordAsync(item.Word, word);
                 headword.Inlines.Add(link);
                 row.Children.Add(headword);
+
+                var meaning = new StackPanel();
+                foreach (var line in item.Meaning.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    var (partOfSpeech, text) = DictionaryEntry.SplitDisplaySense(line);
+                    var sense = new Grid();
+                    sense.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "PartOfSpeech" });
+                    sense.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    if (partOfSpeech.Length > 0)
+                    {
+                        sense.Children.Add(new TextBlock { Text = partOfSpeech, FontSize = 12, LineHeight = 21,
+                            Foreground = Brush("#627B90"), Margin = new Thickness(0, 0, 9, 0),
+                            MaxWidth = 73, TextWrapping = TextWrapping.Wrap });
+                    }
+                    var definition = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap,
+                        FontSize = 13, LineHeight = 21, Foreground = Brush("#355771") };
+                    Grid.SetColumn(definition, 1);
+                    sense.Children.Add(definition);
+                    meaning.Children.Add(sense);
+                }
                 Grid.SetColumn(meaning, 1);
                 row.Children.Add(meaning);
-                panel.Children.Add(row);
+                panel.Children.Add(new Border { Child = row, Padding = new Thickness(0, 7, 0, 7),
+                    BorderBrush = Brush("#E4EEF6"), BorderThickness = new Thickness(0, 0, 0, index == items.Count - 1 ? 0 : 1) });
             }
         }
     }

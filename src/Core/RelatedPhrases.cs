@@ -10,8 +10,14 @@ internal sealed class RelatedPhrases(LocalDictionary dictionary)
         ["make sense of"] = "理解；弄懂",
         ["keep something in view"] = "把某事纳入考虑；把某事作为未来目标",
         ["have something up one's sleeve"] = "藏有后招；另有妙计",
-        ["have something to do with"] = "与某人或某事有关"
+        ["have something to do with"] = "与某人或某事有关",
+        ["talk to"] = "和某人说话；责备某人",
+        ["talk with"] = "和某人交谈；设法说服某人",
+        ["talk out"] = "vt. 把事情说透；坦率地说；谈个明白",
+        ["ask round"] = "请某人来家里坐坐；向多方打听"
     };
+    internal static string CorrectMeaning(string phrase, string meaning) => CommonMeanings.GetValueOrDefault(phrase, meaning);
+
     private static readonly HashSet<string> Prepositions=new(StringComparer.OrdinalIgnoreCase)
         {"about","above","across","after","against","along","among","around","at","before","behind","below","beneath","beside","besides","between","beyond","by","despite","down","during","except","for","from","in","inside","into","near","of","off","on","onto","out","outside","over","past","since","through","throughout","till","to","toward","towards","under","underneath","until","up","upon","via","with","within","without"};
     private static readonly HashSet<string> CommonVerbHeads=new(StringComparer.OrdinalIgnoreCase)
@@ -115,7 +121,7 @@ internal sealed class RelatedPhrases(LocalDictionary dictionary)
             cancellation.ThrowIfCancellationRequested();
             var entry=dictionary.LookupBySourceId(item.Id);var meaning=entry?.translation;
             if(string.IsNullOrWhiteSpace(meaning)||!meaning.Any(c=>c is >= '\u3400' and <= '\u9fff'))continue;
-            if(CommonMeanings.TryGetValue(entry!.word,out var commonMeaning))meaning=commonMeaning;
+            meaning=CorrectMeaning(entry!.word,meaning);
             var tokens=entry!.word.Split(' ',StringSplitOptions.RemoveEmptyEntries);
             if(!Prepositions.Contains(tokens[0]))
             {

@@ -14,7 +14,11 @@ public sealed class DictionaryEntry
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex PartOfSpeechSeparators = new(@"\s*[/&,]\s*|\s+");
     private static readonly Regex MeaningWhitespace = new(@"\s+");
-    private static readonly Regex OmittedText = new(@"\.{2,}|．{2,}|[…⋯]+", RegexOptions.CultureInvariant);
+    private const string OmissionMarks = @"(?:\.{2,}|．{2,}|[…⋯]+)";
+    private static readonly Regex OmittedText = new(OmissionMarks, RegexOptions.CultureInvariant);
+    private static readonly Regex OmittedObject = new(
+        $@"(?:^|(?<=[，,、：:]))\s*(?<lead>[与同和跟对给向把将使以由])\s*(?:（\s*|\(\s*)?{OmissionMarks}(?:\s*[）)])?\s*(?:[：:]\s*)?(?=[\u3400-\u9fff])",
+        RegexOptions.CultureInvariant);
     // Keep punctuation that spells an English word or represents part of a number.
     private static readonly Regex MeaningPunctuation = new(
         @"(?<token>(?<=[a-z])['’.-](?=[a-z])|(?<=\d)[,./:](?=\d)|(?<=\d)%)|(?<separator>[,，、.。．:：/／!?！？])|(?<label>[\[\]［］【】·])|\p{P}",
@@ -39,9 +43,15 @@ public sealed class DictionaryEntry
     }
     internal static string NormalizeMeaning(string? value) => value?.Replace(';', '；') ?? "";
 
-    internal string DisplayMeaning => FormatDisplayMeaning(translation);
+    internal string DisplayMeaning => FormatDisplayMeaning(word.Contains(' ') ? RelatedPhrases.CorrectMeaning(word, translation) : translation);
 
     internal static bool IsPartOfSpeechLabel(string word) => ListPartOfSpeech.IsMatch(word + ".");
+
+    internal static (string PartOfSpeech, string Meaning) SplitDisplaySense(string line)
+    {
+        var label = ListPartOfSpeech.Match(line);
+        return (label.Value, line[label.Length..].TrimStart());
+    }
 
     internal static string FormatDisplayMeaning(string? value)
     {
@@ -56,7 +66,8 @@ public sealed class DictionaryEntry
         {
             var label = ListPartOfSpeech.Match(sense);
             if (label.Success) partOfSpeech = PartOfSpeechSeparators.Replace(label.Value, " ");
-            var text = MeaningPunctuation.Replace(OmittedText.Replace(sense[label.Length..], ""), match =>
+            var textWithObjects = OmittedObject.Replace(sense[label.Length..], RestoreOmittedObject);
+            var text = MeaningPunctuation.Replace(OmittedText.Replace(textWithObjects, ""), match =>
             {
                 if (match.Groups["token"].Success) return match.Value;
                 if (match.Groups["separator"].Success) return "；";
@@ -77,6 +88,20 @@ public sealed class DictionaryEntry
         }
         return result.ToString();
     }
+
+    private static string RestoreOmittedObject(Match match) => match.Groups["lead"].Value switch
+    {
+        "与" or "同" or "跟" or "和" => "与之",
+        "对" => "对其",
+        "给" => "给其",
+        "向" => "向其",
+        "把" => "把它",
+        "将" => "将其",
+        "使" => "使其",
+        "以" => "以此",
+        "由" => "由其",
+        _ => match.Value
+    };
 
     public string pos { get; set; } = "";
     public string collins { get; set; } = "";

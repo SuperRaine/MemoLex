@@ -121,10 +121,15 @@
         </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="RelationDetails" TargetType="Border">
-        <Setter Property="Background" Value="#F5FAFE"/><Setter Property="CornerRadius" Value="9"/>
-        <Setter Property="Padding" Value="12,10,12,3"/><Setter Property="Margin" Value="0,8,0,0"/>
+        <Setter Property="Background" Value="#F7FBFE"/><Setter Property="CornerRadius" Value="11"/>
+        <Setter Property="BorderBrush" Value="#E0EBF4"/><Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="16,12,16,6"/><Setter Property="Margin" Value="0,10,0,0"/>
         <Setter Property="Visibility" Value="Collapsed"/>
         <Style.Triggers><DataTrigger Binding="{Binding IsChecked}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+    </Style>
+    <Style x:Key="RelationGroupTitle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="#426B89"/><Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="FontSize" Value="12"/><Setter Property="Margin" Value="0,0,0,5"/>
     </Style>
     <Style x:Key="TitleButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Width" Value="34"/><Setter Property="Height" Value="34"/>
