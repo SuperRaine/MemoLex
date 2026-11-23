@@ -378,8 +378,15 @@ public partial class MainWindow : Window
         var matches=new HashSet<string>(sentence.MatchedWords,StringComparer.OrdinalIgnoreCase);
         foreach(var part in ExampleText.Tokenize(sourceWord))if(part.LookupWord!=null)matches.Add(part.LookupWord);
         var card = new StackPanel();
-        card.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(sentence.Source) ? "真题来源未提供" : sentence.Source,
-            FontSize = 11, Foreground = Brush("#8DA1B4"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 11) });
+        var heading = new DockPanel { Margin = new Thickness(0, 0, 0, 9) };
+        var speak = new Button { Content = "朗读", ToolTip = "朗读整条例句", FontSize = 11,
+            Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(10, 0, 0, 0) };
+        speak.Click += (_, _) => SpeakExample(sentence.English);
+        DockPanel.SetDock(speak, Dock.Right);
+        heading.Children.Add(speak);
+        heading.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(sentence.Source) ? "真题来源未提供" : sentence.Source,
+            FontSize = 11, Foreground = Brush("#718EA5"), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
+        card.Children.Add(heading);
         if (sentence.IsOption)
         {
             card.Children.Add(new TextBlock { Text = $"原题选项 {sentence.OptionLabel}", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Brush("#AD7B2E"), Margin = new Thickness(0, 0, 0, 7) });

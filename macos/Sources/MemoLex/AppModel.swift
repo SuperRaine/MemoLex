@@ -325,6 +325,20 @@ enum EnglishAccent: String, CaseIterable {
             status = "系统发音 · \(accent.label)"
         }
     }
+    func speakExample(_ text: String) {
+        guard !text.trimmed.isEmpty else { return }
+        stopPronunciation()
+        guard let voice = AVSpeechSynthesisVoice(language: "en-US") ?? AVSpeechSynthesisVoice(language: "en-GB") else {
+            status = "暂时无法朗读例句。"
+            return
+        }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = voice
+        utterance.rate = 0.46
+        speaker.speak(utterance)
+        status = "正在朗读例句。"
+    }
+
     func stopPronunciation() {
         pronunciationTask?.cancel()
         pronunciationTask = nil

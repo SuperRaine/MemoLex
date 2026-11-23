@@ -14,6 +14,7 @@ public sealed class DictionaryEntry
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex PartOfSpeechSeparators = new(@"\s*[/&,]\s*|\s+");
     private static readonly Regex MeaningWhitespace = new(@"\s+");
+    private static readonly Regex OmittedText = new(@"\.{2,}|．{2,}|[…⋯]+", RegexOptions.CultureInvariant);
     // Keep punctuation that spells an English word or represents part of a number.
     private static readonly Regex MeaningPunctuation = new(
         @"(?<token>(?<=[a-z])['’.-](?=[a-z])|(?<=\d)[,./:](?=\d)|(?<=\d)%)|(?<separator>[,，、.。．:：/／!?！？])|(?<label>[\[\]［］【】·])|\p{P}",
@@ -55,7 +56,7 @@ public sealed class DictionaryEntry
         {
             var label = ListPartOfSpeech.Match(sense);
             if (label.Success) partOfSpeech = PartOfSpeechSeparators.Replace(label.Value, " ");
-            var text = MeaningPunctuation.Replace(sense[label.Length..], match =>
+            var text = MeaningPunctuation.Replace(OmittedText.Replace(sense[label.Length..], ""), match =>
             {
                 if (match.Groups["token"].Success) return match.Value;
                 if (match.Groups["separator"].Success) return "；";

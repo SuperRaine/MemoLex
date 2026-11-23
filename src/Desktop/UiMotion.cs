@@ -6,8 +6,8 @@ namespace MemoLex.Desktop;
 
 internal static class UiMotion
 {
-    private static readonly TimeSpan RevealDuration = TimeSpan.FromMilliseconds(170);
-    private static readonly CubicEase EaseOut = CreateEasing();
+    private static readonly TimeSpan RevealDuration = TimeSpan.FromMilliseconds(250);
+    private static readonly QuinticEase EaseOut = CreateEasing();
 
     public static void Reveal(FrameworkElement element, double distance = 5)
     {
@@ -30,9 +30,9 @@ internal static class UiMotion
     private static DoubleAnimation Animation(double from, double to) =>
         new(from, to, RevealDuration) { EasingFunction = EaseOut, FillBehavior = FillBehavior.Stop };
 
-    private static CubicEase CreateEasing()
+    private static QuinticEase CreateEasing()
     {
-        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var easing = new QuinticEase { EasingMode = EasingMode.EaseOut };
         easing.Freeze();
         return easing;
     }

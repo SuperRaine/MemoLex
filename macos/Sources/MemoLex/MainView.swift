@@ -41,7 +41,7 @@ struct MainView: View {
                         .id(model.page)
                         .transition(.opacity)
                     }
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.17), value: model.page)
+                    .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.9), value: model.page)
                     .padding(compact ? 16 : 25)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .tourTarget("reading")
@@ -275,7 +275,7 @@ private struct WordPage: View {
                                 .transition(.opacity)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.17), value: model.word)
+                        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9), value: model.word)
                         if compact { VStack(spacing: 6) { actions } } else { HStack(spacing: 8) { actions } }
                     }
                     HStack(spacing: 8) {
@@ -396,14 +396,34 @@ private struct RelationsView: View {
                 LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 6) { ForEach(groups, id: \.0) { key, title in relationButton(key, title) } }
             }
             ForEach(groups, id: \.0) { key, title in if model.expandedRelations.contains(key) {
-                VStack(alignment: .leading, spacing: 10) { Text(title).font(.system(size: 11, weight: .semibold)); if model.relations[key].list.isEmpty { Text("暂无相关词条").foregroundStyle(Palette.muted) }; ForEach(model.relations[key].list, id: \.wordText) { related in LinkedText(text: related["word"].text + "  " + related["meaning"].text.decodedLines, size: 14) } }.padding(13).frame(maxWidth: .infinity, alignment: .leading).background(Palette.wash, in: RoundedRectangle(cornerRadius: 9))
-                    .transition(.opacity)
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(title).font(.system(size: 11, weight: .semibold))
+                    if model.relations[key].list.isEmpty {
+                        Text("暂无相关词条").foregroundStyle(Palette.muted)
+                    } else {
+                        Grid(alignment: .topLeading, horizontalSpacing: 15, verticalSpacing: 8) {
+                            ForEach(model.relations[key].list, id: \.wordText) { related in
+                                GridRow(alignment: .top) {
+                                    Button(related.wordText) { model.lookup(related.wordText) }
+                                        .buttonStyle(.link).font(.system(size: 14, weight: .semibold))
+                                        .multilineTextAlignment(.leading).frame(maxWidth: 154, alignment: .leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Text(related["meaning"].text.decodedLines).font(.system(size: 13))
+                                        .foregroundStyle(Palette.deep).frame(maxWidth: .infinity, alignment: .leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+                }.padding(13).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.wash, in: RoundedRectangle(cornerRadius: 9))
+                    .transition(reduceMotion ? .identity : .offset(y: -6).combined(with: .opacity))
             } }
         }
     }
     private func relationButton(_ key: String, _ title: String) -> some View {
         Button {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.17)) {
+            withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86)) {
                 if model.expandedRelations.contains(key) { model.expandedRelations.remove(key) }
                 else { model.expandedRelations.insert(key) }
             }
@@ -423,7 +443,13 @@ private struct ExamplesView: View {
         VStack(alignment: .leading, spacing: 12) {
             if !model.examples.isEmpty { Text("\(model.examples.count) / \(model.exampleTotal) 条例句").font(.system(size: 11)).foregroundStyle(Palette.muted) }
             ForEach(Array(model.examples.enumerated()), id: \.offset) { _, item in VStack(alignment: .leading, spacing: 12) {
-                Text(item["source"].text).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                HStack(alignment: .center, spacing: 10) {
+                    Text(item["source"].text).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                    Spacer(minLength: 0)
+                    Button { model.speakExample(item["english"].text) } label: {
+                        Label("朗读", systemImage: "speaker.wave.2")
+                    }.buttonStyle(MemoButtonStyle(compact: true)).help("朗读整条例句")
+                }
                 LinkedText(text: item["english"].text, highlights: item["matchedWords"].list.map(\.text), size: 15, color: Palette.deep)
                 if !item["translation"].text.isEmpty { LinkedText(text: item["translation"].text, chineseHighlights: item["translationTerms"].list.map(\.text), size: 13, color: Palette.muted) }
                 if !item["contextEnglish"].text.isEmpty { DisclosureGroup("查看题目") { LinkedText(text: item["contextEnglish"].text, size: 13); LinkedText(text: item["contextTranslation"].text, size: 12, color: Palette.muted) }.font(.system(size: 11)) }

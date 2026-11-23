@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace MemoLex.Core;
 
@@ -13,6 +14,9 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
     private readonly List<(string Word,int Rank)> _spellings = [];
     private readonly object _gate=new();
     private FileStream? _data;
+    private static readonly Regex NonstandardSpelling = new(
+        @"^\s*(?:abbr|pref|suf|comb|contr)\.|^(?:\[[^\]]*\]\s*)?(?:[a-z]+\.\s*)?(?:\[\s*)?(?:古英语|古义|古语|古用法|方言|古(?:\s|\]))",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     public bool Available => _data!=null;
     private sealed class Record
     {
@@ -67,9 +71,23 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
                 cancellationToken.ThrowIfCancellationRequested();
                 if(item.Word.Equals(word,StringComparison.OrdinalIgnoreCase)||Math.Abs(item.Word.Length-word.Length)>2)continue;
                 var distance=SpellingDistance(normalized,item.Word,2);
+                if (distance == 2 && word.Length <= 5 && item.Rank > 15000) continue;
                 if(distance<=2)nearby.Add((item.Word,distance,item.Rank));
             }
-        return new WordRelations(Describe(record?.synonyms??[]),Describe(nearby.OrderBy(value=>value.Distance).ThenBy(value=>value.Rank).Take(8).Select(value=>value.Word)),Describe(record?.derivatives??[]),_phrases.Lookup(word,cancellationToken));
+        var similar = new List<RelatedWord>(8);
+        foreach (var candidate in nearby.OrderBy(value => value.Distance).ThenBy(value => value.Rank).ThenBy(value => value.Word, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var entry = dictionary.Lookup(candidate.Word);
+            if (entry == null || entry.HasHistoricalDefinition || NonstandardSpelling.IsMatch(entry.translation) ||
+                !entry.translation.Any(c => c is >= '\u3400' and <= '\u9fff')) continue;
+
+            var meaning = entry.DisplayMeaning;
+            if (meaning.Length == 0) continue;
+            similar.Add(new RelatedWord(entry.word, meaning));
+            if (similar.Count == 8) break;
+        }
+        return new WordRelations(Describe(record?.synonyms??[]),similar,Describe(record?.derivatives??[]),_phrases.Lookup(word,cancellationToken));
     },cancellationToken);
     // Optimal string alignment distance treats an adjacent transposition as one edit.
     internal static int SpellingDistance(string a,string b,int maximum)

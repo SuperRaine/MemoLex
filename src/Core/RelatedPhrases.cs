@@ -5,7 +5,13 @@ internal sealed class RelatedPhrases(LocalDictionary dictionary)
     private readonly Lazy<Dictionary<string,int[]>> _index=new(()=>BuildIndex(dictionary));
     // Supplement the terse ECDICT glosses for these common idioms; keep the source index unchanged.
     private static readonly Dictionary<string,string> CommonMeanings=new(StringComparer.OrdinalIgnoreCase)
-        {{"make sense","有意义；有道理；讲得通"},{"make sense of","理解；弄懂"}};
+    {
+        ["make sense"] = "有意义；有道理；讲得通",
+        ["make sense of"] = "理解；弄懂",
+        ["keep something in view"] = "把某事纳入考虑；把某事作为未来目标",
+        ["have something up one's sleeve"] = "藏有后招；另有妙计",
+        ["have something to do with"] = "与某人或某事有关"
+    };
     private static readonly HashSet<string> Prepositions=new(StringComparer.OrdinalIgnoreCase)
         {"about","above","across","after","against","along","among","around","at","before","behind","below","beneath","beside","besides","between","beyond","by","despite","down","during","except","for","from","in","inside","into","near","of","off","on","onto","out","outside","over","past","since","through","throughout","till","to","toward","towards","under","underneath","until","up","upon","via","with","within","without"};
     private static readonly HashSet<string> CommonVerbHeads=new(StringComparer.OrdinalIgnoreCase)

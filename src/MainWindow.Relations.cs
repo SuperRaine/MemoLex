@@ -37,16 +37,24 @@ public partial class MainWindow
                 });
                 return;
             }
+            Grid.SetIsSharedSizeScope(panel, true);
             foreach (var item in items)
             {
-                var block = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 13, LineHeight = 24,
-                    Margin = new Thickness(0, 0, 0, 8), Foreground = Brush("#718EA5") };
+                var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "Headword" });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var headword = new TextBlock { TextWrapping = TextWrapping.Wrap, MaxWidth = 165,
+                    FontSize = 13, LineHeight = 21, Margin = new Thickness(0, 0, 14, 0) };
+                var meaning = new TextBlock { Text = item.Meaning, TextWrapping = TextWrapping.Wrap,
+                    FontSize = 13, LineHeight = 21, Foreground = Brush("#426B89") };
                 var link = new Hyperlink(new Run(item.Word)) { Foreground = Brush("#087FAF"), TextDecorations = null,
                     FontWeight = FontWeights.SemiBold, ToolTip = "查询 " + item.Word, ContextMenu = HaiciWordMenu(item.Word) };
                 link.Click += async (_, _) => await NavigateLinkedWordAsync(item.Word, word);
-                block.Inlines.Add(link);
-                block.Inlines.Add(new Run("  " + item.Meaning));
-                panel.Children.Add(block);
+                headword.Inlines.Add(link);
+                row.Children.Add(headword);
+                Grid.SetColumn(meaning, 1);
+                row.Children.Add(meaning);
+                panel.Children.Add(row);
             }
         }
     }

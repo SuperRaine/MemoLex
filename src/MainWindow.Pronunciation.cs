@@ -77,18 +77,28 @@ public partial class MainWindow
         player.Play();
     }
 
-    private void SpeakSystemPronunciation(string word, EnglishAccent accent)
+    private void SpeakExample(string sentence)
     {
-        var label = AccentLabel(accent);
+        if (string.IsNullOrWhiteSpace(sentence)) return;
+        StopPronunciation();
+        SpeakSystemPronunciation(sentence, EnglishAccent.American, isSentence: true);
+    }
+
+    private void SpeakSystemPronunciation(string word, EnglishAccent accent, bool isSentence = false)
+    {
+        var label = isSentence ? "例句" : AccentLabel(accent);
         try
         {
             var voiceType = Type.GetTypeFromProgID("SAPI.SpVoice") ?? throw new InvalidOperationException();
             _speaker ??= Activator.CreateInstance(voiceType);
             var language = accent == EnglishAccent.British ? "809" : "409";
             dynamic voices = _speaker!.GetVoices("Language=" + language);
+            if (isSentence && voices.Count == 0) voices = _speaker.GetVoices("Language=809");
             if (voices.Count == 0) throw new InvalidOperationException();
             _speaker.Voice = voices.Item(0);
-            _speaker.Speak(word, 3);
+            _speaker.Rate = isSentence ? -1 : 0;
+            // Speak plain text asynchronously and replace the previous utterance.
+            _speaker.Speak(word, 19);
             StatusText.Text = $"正在播放{label}。";
         }
         catch { StatusText.Text = $"暂时无法播放{label}。"; }
