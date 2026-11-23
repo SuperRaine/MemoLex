@@ -12,7 +12,7 @@ from pathlib import Path
 
 REPOSITORY = "SuperRaine/MemoLex"
 QUARK_FOLDER = "墨墨搜词"
-HOMEPAGE = "https://memolex.silverchina5.chatgpt.site/"
+HOMEPAGE = "https://memolex.de5.net/"
 SHARE_URL = re.compile(r"https://pan\.quark\.cn/s/[A-Za-z0-9_-]+/?")
 VERSION_TAG = re.compile(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
 

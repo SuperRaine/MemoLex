@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>MemoLex.Core</AssemblyName>
-    <Version>2.0.4</Version>
+    <Version>2.0.5</Version>
     <Product>墨墨搜词 MemoLex</Product>
     <NuGetAudit>false</NuGetAudit>
     <MemoLexDeepLKeyFile Condition="'$(MemoLexDeepLKeyFile)' == ''">$(MSBuildThisFileDirectory)../../src/Private/DeepL.key</MemoLexDeepLKeyFile>
@@ -19,6 +19,7 @@
     <Compile Include="../../src/Services/PronunciationClient.cs" Link="Shared/Services/PronunciationClient.cs" />
     <Compile Include="../../src/Services/OnlineDictionaryClient.cs" Link="Shared/Services/OnlineDictionaryClient.cs" />
     <Compile Include="../../src/Services/BundledTranslationKey.cs" Link="Shared/Services/BundledTranslationKey.cs" />
+    <EmbeddedResource Include="../../src/Assets/derivative-parts.tsv" LogicalName="MemoLex.DerivativeParts.tsv" />
     <EmbeddedResource Include="$(MemoLexDeepLKeyFile)" LogicalName="MemoLex.DeepL.key" Condition="Exists('$(MemoLexDeepLKeyFile)')" />
   </ItemGroup>
 </Project>

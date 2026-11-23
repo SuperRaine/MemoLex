@@ -15,14 +15,14 @@ namespace MemoLex;
 internal static class SettingsDialog
 {
     internal const string RepositoryUrl="https://github.com/SuperRaine/MemoLex";
-    internal const string HomepageUrl = "https://memolex.silverchina5.chatgpt.site/";
+    internal const string HomepageUrl = "https://memolex.de5.net/";
     internal const string QuarkDownloadUrl = HomepageUrl + "quark.html";
     internal const string FeedbackEmail="1623255609@qq.com";
     internal const string FeedbackQqGroup="1132371819";
     internal const string BugReportUrl=RepositoryUrl+"/issues/new?template=bug_report.yml";
     internal const string FeatureRequestUrl=RepositoryUrl+"/issues/new?template=feature_request.yml";
     internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
-    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.0.4";
+    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.0.5";
     [Flags]
     private enum SettingsArea { None=0, General=1, Hover=2, Shortcuts=4 }
     public static void Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null)
@@ -236,8 +236,6 @@ internal static class SettingsDialog
             string? error=null;
             if(areas.HasFlag(SettingsArea.General))
             {
-                preferences.CloseToTray=tray.IsChecked==true;
-                preferences.RememberCloseAction=rememberClose.IsChecked==true;
                 preferences.DoubleCopyEnabled=doubleCopy.IsChecked==true;
                 if(showCountdown.IsChecked!=true)preferences.ShowExamCountdown=false;
                 else if(examDate.TryGetDate(out var date,out var dateError)&&date!=null)
@@ -278,7 +276,18 @@ internal static class SettingsDialog
             control.Checked+=(_,_)=>QueueSave(area);
             control.Unchecked+=(_,_)=>QueueSave(area);
         }
-        foreach(var control in new System.Windows.Controls.Primitives.ToggleButton[]{showCountdown,tray,exit,rememberClose,autoStart,doubleCopy})
+        void SaveClosingOptions()
+        {
+            // Updating can shut down the owner before this dialog gets a closing event.
+            preferences.CloseToTray=tray.IsChecked==true;
+            preferences.RememberCloseAction=rememberClose.IsChecked==true;
+            SetStatus(preferences.TrySave()?null:"暂时无法保存关闭方式，请检查本机目录权限。");
+        }
+        tray.Checked+=(_,_)=>SaveClosingOptions();
+        exit.Checked+=(_,_)=>SaveClosingOptions();
+        rememberClose.Checked+=(_,_)=>SaveClosingOptions();
+        rememberClose.Unchecked+=(_,_)=>SaveClosingOptions();
+        foreach(var control in new System.Windows.Controls.Primitives.ToggleButton[]{showCountdown,autoStart,doubleCopy})
             Watch(control,SettingsArea.General);
         examName.TextChanged+=(_,_)=>QueueSave(SettingsArea.General);
         foreach(var part in new[]{examDate.Year,examDate.Month,examDate.Day})

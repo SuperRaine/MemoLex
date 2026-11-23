@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>MemoLex</AssemblyName>
     <RootNamespace>MemoLex</RootNamespace>
-    <Version>2.0.4</Version>
+    <Version>2.0.5</Version>
     <Product>墨墨搜词 MemoLex</Product>
     <Description>离线英汉查词与墨墨云词本</Description>
     <ApplicationIcon>app.ico</ApplicationIcon>
@@ -26,6 +26,7 @@
     <InternalsVisibleTo Include="MemoLex.HoverTests" />
     <InternalsVisibleTo Include="MemoLex.BrowserTests" />
     <EmbeddedResource Include="Desktop/update.ps1" LogicalName="MemoLex.update.ps1" />
+    <EmbeddedResource Include="Assets/derivative-parts.tsv" LogicalName="MemoLex.DerivativeParts.tsv" />
     <EmbeddedResource Include="$(MemoLexDeepLKeyFile)" LogicalName="MemoLex.DeepL.key" Condition="Exists('$(MemoLexDeepLKeyFile)')" />
     <Content Include="Native/*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="ThirdParty/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />

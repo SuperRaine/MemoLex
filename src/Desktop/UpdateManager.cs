@@ -121,7 +121,7 @@ internal sealed class UpdateManager:IDisposable
     internal async Task InstallAsync(Window owner)
     {
         if(!CanInstall||_release==null||_asset==null||_download==null)return;
-        if(MessageBox.Show(owner,$"更新到 {_release.Version} 并重启墨墨搜词？\n账号、历史记录和个人助记会保留。","安装更新",MessageBoxButton.OKCancel,MessageBoxImage.Information)!=MessageBoxResult.OK)return;
+        if(MessageBox.Show(owner,$"更新到 {_release.Version} 并重启墨墨搜词？\n设置和个人资料会保留。","安装更新",MessageBoxButton.OKCancel,MessageBoxImage.Information)!=MessageBoxResult.OK)return;
         _busy=true;Changed?.Invoke();
         try
         {
@@ -137,6 +137,7 @@ internal sealed class UpdateManager:IDisposable
             File.WriteAllText(Path.Combine(job,"job.json"),JsonSerializer.Serialize(manifest));
             using var source=typeof(UpdateManager).Assembly.GetManifestResourceStream("MemoLex.update.ps1")??throw new UpdateException("更新组件缺失。");
             using(var reader=new StreamReader(source))File.WriteAllText(Path.Combine(job,"update.ps1"),await reader.ReadToEndAsync(),new System.Text.UTF8Encoding(true));
+            if(!_preferences.TrySave())throw new UpdateException("当前设置未能保存，请检查本机目录权限后再更新。");
             var start=new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),@"WindowsPowerShell\v1.0\powershell.exe")){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden,WorkingDirectory=job};
             foreach(var arg in new[]{"-NoProfile","-NonInteractive","-File",Path.Combine(job,"update.ps1")})start.ArgumentList.Add(arg);
             using var helper=Process.Start(start)??throw new UpdateException("无法启动更新程序。");

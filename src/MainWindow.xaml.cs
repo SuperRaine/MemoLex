@@ -86,8 +86,7 @@ public partial class MainWindow : Window
             InstallHotkey();
             if (!desktopIntegration) return;
             RefreshDoubleCopy();
-            try { _tray = new TrayIcon(RestoreWindow, () => { RestoreWindow(); SettingsButton_Click(this, new RoutedEventArgs()); }, ExitApplication); }
-            catch { StatusText.Text = "托盘暂不可用，关闭窗口时将直接退出。"; }
+            EnsureTrayIcon();
         };
         StateChanged += (_, _) => { if (WindowState != WindowState.Minimized) {_restoreState = WindowState;QueuePendingUpdateNotice();} UpdateWindowChrome(); };
         PreviewKeyDown += Window_PreviewKeyDown;
@@ -125,14 +124,32 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         base.OnClosing(e);
-        if (e.Cancel || _exitRequested || _tray == null) return;
+        if (e.Cancel || _exitRequested || !_desktopIntegration) return;
         var closeToTray=ResolveCloseAction();
         if(closeToTray==null){e.Cancel=true;return;}
         if(!closeToTray.Value)return;
         e.Cancel = true;
         _preferences.Save();
-        Hide();
-        _tray.ShowHiddenHint(ShortcutLabel("clipboard"));
+        if (EnsureTrayIcon())
+        {
+            Hide();
+            _tray!.ShowHiddenHint(ShortcutLabel("clipboard"));
+        }
+        else
+        {
+            StatusText.Text = "托盘暂不可用，窗口已最小化。";
+            WindowState = WindowState.Minimized;
+        }
+    }
+    private bool EnsureTrayIcon()
+    {
+        if (_tray != null) return true;
+        try
+        {
+            _tray = new TrayIcon(RestoreWindow, () => { RestoreWindow(); EditSettings("常规"); }, ExitApplication);
+            return true;
+        }
+        catch { return false; }
     }
     internal Func<Window,Preferences,CloseChoice?> ChooseCloseAction {get;set;}=CloseBehaviorDialog.Ask;
     internal bool? ResolveCloseAction()

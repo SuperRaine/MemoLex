@@ -13,11 +13,18 @@ internal sealed class PronunciationClient : IDisposable
 {
     private const string Baidu = "https://fanyi.baidu.com/gettts";
     private const string ExampleVoice = "https://memolex.de5.net/api/example-audio";
+    private const string BackupVoice = "https://www.memolex.de5.net/api/example-audio?voice=backup";
     private const string DirectVoice = "https://api.deepgram.com/v1/speak?model=aura-2-arcas-en&encoding=mp3";
+    private static readonly TimeSpan BackupDelay = TimeSpan.FromSeconds(1.75);
+    private static readonly TimeSpan SentenceTimeout = TimeSpan.FromSeconds(9);
+    private const int CachedSentenceLimit = 32;
+    private const int MaxCachedAudioBytes = 512 * 1024;
     private static readonly Regex Headword = new(@"\A[A-Za-zÀ-ÖØ-öø-ÿĀ-ž][A-Za-zÀ-ÖØ-öø-ÿĀ-ž .’'\-]{0,99}\z");
     private static readonly Regex SentenceWhitespace = new(@"\s+");
     private static readonly Regex ExamSpeakerLabel = new(@"\A[QA][:：]\s*(?=[A-Z])", RegexOptions.CultureInvariant);
     private readonly HttpClient _http;
+    private readonly Dictionary<string, byte[]> _sentenceCache = new(StringComparer.Ordinal);
+    private readonly Queue<string> _cachedSentences = new();
 
     public PronunciationClient()
         : this(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { }
@@ -49,6 +56,43 @@ internal sealed class PronunciationClient : IDisposable
         var sentence = ExamSpeakerLabel.Replace(SentenceWhitespace.Replace(text.Trim(), " "), "");
         if (sentence.Length is 0 or > 2000 || !sentence.Any(char.IsAsciiLetter)) return null;
 
+        lock (_sentenceCache)
+            if (_sentenceCache.TryGetValue(sentence, out var cached)) return cached;
+
+        using var requests = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        try
+        {
+            var primary = DownloadPrimarySentenceAsync(sentence, requests.Token);
+            var headStart = Task.Delay(BackupDelay, requests.Token);
+            var first = await Task.WhenAny(primary, headStart).ConfigureAwait(false);
+            if (first == primary && await primary.ConfigureAwait(false) is { } quickAudio)
+                return CacheSentence(sentence, quickAudio);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var backup = DownloadHostedSentenceAsync(BackupVoice, sentence, requests.Token);
+            var winner = await Task.WhenAny(primary, backup).ConfigureAwait(false);
+            var other = winner == primary ? backup : primary;
+            var audio = await winner.ConfigureAwait(false) ?? await other.ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return audio == null ? null : CacheSentence(sentence, audio);
+        }
+        finally { requests.Cancel(); }
+    }
+
+    private byte[] CacheSentence(string sentence, byte[] audio)
+    {
+        if (audio.Length > MaxCachedAudioBytes) return audio;
+        lock (_sentenceCache)
+        {
+            if (!_sentenceCache.TryAdd(sentence, audio)) return audio;
+            _cachedSentences.Enqueue(sentence);
+            if (_cachedSentences.Count > CachedSentenceLimit) _sentenceCache.Remove(_cachedSentences.Dequeue());
+        }
+        return audio;
+    }
+
+    private async Task<byte[]?> DownloadPrimarySentenceAsync(string sentence, CancellationToken cancellationToken)
+    {
         var key = Environment.GetEnvironmentVariable("MEMOLEX_DEEPGRAM_API_KEY")?.Trim();
         if (key is { Length: > 0 and <= 256 } && key.All(character => character is > ' ' and < '\u007F'))
         {
@@ -61,11 +105,16 @@ internal sealed class PronunciationClient : IDisposable
             if (audio != null) return audio;
         }
 
-        using var hosted = new HttpRequestMessage(HttpMethod.Post, ExampleVoice)
+        return await DownloadHostedSentenceAsync(ExampleVoice, sentence, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<byte[]?> DownloadHostedSentenceAsync(string url, string sentence, CancellationToken cancellationToken)
+    {
+        using var hosted = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = JsonContent.Create(new { text = sentence })
         };
-        return await DownloadAudioAsync(hosted, TimeSpan.FromSeconds(12), cancellationToken).ConfigureAwait(false);
+        return await DownloadAudioAsync(hosted, SentenceTimeout, cancellationToken).ConfigureAwait(false);
     }
 
     private static HttpRequestMessage BaiduRequest(string text, string language, int speed) =>

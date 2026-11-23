@@ -18,6 +18,9 @@ public sealed class DictionaryEntry
         @"(?<ellipsis>\.{2,}|．{2,})|(?<keep>(?<=[a-z])\.(?=[a-z])|(?<=\d)[.．](?=\d)|(?<=[a-z]\.[a-z])\.|\b(?:etc|vs|cf|sb|sth|no|mr|mrs|ms|dr|sr|jr)\.(?![a-z]))|[.．。]",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex DuplicateColons = new(@"([：:])(?:\s*[：:])+", RegexOptions.CultureInvariant);
+    private static readonly Regex ChineseGlossPunctuation = new(@"[,:!?()\[\]{}/<>""]|(?<![a-z0-9])'|'(?![a-z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex ChinesePunctuationSpacing = new(@"\s*([，：；！？、])\s*", RegexOptions.CultureInvariant);
     private static readonly char[] StraySeparators = [' ', '\t', '：', ':', '，', ',', '、'];
 
     private string _translation = "";
@@ -74,6 +77,11 @@ public sealed class DictionaryEntry
             });
             var meaning = DuplicateColons.Replace(MeaningWhitespace.Replace(text, " "), "$1").Trim(StraySeparators);
             if (meaning.Length == 0) continue;
+            if (ChineseReverseSearch.ContainsChinese(meaning))
+            {
+                meaning = ChineseGlossPunctuation.Replace(meaning, match => ((char)(match.Value[0] + 0xfee0)).ToString());
+                meaning = ChinesePunctuationSpacing.Replace(meaning, "$1");
+            }
 
             if (!string.Equals(partOfSpeech, displayedPartOfSpeech, StringComparison.OrdinalIgnoreCase))
             {

@@ -17,6 +17,7 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
     private static readonly Regex NonstandardSpelling = new(
         @"^\s*(?:abbr|pref|suf|comb|contr)\.|^(?:\[[^\]]*\]\s*)?(?:[a-z]+\.\s*)?(?:\[\s*)?(?:古英语|古义|古语|古用法|方言|古(?:\s|\]))",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Lazy<Dictionary<string, string>> DerivativeParts = new(LoadDerivativeParts);
     public bool Available => _data!=null;
     private sealed class Record
     {
@@ -45,6 +46,20 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
         if(_data==null||!_index.TryGetValue(word,out var item))return null;
         lock(_gate) { var bytes=new byte[item.Length];_data.Position=item.Offset;_data.ReadExactly(bytes);return JsonSerializer.Deserialize<Record>(bytes); }
     }
+    private static Dictionary<string, string> LoadDerivativeParts()
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        using var stream = typeof(RelatedWords).Assembly.GetManifestResourceStream("MemoLex.DerivativeParts.tsv");
+        if (stream == null) return result;
+        using var reader = new StreamReader(stream);
+        while (reader.ReadLine() is { } line)
+        {
+            if (line.Length == 0 || line[0] == '#') continue;
+            var tab = line.IndexOf('\t');
+            if (tab > 0 && tab < line.Length - 1) result.TryAdd(line[..tab], line[(tab + 1)..]);
+        }
+        return result;
+    }
     internal IReadOnlyList<string> SynonymSpellings(string word)
     {
         try{return Read(word)?.synonyms??[];}
@@ -54,7 +69,7 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
     {
         cancellationToken.ThrowIfCancellationRequested();
         var record=Read(word);
-        IReadOnlyList<RelatedWord> Describe(IEnumerable<string> words) => words.Where(value=>value.Length is >0 and <=100 && char.IsAsciiLetter(value[0])
+        IReadOnlyList<RelatedWord> Describe(IEnumerable<string> words, bool supplementPartOfSpeech = false) => words.Where(value=>value.Length is >0 and <=100 && char.IsAsciiLetter(value[0])
             && value.All(character=>char.IsAsciiLetter(character)||character is ' ' or '.' or '’' or '\'' or '-')&&!value.Equals(word,StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase).Select(value=>(Word:value,Entry:dictionary.Lookup(value)))
             .OrderBy(value=>string.IsNullOrWhiteSpace(value.Entry?.translation)?1:0).Take(12)
@@ -62,6 +77,9 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
             {
                 var meaning = value.Entry?.DisplayMeaning ?? "";
                 if (meaning.Length == 0) meaning = DictionaryEntry.FormatDisplayMeaning(Read(value.Word)?.gloss ?? "暂无释义");
+                if (supplementPartOfSpeech && meaning.Length > 0 && DerivativeParts.Value.TryGetValue(value.Word, out var partOfSpeech)
+                    && !meaning.Split('\n').Any(line => DictionaryEntry.SplitDisplaySense(line).PartOfSpeech.Length > 0))
+                    meaning = partOfSpeech + " " + meaning;
                 return new RelatedWord(value.Word, meaning);
             }).ToArray();
         var nearby=new List<(string Word,int Distance,int Rank)>();var normalized=word.ToLowerInvariant();
@@ -87,7 +105,7 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
             similar.Add(new RelatedWord(entry.word, meaning));
             if (similar.Count == 8) break;
         }
-        return new WordRelations(Describe(record?.synonyms??[]),similar,Describe(record?.derivatives??[]),_phrases.Lookup(word,cancellationToken));
+        return new WordRelations(Describe(record?.synonyms??[]),similar,Describe(record?.derivatives??[], supplementPartOfSpeech: true),_phrases.Lookup(word,cancellationToken));
     },cancellationToken);
     // Optimal string alignment distance treats an adjacent transposition as one edit.
     internal static int SpellingDistance(string a,string b,int maximum)
