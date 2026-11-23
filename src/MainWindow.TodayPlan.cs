@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shell;
 using MemoLex.Services;
 
 namespace MemoLex;
@@ -20,34 +21,35 @@ public partial class MainWindow
         dialog.SizeToContent = SizeToContent.Manual;
         dialog.ResizeMode = ResizeMode.CanResizeWithGrip;
         dialog.Width = Math.Min(820, SystemParameters.WorkArea.Width - 30);
-        dialog.Height = Math.Min(665, SystemParameters.WorkArea.Height - 30);
+        dialog.Height = Math.Min(760, SystemParameters.WorkArea.Height - 24);
         dialog.MinWidth = 570; dialog.MinHeight = 495;
+        WindowChrome.GetWindowChrome(dialog).ResizeBorderThickness = new Thickness(6);
         using var accountChanged = cancellation.Register(() => Dispatcher.BeginInvoke(new Action(() =>
         {
             if (dialog.IsVisible) dialog.Close();
         })));
         var star = new GridLength(1, GridUnitType.Star);
-        var body = BuildRows(new Thickness(20, 14, 20, 13), GridLength.Auto, GridLength.Auto, GridLength.Auto, star, GridLength.Auto);
+        var body = BuildRows(new Thickness(16, 10, 16, 10), GridLength.Auto, GridLength.Auto, star, GridLength.Auto);
         InputDialog.SetBody(dialog, body);
 
-        var header = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
-        var refresh = new Button { Content = "刷新", Margin = new Thickness(8, 0, 0, 0) };
+        var header = new DockPanel { Margin = new Thickness(0, 0, 0, 7) };
+        var refresh = new Button { Content = "刷新", Padding = new Thickness(10, 5, 10, 5), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         DockPanel.SetDock(refresh, Dock.Right); header.Children.Add(refresh);
         var overview = InputDialog.Text("正在读取今日学习…", status: true);
-        overview.FontSize = 14; overview.VerticalAlignment = VerticalAlignment.Center;
+        overview.FontSize = 13; overview.LineHeight = 18; overview.VerticalAlignment = VerticalAlignment.Center;
         header.Children.Add(overview); body.Children.Add(header);
         var page = new Grid();
         var card = new Border
         {
             Background = Brush("#F7FBFE"), BorderBrush = Brush("#DFEAF3"), BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10), Padding = new Thickness(12), Child = page
+            CornerRadius = new CornerRadius(10), Padding = new Thickness(9), Child = page
         };
-        Grid.SetRow(card, 3); body.Children.Add(card);
-        var status = InputDialog.Text("", status: true); status.Margin = new Thickness(0, 8, 0, 0);
-        Grid.SetRow(status, 4); body.Children.Add(status);
+        Grid.SetRow(card, 2); body.Children.Add(card);
+        var status = InputDialog.Text("", status: true); status.Margin = new Thickness(0, 5, 0, 0); status.LineHeight = 18;
+        Grid.SetRow(status, 3); body.Children.Add(status);
 
         var duePanel = BuildRows(new Thickness(0), GridLength.Auto, star);
-        var addPanel = BuildRows(new Thickness(0), GridLength.Auto, GridLength.Auto, GridLength.Auto, star, GridLength.Auto);
+        var addPanel = BuildRows(new Thickness(0), GridLength.Auto, GridLength.Auto, star, GridLength.Auto);
         page.Children.Add(duePanel); page.Children.Add(addPanel);
         var dueFilter = 0;
         var tab = 0;
@@ -60,7 +62,7 @@ public partial class MainWindow
         dueEmpty.IsHitTestVisible = false;
         Grid.SetRow(dueEmpty, 1); duePanel.Children.Add(dueEmpty);
 
-        var searchBar = new DockPanel { Margin = new Thickness(0, 0, 0, 9) };
+        var searchBar = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
         var conceal = new CheckBox
         {
             Content = "遮住释义",
@@ -70,43 +72,58 @@ public partial class MainWindow
         var searchLabel = InputDialog.Text("搜索", status: true);
         searchLabel.VerticalAlignment = VerticalAlignment.Center; searchLabel.Margin = new Thickness(0, 0, 8, 0);
         DockPanel.SetDock(searchLabel, Dock.Left); searchBar.Children.Add(searchLabel);
-        var search = new TextBox { ToolTip = "搜索单词或释义", MinHeight = 32 };
+        var search = new TextBox { ToolTip = "搜索单词或释义", MinHeight = 30, Padding = new Thickness(9, 4, 9, 4) };
         System.Windows.Automation.AutomationProperties.SetName(search, "搜索单词或释义");
         searchBar.Children.Add(search);
-        Grid.SetRow(searchBar, 2); body.Children.Add(searchBar);
 
-        var sources = new WrapPanel { Margin = new Thickness(0, 0, 0, 7) }; addPanel.Children.Add(sources);
-        var pads = new ComboBox { DisplayMemberPath = nameof(CloudNotepad.Title), MinWidth = 155, MaxWidth = 230, Margin = new Thickness(0, 0, 7, 5) };
+        var toolbar = new DockPanel { Margin = new Thickness(0, 0, 0, 7) }; addPanel.Children.Add(toolbar);
+        var manualButton = new Button { Content = "手动输入", Padding = new Thickness(10, 5, 10, 5), VerticalAlignment = VerticalAlignment.Top };
+        DockPanel.SetDock(manualButton, Dock.Right); toolbar.Children.Add(manualButton);
+        var sources = new WrapPanel(); toolbar.Children.Add(sources);
+        var pads = new ComboBox { DisplayMemberPath = nameof(CloudNotepad.Title), MinWidth = 136, MaxWidth = 180, Height = 30, Margin = new Thickness(0, 0, 6, 0) };
         sources.Children.Add(pads);
         var loadPad = StudyButton("读取词本", sources);
-        var count = new TextBox { Width = 52, MaxLength = 4, ToolTip = "随机选词数量", Margin = new Thickness(3, 0, 7, 5) };
+        var count = new TextBox { Width = 47, Height = 30, MaxLength = 4, ToolTip = "随机选词数量", Padding = new Thickness(6, 4, 6, 4), Margin = new Thickness(0, 0, 6, 0) };
         sources.Children.Add(count);
         var random = StudyButton("随机选词", sources);
 
-        var manualRow = new DockPanel { Margin = new Thickness(0, 0, 0, 8) }; Grid.SetRow(manualRow, 1); addPanel.Children.Add(manualRow);
-        var stageWords = new Button { Content = "选入待确认", Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top };
+        var manualRow = new DockPanel { Margin = new Thickness(0, 0, 0, 7), Visibility = Visibility.Collapsed };
+        Grid.SetRow(manualRow, 1); addPanel.Children.Add(manualRow);
+        var stageWords = new Button { Content = "选入待确认", Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(7, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(stageWords, Dock.Right); manualRow.Children.Add(stageWords);
-        var input = new TextBox { AcceptsReturn = true, Height = 55, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        var input = new TextBox { AcceptsReturn = true, Height = 46, Padding = new Thickness(9, 4, 9, 4), TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             ToolTip = "手动输入英文单词或短语，换行或用逗号分隔" };
         System.Windows.Automation.AutomationProperties.SetName(input, "手动输入英文单词或短语");
         manualRow.Children.Add(input);
+        void ShowManualInput(bool visible)
+        {
+            manualRow.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            manualButton.Content = visible ? "收起输入" : "手动输入";
+            if (visible) input.Focus();
+            else manualButton.Focus();
+        }
+        manualButton.Click += (_, _) => ShowManualInput(manualRow.Visibility != Visibility.Visible);
 
-        var selectionActions = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
-        var selectAll = StudyButton("全选当前结果", selectionActions);
-        var clear = StudyButton("清除选择", selectionActions);
-        Grid.SetRow(selectionActions, 2); addPanel.Children.Add(selectionActions);
         var choices = StudyList(includeKind: false);
         choices.SelectionMode = SelectionMode.Extended;
-        Grid.SetRow(choices, 3); addPanel.Children.Add(choices);
+        Grid.SetRow(choices, 2); addPanel.Children.Add(choices);
         var choicesEmpty = InputDialog.Text("", status: true);
         choicesEmpty.Margin = new Thickness(10, 36, 10, 0);
         choicesEmpty.VerticalAlignment = VerticalAlignment.Top;
         choicesEmpty.IsHitTestVisible = false;
-        Grid.SetRow(choicesEmpty, 3); addPanel.Children.Add(choicesEmpty);
-        var footer = new DockPanel { Margin = new Thickness(0, 9, 0, 0) }; Grid.SetRow(footer, 4); addPanel.Children.Add(footer);
-        var confirm = new Button { Content = "确认添加", Style = (Style)FindResource("AccentButton") };
+        Grid.SetRow(choicesEmpty, 2); addPanel.Children.Add(choicesEmpty);
+        var footer = new DockPanel { Margin = new Thickness(0, 7, 0, 0) }; Grid.SetRow(footer, 3); addPanel.Children.Add(footer);
+        var confirm = new Button { Content = "确认添加", Style = (Style)FindResource("AccentButton"), Padding = new Thickness(10, 5, 10, 5) };
         DockPanel.SetDock(confirm, Dock.Right); footer.Children.Add(confirm);
-        var selection = InputDialog.Text("已选 0 词", status: true); selection.VerticalAlignment = VerticalAlignment.Center;
+        var selectionActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(selectionActions, Dock.Left); footer.Children.Add(selectionActions);
+        var selectAll = StudyButton("全选当前结果", selectionActions);
+        var clear = StudyButton("清除选择", selectionActions);
+        var selection = InputDialog.Text("已选 0 词", status: true);
+        selection.VerticalAlignment = VerticalAlignment.Center;
+        selection.TextWrapping = TextWrapping.NoWrap;
+        selection.TextTrimming = TextTrimming.CharacterEllipsis;
+        selection.ToolTip = "按住 Ctrl 多选，按住 Shift 连选";
         footer.Children.Add(selection);
 
         TodayStudyPlan? plan = null;
@@ -127,7 +144,7 @@ public partial class MainWindow
             confirm.IsEnabled = !busy && length is > 0 and <= MaiMemoClient.StudyBatchLimit;
             selectAll.IsEnabled = !busy && choices.Items.Count > 0;
             clear.IsEnabled = !busy && length > 0;
-            refresh.IsEnabled = choices.IsEnabled = input.IsEnabled = pads.IsEnabled = count.IsEnabled = !busy;
+            refresh.IsEnabled = choices.IsEnabled = manualButton.IsEnabled = input.IsEnabled = pads.IsEnabled = count.IsEnabled = !busy;
             loadPad.IsEnabled = random.IsEnabled = !busy && pads.SelectedItem is CloudNotepad;
             stageWords.IsEnabled = !busy && !string.IsNullOrWhiteSpace(input.Text);
         }
@@ -191,7 +208,11 @@ public partial class MainWindow
             if (search.Text != queries[index]) search.Text = queries[index];
             else RenderSearch();
         });
-        Grid.SetRow(tabs, 1); body.Children.Add(tabs);
+        var navigation = new DockPanel { Margin = new Thickness(0, 0, 0, 7) };
+        tabs.Margin = new Thickness(0, 0, 12, 0);
+        DockPanel.SetDock(tabs, Dock.Left); navigation.Children.Add(tabs);
+        navigation.Children.Add(searchBar);
+        Grid.SetRow(navigation, 1); body.Children.Add(navigation);
         duePanel.Children.Add(StudySegments(["全部待学", "待新学", "待复习"], index =>
         {
             dueFilter = index;
@@ -203,7 +224,7 @@ public partial class MainWindow
             var remainingNew = plan.Items.Count(item => item.IsNew && !item.IsFinished);
             var remainingReview = plan.Items.Count(item => !item.IsNew && !item.IsFinished);
             var gap = plan.NewWordsNeeded is int needed ? $"还需加入 {needed} 词" : "新词缺口待同步";
-            overview.Text = $"{plan.Day} · 已完成 {plan.Finished}/{plan.Target} · 待新学 {remainingNew} · 待复习 {remainingReview}\n{gap}"
+            overview.Text = $"{plan.Day} · 已完成 {plan.Finished}/{plan.Target} · 待新学 {remainingNew} · 待复习 {remainingReview} · {gap}"
                 + (plan.Items.Count == MaiMemoClient.StudyBatchLimit ? " · 词表最多显示前 1000 条" : "");
             if (plan.NewWordsNeeded is int shortage) count.Text = Math.Min(shortage, MaiMemoClient.StudyBatchLimit).ToString();
             var entries = plan.Items.Where(item => !item.IsFinished).ToArray();
@@ -299,6 +320,9 @@ public partial class MainWindow
             }
             ClearCandidateSearch();
             await ReloadChoices(selected); input.Clear();
+            manualRow.Visibility = Visibility.Collapsed;
+            manualButton.Content = "手动输入";
+            _ = Dispatcher.BeginInvoke(new Action(() => choices.Focus()), System.Windows.Threading.DispatcherPriority.Input);
             status.Text = $"找到 {result.Words.Count} 个可选新词 · {result.Excluded} 个已在计划或未被墨墨收录";
         });
         confirm.Click += async (_, _) =>
@@ -331,7 +355,7 @@ public partial class MainWindow
 
     private static Button StudyButton(string title, Panel parent)
     {
-        var button = new Button { Content = title, Margin = new Thickness(0, 0, 7, 5) };
+        var button = new Button { Content = title, MinHeight = 30, Padding = new Thickness(9, 4, 9, 4), Margin = new Thickness(0, 0, 6, 0) };
         parent.Children.Add(button);
         return button;
     }
@@ -380,7 +404,7 @@ public partial class MainWindow
         text.SetBinding(TextBlock.TextProperty, new Binding(nameof(WordListRow.DisplayMeaning)));
         text.SetBinding(ToolTipProperty, new Binding(nameof(WordListRow.MeaningTooltip)));
         text.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
-        text.SetValue(MarginProperty, new Thickness(0, 6, 0, 6));
+        text.SetValue(MarginProperty, includeKind ? new Thickness(0, 6, 0, 6) : new Thickness(0, 4, 0, 4));
         text.AddHandler(MouseLeftButtonDownEvent, new MouseButtonEventHandler((sender, args) =>
         {
             if (sender is TextBlock { DataContext: WordListRow { CanToggleMeaning: true } row })

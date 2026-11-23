@@ -12,6 +12,8 @@ struct TodayStudyView: View {
     @State private var candidates: [String: J] = [:]
     @State private var selected: Set<String> = []
     @State private var manual = ""
+    @State private var manualExpanded = false
+    @FocusState private var manualFocused: Bool
     @State private var randomCount = ""
     @State private var page = 0
     @State private var filter = 0
@@ -29,9 +31,9 @@ struct TodayStudyView: View {
     var body: some View {
         VStack(spacing: 0) {
             DialogHeader(title: "今日学习") { if !writing { model.sheet = nil } }
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top) {
-                    Text(summary).font(.system(size: 14)).foregroundStyle(Palette.ink)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center) {
+                    Text(summary).foregroundStyle(Palette.ink)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer()
                     Button("刷新") {
@@ -40,27 +42,28 @@ struct TodayStudyView: View {
                             if books.isEmpty { try await readBooks() }
                             status = "今日学习已刷新"
                         } }
-                    }.buttonStyle(MemoButtonStyle()).disabled(busy)
+                    }.buttonStyle(MemoButtonStyle(compact: true)).disabled(busy)
                 }
-                segments(["待学词汇", "加入新学"], selection: $page)
                 HStack(spacing: 12) {
-                    TextField("搜索单词或释义", text: page == 0 ? $dueSearch : $candidateSearch).inputFrame()
+                    segments(["待学词汇", "加入新学"], selection: $page)
+                        .fixedSize(horizontal: true, vertical: false)
+                    TextField("搜索单词或释义", text: page == 0 ? $dueSearch : $candidateSearch).inputFrame(height: 30)
                     Toggle("遮住释义", isOn: $conceal).toggleStyle(.checkbox)
                 }
                 Group {
                     if page == 0 { duePage } else { selectionPage }
                 }
-                .padding(12)
+                .padding(9)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Palette.border).allowsHitTesting(false))
                 HStack(spacing: 8) {
                     if busy { ProgressView().controlSize(.small) }
                     Text(status.statusMessage).font(.system(size: 12)).foregroundStyle(Palette.muted)
-                }.frame(minHeight: 20, alignment: .leading)
-            }.padding(18)
+                }.frame(minHeight: 16, alignment: .leading)
+            }.padding(.horizontal, 16).padding(.vertical, 12)
         }
-        .frame(width: 730, height: min(630, (NSScreen.main?.visibleFrame.height ?? 760) - 60))
+        .frame(width: 730, height: min(760, (NSScreen.main?.visibleFrame.height ?? 805) - 45))
         .background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep)
         .onChange(of: conceal) { _ in revealed.removeAll() }
         .onChange(of: candidateSearch) { _ in selected.formIntersection(visibleCandidateIDs) }
@@ -98,7 +101,7 @@ struct TodayStudyView: View {
         let needed = plan["newWordsNeeded"]
         let gap = needed == .null ? "新词缺口待同步" : "还需加入 \(needed.integer) 词"
         let limit = plan["items"].list.count == 1000 ? " · 词表最多显示前 1000 条" : ""
-        return "\(plan["day"].text) · 已完成 \(plan["finished"].integer)/\(plan["target"].integer) · 待新学 \(new) · 待复习 \(unfinished.count - new)\n\(gap)\(limit)"
+        return "\(plan["day"].text) · 已完成 \(plan["finished"].integer)/\(plan["target"].integer) · 待新学 \(new) · 待复习 \(unfinished.count - new) · \(gap)\(limit)"
     }
 
     private var duePage: some View {
@@ -117,24 +120,25 @@ struct TodayStudyView: View {
     }
 
     private var selectionPage: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 MemoPicker(title: "选择云词本", selection: $bookID, options: books.map { ($0["id"].text, $0["title"].text) }).frame(width: 158)
                 Button("读取词本") { Task { await run("正在核对词本中的新词…", action: readCloud) } }.disabled(bookID.isEmpty)
-                TextField("数量", text: $randomCount).inputFrame().frame(width: 60).help("随机选词数量")
+                TextField("数量", text: $randomCount).inputFrame(height: 30).frame(width: 60).help("随机选词数量")
                 Button("随机选词") { Task { await run("正在随机选词…", action: pickRandom) } }.disabled(bookID.isEmpty)
+                Spacer()
+                Button(manualExpanded ? "收起输入" : "手动输入") { manualExpanded.toggle() }
             }.buttonStyle(MemoButtonStyle(compact: true)).disabled(busy)
-            HStack(alignment: .top, spacing: 8) {
-                TextField("输入英文单词或短语，换行或用逗号分隔", text: $manual, axis: .vertical)
-                    .lineLimit(2...3).inputFrame(height: 54)
-                Button("选入待确认") { Task { await run("正在核对输入的单词…", action: stageManual) } }
-                    .buttonStyle(MemoButtonStyle(compact: true)).disabled(manual.trimmed.isEmpty)
-            }.disabled(busy)
+            if manualExpanded {
+                HStack(spacing: 8) {
+                    TextField("输入英文单词或短语，换行或用逗号分隔", text: $manual, axis: .vertical)
+                        .lineLimit(2...3).inputFrame(height: 46).focused($manualFocused)
+                        .onAppear { manualFocused = true }
+                    Button("选入待确认") { Task { await run("正在核对输入的单词…", action: stageManual) } }
+                        .buttonStyle(MemoButtonStyle(compact: true)).disabled(manual.trimmed.isEmpty)
+                }.disabled(busy)
+            }
             let visible = visibleCandidateIDs
-            HStack(spacing: 8) {
-                Button("全选当前结果") { selected = Set(visible) }.disabled(visible.isEmpty)
-                Button("清除选择") { selected.removeAll() }.disabled(selected.isEmpty)
-            }.buttonStyle(MemoButtonStyle(compact: true)).disabled(busy)
             wordList(showKind: false, empty: visible.isEmpty
                      ? (candidates.isEmpty ? "选择云词本或手动输入单词" : "未找到匹配的单词") : nil) {
                 List(selection: $selected) {
@@ -145,12 +149,14 @@ struct TodayStudyView: View {
                     }
                 }.disabled(busy)
             }
-            HStack {
+            HStack(spacing: 8) {
+                Button("全选当前结果") { selected = Set(visible) }.disabled(busy || visible.isEmpty)
+                Button("清除选择") { selected.removeAll() }.disabled(busy || selected.isEmpty)
                 Text("已选 \(selected.count) 词 · ⌘ / Shift 多选").foregroundStyle(Palette.muted)
                 Spacer()
-                Button("确认添加") { confirming = true }.buttonStyle(MemoButtonStyle(accent: true))
+                Button("确认添加") { confirming = true }.buttonStyle(MemoButtonStyle(accent: true, compact: true))
                     .disabled(busy || selected.isEmpty || selected.count > 1000)
-            }
+            }.buttonStyle(MemoButtonStyle(compact: true))
         }
     }
 
@@ -169,7 +175,6 @@ struct TodayStudyView: View {
                     .accessibilityAddTraits(active ? .isSelected : [])
             }
         }.padding(3).background(Palette.control, in: RoundedRectangle(cornerRadius: 9))
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func wordList<Content: View>(showKind: Bool, empty: String?, @ViewBuilder list: () -> Content) -> some View {
@@ -211,7 +216,7 @@ struct TodayStudyView: View {
             if let kind {
                 Text(kind).font(.system(size: 12)).foregroundStyle(Palette.muted).frame(width: 66, alignment: .leading)
             }
-        }.frame(minHeight: 31).contentShape(Rectangle())
+        }.frame(minHeight: kind == nil ? 27 : 31).contentShape(Rectangle())
     }
 
     private func matches(_ word: String, query: String) -> Bool {
@@ -291,6 +296,7 @@ struct TodayStudyView: View {
         }
         await loadMeanings(candidates.values.map(\.spellingText))
         manual = ""
+        manualExpanded = false
         status = "找到 \(result["words"].list.count) 个可选新词 · \(result["excluded"].integer) 个已在计划或未被墨墨收录"
     }
 
