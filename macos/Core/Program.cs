@@ -100,6 +100,7 @@ internal sealed class CoreService : IDisposable
     private readonly MaiMemoClient _api;
     private readonly ExampleSentenceClient _examples = new();
     private readonly TranslationClient _translation = new();
+    private readonly BaiduPronunciationClient _pronunciation = new();
     private readonly OnlineDictionaryClient _onlineDictionary;
     private readonly Lazy<Task> _ready;
     private readonly object _accountGate = new();
@@ -141,6 +142,16 @@ internal sealed class CoreService : IDisposable
         }
         if (method == "translate")
             return await _translation.TranslateAsync(T(p, "text"), T(p, "direction", "en|zh-CN"), cancellation);
+        if (method == "pronunciation")
+        {
+            var accent = T(p, "accent") switch
+            {
+                "en-GB" => EnglishAccent.British,
+                "en-US" => EnglishAccent.American,
+                _ => throw new ArgumentException("请选择英音或美音。")
+            };
+            return new { audio = await _pronunciation.DownloadAsync(T(p, "word"), accent, cancellation) };
+        }
         await _ready.Value.WaitAsync(cancellation);
         var authenticated = method.StartsWith("notepads.", StringComparison.Ordinal) || method.StartsWith("study.", StringComparison.Ordinal) || method is "notes.cloud" or "notes.publish" or "stubborn";
         var accountKey = _tokens.CredentialKey;
@@ -219,5 +230,5 @@ internal sealed class CoreService : IDisposable
     private static string T(JsonElement value, string name, string fallback = "") => Program.Text(value, name, fallback);
     private static string? Null(string value) => value.Length == 0 ? null : value;
     private static int Number(JsonElement value, string name, int fallback, int minimum, int maximum) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var field) && field.TryGetInt32(out var number) ? Math.Clamp(number, minimum, maximum) : fallback;
-    public void Dispose() { _api.Dispose(); _examples.Dispose(); _onlineDictionary.Dispose(); _translation.Dispose(); _related.Dispose(); _chinese.Dispose(); _dictionary.Dispose(); }
+    public void Dispose() { _api.Dispose(); _examples.Dispose(); _onlineDictionary.Dispose(); _translation.Dispose(); _pronunciation.Dispose(); _related.Dispose(); _chinese.Dispose(); _dictionary.Dispose(); }
 }

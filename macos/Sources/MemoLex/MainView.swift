@@ -260,7 +260,11 @@ private struct WordPage: View {
                     }
                     HStack(spacing: 8) {
                         Text(model.entry["phonetic"].text.isEmpty ? (model.word.isEmpty ? "你的桌面英汉词典" : "") : "/\(model.entry["phonetic"].text)/").font(.system(size: 16)).foregroundStyle(Palette.muted)
-                        Button { model.speak() } label: { Label("发音", systemImage: "speaker.wave.2") }.disabled(model.word.isEmpty)
+                        ForEach(EnglishAccent.allCases, id: \.self) { accent in
+                            Button { model.speak(accent) } label: { Label(accent.label, systemImage: "speaker.wave.2") }
+                                .disabled(model.word.isEmpty)
+                                .help("百度翻译 · \(accent.label)")
+                        }
                         Button("海词词典") { model.openHaici?(model.word) }.disabled(model.word.isEmpty)
                     }.buttonStyle(MemoButtonStyle(compact: true)).padding(.top, 8).padding(.bottom, 14)
                     wordTags

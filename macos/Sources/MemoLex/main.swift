@@ -78,7 +78,7 @@ private final class MemoLexWindow: NSWindow {
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { show(); return true }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
-    func applicationWillTerminate(_ notification: Notification) { if !model.removingApplication { model.preferences.save() }; integration?.stop(); model.updates.stop(); model.core.stop(); updateTimer?.invalidate() }
+    func applicationWillTerminate(_ notification: Notification) { if !model.removingApplication { model.preferences.save() }; integration?.stop(); model.updates.stop(); model.stopPronunciation(); model.core.stop(); updateTimer?.invalidate() }
     func show() {
         guard let window else { return }
         NSApp.setActivationPolicy(.regular)

@@ -25,7 +25,6 @@ public partial class MainWindow : Window
     private string _word = "";
     private Vocabulary? _vocabulary;
     private HwndSource? _source;
-    private dynamic? _speaker;
     private TrayIcon? _tray;
     private MemoLex.Desktop.UpdateManager? _updates;
     private bool _exitRequested;
@@ -72,7 +71,6 @@ public partial class MainWindow : Window
         SetAccountStatus(!_allowCloud ? "离线模式" : _tokens.HasToken ? "连接中" : "未连接");
         AddButton.IsEnabled = false;
         AddTodayButton.IsEnabled = false;
-        SpeakButton.IsEnabled = false;
         HaiciButton.IsEnabled=false;
         UpdateExamCountdown();
         Loaded += async (_, _) =>
@@ -104,6 +102,8 @@ public partial class MainWindow : Window
             _studyLoadCts?.Cancel();_accountCts.Cancel();_api.AuthenticationResult-=OnApiAuthenticationResult;
             _studyDayTimer?.Stop();
             _lookupCts?.Cancel();
+            StopPronunciation();
+            _pronunciation.Dispose();
             _notesCts?.Cancel();
             _examplesCts?.Cancel();
             _tray?.Dispose();
@@ -199,6 +199,7 @@ public partial class MainWindow : Window
         if (!_ready) return;
         var word = ExampleText.NormalizeLookup(raw).Trim();
         if (!ValidWord(word)) { StatusText.Text = "请输入英文单词或短语（最多 100 字符）。"; return; }
+        StopPronunciation();
         if (addNavigationEntry) RememberCurrentView();
         CancelChineseSearch();
         CancelTranslation();
@@ -228,7 +229,7 @@ public partial class MainWindow : Window
         AddButton.Content = "＋ 加入云词本";
         AddButton.IsEnabled = !_adding;
         PrepareTodayStudyLookup(word,cancellation);
-        SpeakButton.IsEnabled = true;
+        SpeakBritishButton.IsEnabled = SpeakAmericanButton.IsEnabled = true;
         HaiciButton.IsEnabled=true;
         WordText.ContextMenu=HaiciWordMenu(word);
         var entry = _dictionary.Lookup(word);
@@ -699,23 +700,6 @@ public partial class MainWindow : Window
         _preferences.Save();
         StatusText.Text = Topmost ? "窗口置顶已开启。" : "窗口置顶已关闭。";
         UpdatePinAppearance();
-    }
-    private void SpeakButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (!ValidWord(_word)) return;
-        try
-        {
-            if (_speaker == null)
-            {
-                _speaker = Activator.CreateInstance(Type.GetTypeFromProgID("SAPI.SpVoice")!);
-                dynamic voices = _speaker!.GetVoices("Language=409");
-                if (voices.Count > 0) _speaker.Voice = voices.Item(0);
-                else throw new InvalidOperationException();
-            }
-            _speaker.Speak(_word, 3);
-            StatusText.Text = "正在播放单词发音。";
-        }
-        catch { StatusText.Text = "未找到可用的 Windows 英语语音，可在系统语言设置中安装英语语音包。"; }
     }
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {

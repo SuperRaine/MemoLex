@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>MemoLex.Core</AssemblyName>
-    <Version>1.19.0</Version>
+    <Version>1.20.0</Version>
     <Product>墨墨搜词 MemoLex</Product>
     <NuGetAudit>false</NuGetAudit>
     <MemoLexDeepLKeyFile Condition="'$(MemoLexDeepLKeyFile)' == ''">$(MSBuildThisFileDirectory)../../src/Private/DeepL.key</MemoLexDeepLKeyFile>
@@ -16,6 +16,7 @@
     <Compile Include="../../src/Services/OfficialLoginProtocol.cs" Link="Shared/Services/OfficialLoginProtocol.cs" />
     <Compile Include="../../src/Services/ExampleSentenceClient.cs" Link="Shared/Services/ExampleSentenceClient.cs" />
     <Compile Include="../../src/Services/TranslationClient.cs" Link="Shared/Services/TranslationClient.cs" />
+    <Compile Include="../../src/Services/BaiduPronunciationClient.cs" Link="Shared/Services/BaiduPronunciationClient.cs" />
     <Compile Include="../../src/Services/OnlineDictionaryClient.cs" Link="Shared/Services/OnlineDictionaryClient.cs" />
     <Compile Include="../../src/Services/BundledTranslationKey.cs" Link="Shared/Services/BundledTranslationKey.cs" />
     <EmbeddedResource Include="$(MemoLexDeepLKeyFile)" LogicalName="MemoLex.DeepL.key" Condition="Exists('$(MemoLexDeepLKeyFile)')" />

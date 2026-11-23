@@ -14,6 +14,13 @@ struct Notice: Identifiable {
     var action: (() -> Void)? = nil
 }
 
+enum EnglishAccent: String, CaseIterable {
+    case british = "en-GB"
+    case american = "en-US"
+
+    var label: String { self == .british ? "英音" : "美音" }
+}
+
 @MainActor final class AppModel: ObservableObject {
     let preferences = Preferences()
     let core = CoreBridge()
@@ -105,6 +112,8 @@ struct Notice: Identifiable {
     private var stubbornSnapshot: StubbornSnapshot?
     private var nextAccountCheck: Date?
     private let speaker = AVSpeechSynthesizer()
+    private var pronunciationTask: Task<Void, Never>?
+    private var pronunciationPlayer: AVAudioPlayer?
 
     init() {
         accounts = (load("accounts.json", as: [SavedAccount].self) ?? []).map { saved in
@@ -159,6 +168,7 @@ struct Notice: Identifiable {
     func lookup(_ raw: String, navigate: Bool = true) {
         let query = raw.trimmed
         guard ready, !query.isEmpty, query.count <= 100 else { return }
+        stopPronunciation()
         if page == .translation { cancelTranslation() }
         lookupTask?.cancel(); cancelCloudWordLookup(); wordVersion += 1
         let version = wordVersion; let account = accountVersion
@@ -269,12 +279,43 @@ struct Notice: Identifiable {
         } catch { if version == examplesVersion { examplesError = error.localizedDescription } }
         if version == examplesVersion { examplesLoading = false }
     }
-    func speak(_ value: String? = nil) {
-        let text = value ?? word; guard !text.isEmpty else { return }
+    func speak(_ accent: EnglishAccent) {
+        let query = word
+        guard page == .word, !query.isEmpty else { return }
+        stopPronunciation()
+        let version = wordVersion
+        status = "正在获取\(accent.label)…"
+        pronunciationTask = Task { [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            let result = try? await core.request("pronunciation", ["word": .string(query), "accent": .string(accent.rawValue)], timeout: 7)
+            guard !Task.isCancelled, page == .word, word == query, version == wordVersion else { return }
+            pronunciationTask = nil
+            if let encoded = result?["audio"].text, !encoded.isEmpty, let audio = Data(base64Encoded: encoded),
+               let player = try? AVAudioPlayer(data: audio), player.play() {
+                pronunciationPlayer = player
+                status = "百度翻译 · \(accent.label)"
+                return
+            }
+            guard let voice = AVSpeechSynthesisVoice(language: accent.rawValue), voice.language == accent.rawValue else {
+                status = "暂时无法播放\(accent.label)。"
+                return
+            }
+            let utterance = AVSpeechUtterance(string: query)
+            utterance.voice = voice
+            utterance.rate = 0.42
+            speaker.speak(utterance)
+            status = "系统发音 · \(accent.label)"
+        }
+    }
+    func stopPronunciation() {
+        pronunciationTask?.cancel()
+        pronunciationTask = nil
+        pronunciationPlayer?.stop()
+        pronunciationPlayer = nil
         speaker.stopSpeaking(at: .immediate)
-        let utterance = AVSpeechUtterance(string: text); utterance.voice = AVSpeechSynthesisVoice(language: "en-US"); utterance.rate = 0.42; speaker.speak(utterance)
     }
     func enterTranslation() {
+        stopPronunciation()
         lookupTask?.cancel()
         cancelCloudWordLookup()
         page = .translation
@@ -323,6 +364,7 @@ struct Notice: Identifiable {
         if page == .translation { cancelTranslation() }
         navigationIndex = target; let location = navigation[target]; page = location.page
         if page == .translation {
+            stopPronunciation()
             lookupTask?.cancel()
             translationInput = location.input; translationSource = location.input; translationOutput = location.translated; translationDirection = location.direction
         }

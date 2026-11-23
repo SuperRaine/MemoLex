@@ -27,6 +27,7 @@ public partial class MainWindow
     }
     private void EnterChineseView()
     {
+        StopPronunciation();
         _lookupCts?.Cancel();_examplesCts?.Cancel();++_wordVersion;++_membershipVersion;
         _viewTarget=ViewTarget.ChineseSearch;ResultScroll.Visibility=TranslationView.Visibility=Visibility.Collapsed;ChineseSearchView.Visibility=Visibility.Visible;
     }

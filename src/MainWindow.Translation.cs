@@ -24,6 +24,7 @@ public partial class MainWindow
     }
     private void EnterTranslationView()
     {
+        StopPronunciation();
         CancelChineseSearch();ChineseSearchView.Visibility=Visibility.Collapsed;
         _lookupCts?.Cancel();_examplesCts?.Cancel();++_wordVersion;++_membershipVersion;
         _viewTarget=ViewTarget.Translation;ResultScroll.Visibility=Visibility.Collapsed;TranslationView.Visibility=Visibility.Visible;
