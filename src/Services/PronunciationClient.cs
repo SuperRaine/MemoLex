@@ -13,8 +13,8 @@ internal sealed class PronunciationClient : IDisposable
 {
     private const string Baidu = "https://fanyi.baidu.com/gettts";
     private const string ExampleVoice = "https://memolex.de5.net/api/example-audio";
-    private const string BackupVoice = "https://www.memolex.de5.net/api/example-audio?voice=backup";
     private const string DirectVoice = "https://api.deepgram.com/v1/speak?model=aura-2-arcas-en&encoding=mp3";
+    private const int BaiduSentenceLimit = 500;
     private static readonly TimeSpan BackupDelay = TimeSpan.FromSeconds(1.75);
     private static readonly TimeSpan SentenceTimeout = TimeSpan.FromSeconds(9);
     private const int CachedSentenceLimit = 32;
@@ -62,14 +62,14 @@ internal sealed class PronunciationClient : IDisposable
         using var requests = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
-            var primary = DownloadPrimarySentenceAsync(sentence, requests.Token);
+            var primary = DownloadDomesticSentenceAsync(sentence, requests.Token);
             var headStart = Task.Delay(BackupDelay, requests.Token);
             var first = await Task.WhenAny(primary, headStart).ConfigureAwait(false);
             if (first == primary && await primary.ConfigureAwait(false) is { } quickAudio)
                 return CacheSentence(sentence, quickAudio);
 
             cancellationToken.ThrowIfCancellationRequested();
-            var backup = DownloadHostedSentenceAsync(BackupVoice, sentence, requests.Token);
+            var backup = DownloadOverseasSentenceAsync(sentence, requests.Token);
             var winner = await Task.WhenAny(primary, backup).ConfigureAwait(false);
             var other = winner == primary ? backup : primary;
             var audio = await winner.ConfigureAwait(false) ?? await other.ConfigureAwait(false);
@@ -91,7 +91,14 @@ internal sealed class PronunciationClient : IDisposable
         return audio;
     }
 
-    private async Task<byte[]?> DownloadPrimarySentenceAsync(string sentence, CancellationToken cancellationToken)
+    private async Task<byte[]?> DownloadDomesticSentenceAsync(string sentence, CancellationToken cancellationToken)
+    {
+        if (sentence.Length > BaiduSentenceLimit) return null;
+        using var request = BaiduRequest(sentence, "en", speed: 3);
+        return await DownloadAudioAsync(request, TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<byte[]?> DownloadOverseasSentenceAsync(string sentence, CancellationToken cancellationToken)
     {
         var key = Environment.GetEnvironmentVariable("MEMOLEX_DEEPGRAM_API_KEY")?.Trim();
         if (key is { Length: > 0 and <= 256 } && key.All(character => character is > ' ' and < '\u007F'))

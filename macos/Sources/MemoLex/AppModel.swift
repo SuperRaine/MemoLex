@@ -287,7 +287,10 @@ enum EnglishAccent: String, CaseIterable {
     }
     func loadExamples(reset: Bool) async {
         if reset {
-            if loadingExampleIndex != nil { stopPronunciation() }
+            if loadingExampleIndex != nil {
+                stopPronunciation()
+                if status == "正在加载例句语音…" { status = "已取消例句朗读" }
+            }
             examplesVersion += 1; exampleOffset = 0; examples = []
         }
         let version = examplesVersion; let query = word; let paper = examplePaper
