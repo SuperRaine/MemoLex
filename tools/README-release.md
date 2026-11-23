@@ -20,7 +20,9 @@ GitHub Releases 只上传软件包。Windows 提供 `.msi` 和 `-Windows-x64.zip
 
 ## 同步 GitHub、夸克和软件主页
 
-从 2.0.0 开始，每次更新都发布三个平台软件包，版本只增加最后一位，如 2.0.1、2.0.2。先创建 GitHub 发布草稿并上传三个附件，再打开软件主页的 Sites 源码目录。使用发布电脑上已授权的夸克网盘官方工具：
+从 2.0.0 开始，每次更新都发布三个软件包，版本只增加最后一位，如 2.0.1、2.0.2。创建指向发布提交的 GitHub 草稿。可用 GitHub Actions 的「Build Windows release」和「Build macOS」从同一份已校验的离线数据构建三个附件并添加到草稿。
+
+确认三个附件已上传，再打开软件主页的 Sites 源码目录。使用发布电脑上已授权的夸克网盘官方工具：
 
 ```powershell
 python tools/publish_release.py v2.0.0 --quark-cli <quark-drive.cjs路径> --site work/sites/memolex --packages dist

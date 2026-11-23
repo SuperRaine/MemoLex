@@ -1,0 +1,96 @@
+name: Build Windows release
+on:
+  workflow_dispatch:
+    inputs:
+      portable_asset_id:
+        description: Verified Windows portable release asset with the offline dictionary
+        required: true
+        type: string
+      portable_sha256:
+        description: SHA-256 of the dictionary source archive
+        required: true
+        type: string
+      draft_tag:
+        description: Attach the Windows packages to this release draft
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: windows-release-${{ inputs.draft_tag }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      RELEASE_TAG: ${{ inputs.draft_tag }}
+      PORTABLE_ASSET_ID: ${{ inputs.portable_asset_id }}
+      PORTABLE_SHA256: ${{ inputs.portable_sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.416
+      - name: Verify release draft and get the offline dictionary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$' -or
+              $env:PORTABLE_ASSET_ID -notmatch '^[0-9]+$' -or
+              $env:PORTABLE_SHA256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid release inputs.' }
+          [xml]$project = Get-Content -LiteralPath src/MemoLex.csproj -Raw
+          if ('v' + $project.Project.PropertyGroup.Version -ne $env:RELEASE_TAG) { throw 'Version mismatch.' }
+          $draft = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,targetCommitish | ConvertFrom-Json
+          if (-not $draft.isDraft -or $draft.targetCommitish -ne $env:GITHUB_SHA) { throw 'Wrong release draft.' }
+          $archive = Join-Path $env:RUNNER_TEMP 'dictionary.zip'
+          gh api -H 'Accept: application/octet-stream' "repos/$env:GITHUB_REPOSITORY/releases/assets/$env:PORTABLE_ASSET_ID" > $archive
+          if ($LASTEXITCODE -ne 0 -or (Get-FileHash -LiteralPath $archive).Hash -ine $env:PORTABLE_SHA256) {
+            throw 'Dictionary archive hash mismatch.'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $env:RUNNER_TEMP 'dictionary')
+      - name: Build the portable app and installer
+        env:
+          MEMOLEX_DEEPL_KEY: ${{ secrets.MEMOLEX_DEEPL_KEY }}
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          $out = Join-Path $env:RUNNER_TEMP 'release'
+          $payload = Join-Path $out 'MemoLex'
+          $dictionary = Join-Path $env:RUNNER_TEMP 'dictionary/MemoLex/app/data'
+          $wix = Join-Path $env:RUNNER_TEMP 'wix'
+          $keyFile = Join-Path $env:RUNNER_TEMP 'memolex-translation.key'
+          if ([string]::IsNullOrWhiteSpace($env:MEMOLEX_DEEPL_KEY)) { throw 'The release translation key is missing.' }
+          [IO.File]::WriteAllText($keyFile, $env:MEMOLEX_DEEPL_KEY)
+          try {
+            ./tools/build_release.ps1 -DataDirectory $dictionary -OutputDirectory $payload -DeepLKeyFile $keyFile
+          } finally {
+            Remove-Item -LiteralPath $keyFile -Force
+          }
+          $versionInfo = (Get-Item -LiteralPath (Join-Path $payload 'app/MemoLex.exe')).VersionInfo.ProductVersion
+          if ($versionInfo -ne "$version+$env:GITHUB_SHA") { throw 'Wrong Windows source revision.' }
+          dotnet tool install wix --version 5.0.2 --tool-path $wix
+          if ($LASTEXITCODE -ne 0) { throw 'WiX install failed.' }
+          $wixCommand = Join-Path $wix 'wix.exe'
+          & $wixCommand extension add WixToolset.UI.wixext/5.0.2
+          if ($LASTEXITCODE -ne 0) { throw 'WiX extension install failed.' }
+          ./installer/build.ps1 -PayloadDirectory $payload -OutputFile (Join-Path $out "MemoLex-$version-Windows-x64-Setup.msi") -WixCommand $wixCommand
+          python ./tools/package_portable.py $payload (Join-Path $out "MemoLex-$version-Windows-x64.zip")
+          if ($LASTEXITCODE -ne 0) { throw 'Portable package failed.' }
+      - name: Attach and verify both Windows packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          $out = Join-Path $env:RUNNER_TEMP 'release'
+          $draft = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,targetCommitish | ConvertFrom-Json
+          if (-not $draft.isDraft -or $draft.targetCommitish -ne $env:GITHUB_SHA) { throw 'Wrong release draft.' }
+          $files = @("MemoLex-$version-Windows-x64-Setup.msi", "MemoLex-$version-Windows-x64.zip")
+          $paths = $files | ForEach-Object { Join-Path $out $_ }
+          gh release upload $env:RELEASE_TAG @paths --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Windows release upload failed.' }
+          $release = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json assets | ConvertFrom-Json
+          foreach ($name in $files) {
+            $checksum = (Get-FileHash -LiteralPath (Join-Path $out $name)).Hash.ToLowerInvariant()
+            $asset = $release.assets | Where-Object name -CEQ $name
+            if ($asset.digest -cne "sha256:$checksum") { throw "Asset digest mismatch for $name." }
+          }
