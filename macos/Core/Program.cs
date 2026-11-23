@@ -100,7 +100,7 @@ internal sealed class CoreService : IDisposable
     private readonly MaiMemoClient _api;
     private readonly ExampleSentenceClient _examples = new();
     private readonly TranslationClient _translation = new();
-    private readonly BaiduPronunciationClient _pronunciation = new();
+    private readonly PronunciationClient _pronunciation = new();
     private readonly OnlineDictionaryClient _onlineDictionary;
     private readonly Lazy<Task> _ready;
     private readonly object _accountGate = new();
@@ -142,6 +142,8 @@ internal sealed class CoreService : IDisposable
         }
         if (method == "translate")
             return await _translation.TranslateAsync(T(p, "text"), T(p, "direction", "en|zh-CN"), cancellation);
+        if (method == "examples.pronunciation")
+            return new { audio = await _pronunciation.DownloadSentenceAsync(T(p, "text"), cancellation) };
         if (method == "pronunciation")
         {
             var accent = T(p, "accent") switch

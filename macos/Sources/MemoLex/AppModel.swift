@@ -113,7 +113,6 @@ enum EnglishAccent: String, CaseIterable {
     private var stubbornTask: Task<Void, Never>?
     private var stubbornSnapshot: StubbornSnapshot?
     private var nextAccountCheck: Date?
-    private let speaker = AVSpeechSynthesizer()
     private var pronunciationTask: Task<Void, Never>?
     private var pronunciationPlayer: AVAudioPlayer?
 
@@ -298,45 +297,35 @@ enum EnglishAccent: String, CaseIterable {
         if version == examplesVersion { examplesLoading = false }
     }
     func speak(_ accent: EnglishAccent) {
-        let query = word
-        guard page == .word, !query.isEmpty else { return }
+        guard page == .word, !word.isEmpty else { return }
+        playSpeech(word, accent: accent)
+    }
+
+    func speakExample(_ text: String) {
+        guard page == .word, !text.trimmed.isEmpty else { return }
+        playSpeech(text, accent: .american, isSentence: true)
+    }
+
+    private func playSpeech(_ text: String, accent: EnglishAccent, isSentence: Bool = false) {
         stopPronunciation()
         let version = wordVersion
-        status = "正在加载发音…"
+        let label = isSentence ? "例句" : accent.label
+        let method = isSentence ? "examples.pronunciation" : "pronunciation"
+        let parameters: [String: J] = isSentence ? ["text": .string(text)] : ["word": .string(text), "accent": .string(accent.rawValue)]
+        status = isSentence ? "正在加载例句语音…" : "正在加载发音…"
         pronunciationTask = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
-            let result = try? await core.request("pronunciation", ["word": .string(query), "accent": .string(accent.rawValue)], timeout: 7)
-            guard !Task.isCancelled, page == .word, word == query, version == wordVersion else { return }
+            let result = try? await core.request(method, parameters, timeout: isSentence ? 12 : 7)
+            guard !Task.isCancelled, page == .word, version == wordVersion else { return }
             pronunciationTask = nil
             if let encoded = result?["audio"].text, !encoded.isEmpty, let audio = Data(base64Encoded: encoded),
                let player = try? AVAudioPlayer(data: audio), player.play() {
                 pronunciationPlayer = player
-                status = "正在播放\(accent.label)。"
-                return
+                status = "正在播放\(label)。"
+            } else {
+                status = "在线语音暂不可用，请稍后重试。"
             }
-            guard let voice = AVSpeechSynthesisVoice(language: accent.rawValue), voice.language == accent.rawValue else {
-                status = "暂时无法播放\(accent.label)。"
-                return
-            }
-            let utterance = AVSpeechUtterance(string: query)
-            utterance.voice = voice
-            utterance.rate = 0.42
-            speaker.speak(utterance)
-            status = "系统发音 · \(accent.label)"
         }
-    }
-    func speakExample(_ text: String) {
-        guard !text.trimmed.isEmpty else { return }
-        stopPronunciation()
-        guard let voice = AVSpeechSynthesisVoice(language: "en-US") ?? AVSpeechSynthesisVoice(language: "en-GB") else {
-            status = "暂时无法朗读例句。"
-            return
-        }
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = voice
-        utterance.rate = 0.46
-        speaker.speak(utterance)
-        status = "正在朗读例句。"
     }
 
     func stopPronunciation() {
@@ -344,7 +333,6 @@ enum EnglishAccent: String, CaseIterable {
         pronunciationTask = nil
         pronunciationPlayer?.stop()
         pronunciationPlayer = nil
-        speaker.stopSpeaking(at: .immediate)
     }
     func enterTranslation() {
         stopPronunciation()

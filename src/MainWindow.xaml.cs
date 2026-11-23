@@ -381,7 +381,7 @@ public partial class MainWindow : Window
         var heading = new DockPanel { Margin = new Thickness(0, 0, 0, 9) };
         var speak = new Button { Content = "朗读", ToolTip = "朗读整条例句", FontSize = 11,
             Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(10, 0, 0, 0) };
-        speak.Click += (_, _) => SpeakExample(sentence.English);
+        speak.Click += async (_, _) => await SpeakExampleAsync(sentence.English);
         DockPanel.SetDock(speak, Dock.Right);
         heading.Children.Add(speak);
         heading.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(sentence.Source) ? "真题来源未提供" : sentence.Source,
