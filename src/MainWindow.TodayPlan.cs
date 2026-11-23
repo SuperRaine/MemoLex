@@ -63,7 +63,7 @@ public partial class MainWindow
         var searchBar = new DockPanel { Margin = new Thickness(0, 0, 0, 9) };
         var conceal = new CheckBox
         {
-            Content = "遮住释义", Style = (Style)FindResource("SwitchCheckBox"),
+            Content = "遮住释义",
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0)
         };
         DockPanel.SetDock(conceal, Dock.Right); searchBar.Children.Add(conceal);

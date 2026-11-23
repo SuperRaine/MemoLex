@@ -45,7 +45,7 @@ struct TodayStudyView: View {
                 segments(["待学词汇", "加入新学"], selection: $page)
                 HStack(spacing: 12) {
                     TextField("搜索单词或释义", text: page == 0 ? $dueSearch : $candidateSearch).inputFrame()
-                    Toggle("遮住释义", isOn: $conceal).toggleStyle(.switch).controlSize(.small)
+                    Toggle("遮住释义", isOn: $conceal).toggleStyle(.checkbox)
                 }
                 Group {
                     if page == 0 { duePage } else { selectionPage }

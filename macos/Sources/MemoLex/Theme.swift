@@ -36,7 +36,7 @@ struct LookupButtonStyle: ButtonStyle {
         return configuration.label
             .font(.system(size: small ? 11 : 12, weight: primary ? .semibold : .regular))
             .lineLimit(1)
-            .padding(.horizontal, primary ? 15 : 10)
+            .padding(.horizontal, primary ? 15 : small && expands ? 6 : 10)
             .frame(maxWidth: expands ? .infinity : nil)
             .frame(width: fixedWidth, height: small ? 27 : 34)
             .foregroundStyle(primary ? Palette.accentInk : Palette.deep)
