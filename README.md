@@ -2,7 +2,7 @@
 
 适用于 Windows 和 Mac 的桌面英汉词典，支持离线查词、助记、真题例句和翻译。
 
-[软件主页](https://memolex.de5.net/) · [夸克下载](https://memolex.de5.net/quark.html) · [GitHub 下载](https://github.com/SuperRaine/MemoLex/releases/latest)
+[软件主页](https://memolex.de5.net/) · [备用站](https://memolex.kicp.fun/) · [夸克下载](https://memolex.kicp.fun/quark.html) · [GitHub 下载](https://github.com/SuperRaine/MemoLex/releases/latest)
 
 ## 主要功能
 
