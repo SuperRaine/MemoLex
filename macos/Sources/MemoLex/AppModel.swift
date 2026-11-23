@@ -315,7 +315,7 @@ enum EnglishAccent: String, CaseIterable {
         status = isSentence ? "正在加载例句语音…" : "正在加载发音…"
         pronunciationTask = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
-            let result = try? await core.request(method, parameters, timeout: isSentence ? 12 : 7)
+            let result = try? await core.request(method, parameters, timeout: isSentence ? 19 : 7)
             guard !Task.isCancelled, page == .word, version == wordVersion else { return }
             pronunciationTask = nil
             if let encoded = result?["audio"].text, !encoded.isEmpty, let audio = Data(base64Encoded: encoded),

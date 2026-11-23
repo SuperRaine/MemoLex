@@ -12,17 +12,13 @@ public sealed class DictionaryEntry
     private static readonly Regex ListPartOfSpeech = new(
         $@"^{PartOfSpeech}(?:(?:\s*[/&,]\s*|\s+){PartOfSpeech})*(?![a-z])",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex PartOfSpeechSeparators = new(@"\s*[/&,]\s*|\s+");
     private static readonly Regex MeaningWhitespace = new(@"\s+");
-    private const string OmissionMarks = @"(?:\.{2,}|．{2,}|[…⋯]+)";
-    private static readonly Regex OmittedText = new(OmissionMarks, RegexOptions.CultureInvariant);
-    private static readonly Regex OmittedObject = new(
-        $@"(?:^|(?<=[，,、：:]))\s*(?<lead>[与同和跟对给向把将使以由])\s*(?:（\s*|\(\s*)?{OmissionMarks}(?:\s*[）)])?\s*(?:[：:]\s*)?(?=[\u3400-\u9fff])",
-        RegexOptions.CultureInvariant);
-    // Keep punctuation that spells an English word or represents part of a number.
-    private static readonly Regex MeaningPunctuation = new(
-        @"(?<token>(?<=[a-z])['’.-](?=[a-z])|(?<=\d)[,./:](?=\d)|(?<=\d)%)|(?<separator>[,，、.。．:：/／!?！？])|(?<label>[\[\]［］【】·])|\p{P}",
+    // Preserve lexical periods, decimal points and omission marks while removing full stops from the gloss.
+    private static readonly Regex GlossPeriods = new(
+        @"(?<ellipsis>\.{2,}|．{2,})|(?<keep>(?<=[a-z])\.(?=[a-z])|(?<=\d)[.．](?=\d)|(?<=[a-z]\.[a-z])\.|\b(?:etc|vs|cf|sb|sth|no|mr|mrs|ms|dr|sr|jr)\.(?![a-z]))|[.．。]",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex DuplicateColons = new(@"([：:])(?:\s*[：:])+", RegexOptions.CultureInvariant);
+    private static readonly char[] StraySeparators = [' ', '\t', '：', ':', '，', ',', '、'];
 
     private string _translation = "";
     public string word { get; set; } = "";
@@ -65,17 +61,19 @@ public sealed class DictionaryEntry
         foreach (var sense in senses)
         {
             var label = ListPartOfSpeech.Match(sense);
-            if (label.Success) partOfSpeech = PartOfSpeechSeparators.Replace(label.Value, " ");
-            var textWithObjects = OmittedObject.Replace(sense[label.Length..], RestoreOmittedObject);
-            var text = MeaningPunctuation.Replace(OmittedText.Replace(textWithObjects, ""), match =>
+            if (label.Success) partOfSpeech = MeaningWhitespace.Replace(label.Value, " ");
+            var gloss = sense[label.Length..];
+            var text = GlossPeriods.Replace(gloss, match =>
             {
-                if (match.Groups["token"].Success) return match.Value;
-                if (match.Groups["separator"].Success) return "；";
-                return match.Groups["label"].Success ? " " : "";
+                if (match.Groups["keep"].Success) return match.Value;
+                if (match.Groups["ellipsis"].Success) return "…";
+                var before = match.Index - 1;
+                var after = match.Index + match.Length;
+                return before >= 0 && after < gloss.Length &&
+                    char.IsLetterOrDigit(gloss[before]) && char.IsLetterOrDigit(gloss[after]) ? " " : "";
             });
-            var meanings = MeaningWhitespace.Replace(text, " ")
-                .Split('；', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (meanings.Length == 0) continue;
+            var meaning = DuplicateColons.Replace(MeaningWhitespace.Replace(text, " "), "$1").Trim(StraySeparators);
+            if (meaning.Length == 0) continue;
 
             if (!string.Equals(partOfSpeech, displayedPartOfSpeech, StringComparison.OrdinalIgnoreCase))
             {
@@ -84,24 +82,10 @@ public sealed class DictionaryEntry
                 displayedPartOfSpeech = partOfSpeech;
             }
             else if (result.Length > 0) result.Append('；');
-            result.AppendJoin('；', meanings);
+            result.Append(meaning);
         }
         return result.ToString();
     }
-
-    private static string RestoreOmittedObject(Match match) => match.Groups["lead"].Value switch
-    {
-        "与" or "同" or "跟" or "和" => "与之",
-        "对" => "对其",
-        "给" => "给其",
-        "向" => "向其",
-        "把" => "把它",
-        "将" => "将其",
-        "使" => "使其",
-        "以" => "以此",
-        "由" => "由其",
-        _ => match.Value
-    };
 
     public string pos { get; set; } = "";
     public string collins { get; set; } = "";
