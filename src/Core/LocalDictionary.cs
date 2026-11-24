@@ -108,6 +108,7 @@ public sealed class DictionaryEntry
 public sealed class LocalDictionary : IDisposable
 {
     private readonly Dictionary<string, (long Offset, int Length)> _entries = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _frequencyRanks = new(StringComparer.OrdinalIgnoreCase);
     private string[] _keys = [];
     private readonly List<string> _sourceWords=[];
     private FileStream? _data;
@@ -122,18 +123,31 @@ public sealed class LocalDictionary : IDisposable
     {
         if(_data!=null)return;
         var directory = _directory;
+        var dataPath = Path.Combine(directory, "dictionary.data");
+        using var frequencyData = new FileStream(dataPath, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: 65536, FileOptions.SequentialScan);
+        var dataLength = frequencyData.Length;
+        var record = new byte[1024];
         foreach (var line in File.ReadLines(Path.Combine(directory, "dictionary.index.tsv")))
         {
             var parts = line.Split('\t');
             if (parts.Length == 3 && long.TryParse(parts[1], CultureInfo.InvariantCulture, out var offset)
                 && int.TryParse(parts[2], CultureInfo.InvariantCulture, out var length))
             {
-                _entries.TryAdd(parts[0], (offset, length));
-                _sourceWords.Add(parts[0]);
+                var word = parts[0];
+                _sourceWords.Add(word);
+                if (!_entries.TryAdd(word, (offset, length)) || offset < 0 || length <= 0 || offset > dataLength - length)
+                    continue;
+                if (record.Length < length) Array.Resize(ref record, length);
+                if (frequencyData.Position != offset) frequencyData.Position = offset;
+                var entry = record.AsSpan(0, length);
+                frequencyData.ReadExactly(entry);
+                var rank = ReadFrequencyRank(entry);
+                if (rank != int.MaxValue) _frequencyRanks.Add(word, rank);
             }
         }
         _keys = _entries.Keys.Order(StringComparer.OrdinalIgnoreCase).ToArray();
-        _data = new FileStream(Path.Combine(directory, "dictionary.data"), FileMode.Open, FileAccess.Read, FileShare.Read);
+        _data = new FileStream(dataPath, FileMode.Open, FileAccess.Read, FileShare.Read);
     });
 
     public DictionaryEntry? Lookup(string word)
@@ -154,16 +168,44 @@ public sealed class LocalDictionary : IDisposable
     public IReadOnlyList<string> Suggest(string prefix, int count = 20)
     {
         prefix = prefix.Trim();
-        if (prefix.Length == 0 || _keys.Length == 0) return Array.Empty<string>();
+        if (prefix.Length == 0 || count <= 0 || _keys.Length == 0) return Array.Empty<string>();
         var index = Array.BinarySearch(_keys, prefix, StringComparer.OrdinalIgnoreCase);
         if (index < 0) index = ~index;
-        var result = new List<string>();
-        for (; index < _keys.Length && result.Count < count; index++)
+        var end = index;
+        while (end < _keys.Length && _keys[end].StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) end++;
+
+        // The keys already supply the alphabetical tie-break for equal or missing ranks.
+        return _keys.Skip(index).Take(end - index)
+            .OrderBy(word => word.Length != prefix.Length)
+            .ThenBy(word => word.Any(character => !char.IsLetterOrDigit(character) && character is not ('-' or '\'' or '\u2019')))
+            .ThenBy(word => _frequencyRanks.GetValueOrDefault(word, int.MaxValue))
+            .Take(count).ToArray();
+    }
+
+    private static int ReadFrequencyRank(ReadOnlySpan<byte> entry)
+    {
+        var rank = int.MaxValue;
+        try
         {
-            if (!_keys[index].StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) break;
-            result.Add(_keys[index]);
+            var reader = new Utf8JsonReader(entry);
+            while (reader.Read())
+            {
+                if (reader.TokenType != JsonTokenType.PropertyName || reader.CurrentDepth != 1) continue;
+                var isFrequency = reader.ValueTextEquals("bnc"u8) || reader.ValueTextEquals("frq"u8);
+                if (!reader.Read()) break;
+                if (isFrequency)
+                {
+                    var value = 0;
+                    var valid = reader.TokenType == JsonTokenType.String
+                        ? int.TryParse(reader.ValueSpan, NumberStyles.Integer, CultureInfo.InvariantCulture, out value)
+                        : reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out value);
+                    if (valid && value > 0) rank = Math.Min(rank, value);
+                }
+                reader.Skip();
+            }
         }
-        return result;
+        catch (JsonException) { }
+        return rank;
     }
     public void Dispose() => _data?.Dispose();
 }

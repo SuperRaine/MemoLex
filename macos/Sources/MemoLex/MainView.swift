@@ -108,30 +108,36 @@ struct MainView: View {
                     }.tourTarget("today-plan")
                 }.buttonStyle(LookupButtonStyle(small: true, expands: true))
             }
-            VStack(alignment: .leading, spacing: 7) {
-                Text("单词建议").sectionLabel()
-                ScrollView { LazyVStack(alignment: .leading, spacing: 1) {
-                    ForEach(model.suggestions, id: \.self) { word in
-                        Button { model.lookup(word) } label: { Text(word).font(.system(size: 14)).lineLimit(1) }
-                            .buttonStyle(SidebarRowStyle(selected: word == model.word))
+            VSplitView {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("单词建议").sectionLabel()
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 1) {
+                            ForEach(model.suggestions, id: \.self) { word in
+                                Button { model.lookup(word) } label: { Text(word).font(.system(size: 14)).lineLimit(1) }
+                                    .buttonStyle(SidebarRowStyle(selected: word == model.word))
+                            }
+                        }.background(SidebarWheelPaging())
                     }
-                } }.frame(minHeight: 38)
-            }.frame(maxHeight: .infinity)
-            VStack(alignment: .leading, spacing: 7) {
-                HStack { Text("最近查词").sectionLabel(); Spacer(); Button("全部 \(model.history.count) 条") { model.sheet = .history }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(Palette.deep) }
-                ScrollView { LazyVStack(alignment: .leading, spacing: 1) {
-                    if model.history.isEmpty { Text("查过的单词会出现在这里").font(.system(size: 11)).foregroundStyle(Palette.muted).padding(9) }
-                    ForEach(model.history.prefix(60)) { record in
-                        Button { model.lookup(record.word) } label: {
-                            HStack {
-                                Text(record.word).lineLimit(1)
-                                Spacer()
-                                Image(systemName: "arrow.right").font(.system(size: 9)).foregroundStyle(Palette.muted)
-                            }.font(.system(size: 14)).contentShape(Rectangle())
-                        }.buttonStyle(SidebarRowStyle(selected: record.word == model.word))
+                }.frame(minHeight: 60, maxHeight: .infinity)
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack { Text("最近查词").sectionLabel(); Spacer(); Button("全部 \(model.history.count) 条") { model.sheet = .history }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(Palette.deep) }
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 1) {
+                            if model.history.isEmpty { Text("查过的单词会出现在这里").font(.system(size: 11)).foregroundStyle(Palette.muted).padding(9) }
+                            ForEach(model.history.prefix(60)) { record in
+                                Button { model.lookup(record.word) } label: {
+                                    HStack {
+                                        Text(record.word).lineLimit(1)
+                                        Spacer()
+                                        Image(systemName: "arrow.right").font(.system(size: 9)).foregroundStyle(Palette.muted)
+                                    }.font(.system(size: 14)).contentShape(Rectangle())
+                                }.buttonStyle(SidebarRowStyle(selected: record.word == model.word))
+                            }
+                        }.background(SidebarWheelPaging())
                     }
-                } }.frame(minHeight: 38)
-            }.frame(maxHeight: .infinity)
+                }.frame(minHeight: 60, maxHeight: .infinity)
+            }
             cloudCard(short: short).tourTarget("cloud")
         }.padding(.horizontal, compact ? 14 : 17).padding(.vertical, short ? 9 : 15).background(Palette.sidebar)
     }
@@ -149,6 +155,48 @@ struct MainView: View {
         Binding(get: { model.preferences.selectedNotepad }, set: { id in
             Task<Void, Never> { await model.selectNotepad(id) }
         })
+    }
+}
+
+private struct SidebarWheelPaging: NSViewRepresentable {
+    func makeNSView(context: Context) -> PagingView { PagingView() }
+    func updateNSView(_ view: PagingView, context: Context) {}
+    static func dismantleNSView(_ view: PagingView, coordinator: ()) { view.removeMonitor() }
+
+    final class PagingView: NSView {
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            removeMonitor()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                self?.page(event) == true ? nil : event
+            }
+        }
+
+        func removeMonitor() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+
+        private func page(_ event: NSEvent) -> Bool {
+            guard !event.hasPreciseScrollingDeltas, event.window === window, event.scrollingDeltaY != 0,
+                  abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX),
+                  let scroll = enclosingScrollView, let document = scroll.documentView else { return false }
+            let clip = scroll.contentView
+            let stride = SidebarRowStyle.height + 1
+            let height = clip.bounds.height
+            let rows = max(1, Int((height + 1) / stride))
+            guard height > 0, rows <= 2, document.frame.height > height,
+                  clip.bounds.contains(clip.convert(event.locationInWindow, from: nil)) else { return false }
+            let direction: CGFloat = event.scrollingDeltaY > 0 ? -1 : 1
+            var target = clip.bounds
+            target.origin.y += CGFloat(rows) * stride * direction * (clip.isFlipped ? 1 : -1)
+            clip.scroll(to: clip.constrainBoundsRect(target).origin)
+            scroll.reflectScrolledClipView(clip)
+            return true
+        }
     }
 }
 

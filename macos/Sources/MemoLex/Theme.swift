@@ -188,11 +188,12 @@ private struct DropdownOptions<Value: Hashable>: ViewModifier {
 }
 
 struct SidebarRowStyle: ButtonStyle {
+    static let height: CGFloat = 33
     var selected = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(minHeight: 33)
+            .frame(minHeight: Self.height)
             .padding(.horizontal, 9)
             .background(selected || configuration.isPressed ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 8))
             .contentShape(Rectangle())
