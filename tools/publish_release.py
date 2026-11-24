@@ -195,11 +195,12 @@ def quark_release_directories(quark, version):
     return root, latest, history, quark.folder(version, latest)
 
 
-def archive_quark_versions(quark, root, latest, history, version):
-    def version_key(name):
-        match = VERSION_TAG.fullmatch("v" + name)
-        return tuple(map(int, match.groups())) if match else None
+def version_key(name):
+    match = VERSION_TAG.fullmatch("v" + name)
+    return tuple(map(int, match.groups())) if match else None
 
+
+def archive_quark_versions(quark, root, latest, history, version):
     current = version_key(version)
     older = []
     history_names = {item["filename"] for item in quark.contents(history)}
@@ -240,7 +241,15 @@ def write_json(path, value):
 
 
 def prepare_site(site, node, version, share_url):
-    write_json(site / "release.json", {"version": version, "quarkUrl": share_url})
+    metadata_path = site / "release.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
+    previous = metadata["version"]
+    archive = set(metadata.get("archiveVersions", []))
+    if (2, 0, 0) <= version_key(previous) < version_key(version):
+        archive.add(previous)
+    metadata.update(version=version, quarkUrl=share_url,
+                    archiveVersions=sorted(archive, key=version_key, reverse=True))
+    write_json(metadata_path, metadata)
     result = run([node, "build.mjs"], directory=site)
     if result.returncode:
         raise RuntimeError("软件主页生成失败，请检查 Sites 源码后重试。\n" + result.stderr)
