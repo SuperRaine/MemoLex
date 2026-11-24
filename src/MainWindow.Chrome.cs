@@ -9,8 +9,18 @@ namespace MemoLex;
 public partial class MainWindow
 {
     private bool? _compactLayout;
+    private bool? _shortLayout;
     private void UpdateResponsiveLayout(Size size)
     {
+        var shortWindow = size.Height < 620;
+        if (_shortLayout != shortWindow)
+        {
+            _shortLayout = shortWindow;
+            SidebarLayout.Margin = new Thickness(19, shortWindow ? 8 : 11, 19, shortWindow ? 8 : 11);
+            SearchHeadingRow.Margin = new Thickness(1, 0, 1, shortWindow ? 6 : 12);
+            CloudNotepadCard.Margin = new Thickness(0, shortWindow ? 6 : 12, 0, 0);
+        }
+
         var compact=size.Width<950;
         if(_compactLayout!=compact)
         {

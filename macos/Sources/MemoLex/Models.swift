@@ -48,6 +48,7 @@ enum Palette {
     static let control = adaptive(0xFFFFFF, 0x263542)
     static let wash = adaptive(0xE8F7FF, 0x17394D)
     static let border = adaptive(0xE2EAF2, 0x344759)
+    static let splitGrip = adaptive(0xCCDDEB, 0x50677B)
 
     private static func adaptive(_ light: UInt32, _ dark: UInt32) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
@@ -177,7 +178,7 @@ struct NativeShortcut: Codable, Equatable {
 enum AppPaths {
     static let profile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MemoLex", isDirectory: true)
     static var resources: URL { Bundle.main.resourceURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath) }
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.1.3" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.1.4" }
     static let repository = "https://github.com/SuperRaine/MemoLex"
     static let homepage = "https://memolex.de5.net/"
     static let quarkDownload = homepage + "quark.html"

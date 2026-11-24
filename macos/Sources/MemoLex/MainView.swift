@@ -108,7 +108,7 @@ struct MainView: View {
                     }.tourTarget("today-plan")
                 }.buttonStyle(LookupButtonStyle(small: true, expands: true))
             }
-            VSplitView {
+            SidebarSplit {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("单词建议").sectionLabel()
                     ScrollView {
@@ -119,7 +119,8 @@ struct MainView: View {
                             }
                         }.background(SidebarWheelPaging())
                     }
-                }.frame(minHeight: 60, maxHeight: .infinity)
+                }
+            } bottom: {
                 VStack(alignment: .leading, spacing: 7) {
                     HStack { Text("最近查词").sectionLabel(); Spacer(); Button("全部 \(model.history.count) 条") { model.sheet = .history }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(Palette.deep) }
                     ScrollView {
@@ -136,7 +137,7 @@ struct MainView: View {
                             }
                         }.background(SidebarWheelPaging())
                     }
-                }.frame(minHeight: 60, maxHeight: .infinity)
+                }
             }
             cloudCard(short: short).tourTarget("cloud")
         }.padding(.horizontal, compact ? 14 : 17).padding(.vertical, short ? 9 : 15).background(Palette.sidebar)
@@ -155,6 +156,65 @@ struct MainView: View {
         Binding(get: { model.preferences.selectedNotepad }, set: { id in
             Task<Void, Never> { await model.selectNotepad(id) }
         })
+    }
+}
+
+private struct SidebarSplit<Top: View, Bottom: View>: View {
+    private let top: Top
+    private let bottom: Bottom
+    @State private var topShare: CGFloat = 0.5
+    @State private var hovered = false
+    @GestureState private var dragOffset: CGFloat = 0
+
+    private let gripHeight: CGFloat = 20
+    private let minimumPaneHeight = SidebarRowStyle.height + 24
+
+    init(@ViewBuilder top: () -> Top, @ViewBuilder bottom: () -> Bottom) {
+        self.top = top()
+        self.bottom = bottom()
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let available = max(2 * minimumPaneHeight, geometry.size.height - gripHeight)
+            let start = boundedHeight(topShare * available, available: available)
+            let topHeight = boundedHeight(start + dragOffset, available: available)
+
+            VStack(spacing: 0) {
+                top.frame(height: topHeight, alignment: .top).clipped()
+                Capsule()
+                    .fill(hovered || dragOffset != 0 ? Palette.deep : Palette.splitGrip)
+                    .frame(width: 30, height: 3)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: gripHeight)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        hovered = inside
+                        (inside ? NSCursor.resizeUpDown : NSCursor.arrow).set()
+                    }
+                    .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("sidebarSplit"))
+                        .updating($dragOffset) { drag, offset, _ in offset = drag.translation.height }
+                        .onEnded { drag in
+                            topShare = boundedHeight(start + drag.translation.height, available: available) / available
+                        })
+                    .accessibilityLabel("调整单词建议和最近查词的高度")
+                    .accessibilityValue("\(Int(100 * topHeight / available))%")
+                    .accessibilityAdjustableAction { direction in
+                        switch direction {
+                        case .increment: topShare = boundedHeight(start + 20, available: available) / available
+                        case .decrement: topShare = boundedHeight(start - 20, available: available) / available
+                        @unknown default: break
+                        }
+                    }
+                bottom.frame(height: available - topHeight, alignment: .top).clipped()
+            }
+            .coordinateSpace(name: "sidebarSplit")
+        }
+        .frame(minHeight: 2 * minimumPaneHeight + gripHeight)
+    }
+
+    private func boundedHeight(_ height: CGFloat, available: CGFloat) -> CGFloat {
+        min(max(height, minimumPaneHeight), available - minimumPaneHeight)
     }
 }
 
