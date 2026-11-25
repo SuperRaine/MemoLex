@@ -6,6 +6,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using MemoLex.Core;
@@ -20,58 +21,152 @@ internal static class StubbornFlashcards
     {
         var practice = new FlashcardPractice(words);
         var dialog = InputDialog.Shell(owner, "顽固单词 · 卡片自测", out var body);
-        dialog.Width = 570;
+        dialog.Width = 580;
+
         var progress = InputDialog.Text("");
+        progress.FontWeight = FontWeights.SemiBold;
+        progress.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0x6A, 0x82));
         body.Children.Add(progress);
+
+        var progressTrack = new Border
+        {
+            Height = 6,
+            CornerRadius = new CornerRadius(3),
+            Background = new SolidColorBrush(Color.FromRgb(0xE2, 0xF0, 0xFA)),
+            Margin = new Thickness(0, 8, 0, 2),
+            ClipToBounds = true
+        };
+        var progressFill = new Border
+        {
+            Height = 6,
+            Width = 0,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            CornerRadius = new CornerRadius(3),
+            Background = new LinearGradientBrush(
+                Color.FromRgb(0x36, 0xBE, 0xFA),
+                Color.FromRgb(0x0E, 0x86, 0xC2),
+                new Point(0, 0), new Point(1, 0))
+        };
+        progressTrack.Child = progressFill;
+        body.Children.Add(progressTrack);
+
         var face = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var cardBg = new LinearGradientBrush(
+            Color.FromRgb(0xFF, 0xFF, 0xFF),
+            Color.FromRgb(0xF1, 0xF9, 0xFF),
+            new Point(0, 0), new Point(1, 1));
         var card = new Button
         {
             Content = new ScrollViewer
             {
-                Content = face, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, MaxHeight = 193, Focusable = false
+                Content = face,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                MaxHeight = 200,
+                Focusable = false
             },
-            MinHeight = 244, HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Center, Padding = new Thickness(22, 13, 22, 13)
+            Background = cardBg,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xC5, 0xE2, 0xF6)),
+            MinHeight = 250,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(24, 15, 24, 15),
+            Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 5, Opacity = 0.08, Color = Color.FromRgb(0x10, 0x42, 0x66) }
         };
-        var stage = new Grid{Margin=new Thickness(0,12,0,12),ClipToBounds=true};
+
+        var stackBack2 = new Border
+        {
+            CornerRadius = new CornerRadius(11),
+            Background = new SolidColorBrush(Color.FromRgb(0xF5, 0xFA, 0xFF)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xDF, 0xEE, 0xF8)),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(22, 14, 22, -10),
+            Opacity = 0.65,
+            IsHitTestVisible = false
+        };
+        var stackBack1 = new Border
+        {
+            CornerRadius = new CornerRadius(11),
+            Background = new SolidColorBrush(Color.FromRgb(0xF8, 0xFC, 0xFF)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD3, 0xE8, 0xF7)),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(11, 7, 11, -5),
+            Opacity = 0.88,
+            IsHitTestVisible = false
+        };
+
+        var stage = new Grid { Margin = new Thickness(0, 12, 0, 18), ClipToBounds = false };
+        stage.Children.Add(stackBack2);
+        stage.Children.Add(stackBack1);
         stage.Children.Add(card);
+
         var turn = new AxisAngleRotation3D(new Vector3D(0, 1, 0), 0);
         var image = new ImageBrush();
         var surface = new MeshGeometry3D
         {
-            TriangleIndices = new Int32Collection([0,1,2,0,2,3]),
-            TextureCoordinates = new PointCollection([new(0,1),new(1,1),new(1,0),new(0,0)])
+            TriangleIndices = new Int32Collection([0, 1, 2, 0, 2, 3]),
+            TextureCoordinates = new PointCollection([new(0, 1), new(1, 1), new(1, 0), new(0, 0)])
         };
         var viewport = new Viewport3D
         {
-            Camera = new PerspectiveCamera(new Point3D(0,0,2.42),new Vector3D(0,0,-1),new Vector3D(0,1,0),45),
-            IsHitTestVisible = false, Visibility = Visibility.Hidden
+            Camera = new PerspectiveCamera(new Point3D(0, 0, 2.42), new Vector3D(0, 0, -1), new Vector3D(0, 1, 0), 45),
+            IsHitTestVisible = false,
+            Visibility = Visibility.Hidden
         };
         viewport.Children.Add(new ModelVisual3D
         {
-            Content=new GeometryModel3D(surface,new EmissiveMaterial(image)){ Transform=new RotateTransform3D(turn) }
+            Content = new GeometryModel3D(surface, new EmissiveMaterial(image)) { Transform = new RotateTransform3D(turn) }
         });
         stage.Children.Add(viewport);
         body.Children.Add(stage);
-        var actions = new UniformGrid { Rows = 1 };
-        body.Children.Add(actions);
-        Button Action(string label)
+
+        var actionSlot = new Grid { MinHeight = 38 };
+        var preFlipHint = new Border
         {
-            var button = new Button { Content = label, Margin = new Thickness(3, 0, 3, 0) };
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(14, 6, 14, 6),
+            CornerRadius = new CornerRadius(14),
+            Background = new SolidColorBrush(Color.FromRgb(0xF2, 0xF9, 0xFF)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xCE, 0xE6, 0xF7)),
+            BorderThickness = new Thickness(1),
+            Child = new TextBlock
+            {
+                Text = "先点击卡片翻面核对释义（空格键），再选择掌握程度",
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x5E, 0x7D, 0x94))
+            }
+        };
+        var actions = new UniformGrid { Rows = 1, Visibility = Visibility.Collapsed };
+        Button Action(string label, string? styleKey = null)
+        {
+            var button = new Button { Content = label, Margin = new Thickness(4, 0, 4, 0), Padding = new Thickness(12, 9, 12, 9) };
+            if (styleKey != null && Application.Current.TryFindResource(styleKey) is Style style)
+                button.Style = style;
             actions.Children.Add(button);
             return button;
         }
-        var known = Action("认识");
-        known.Style = (Style)Application.Current.FindResource("AccentButton");
-        var vague = Action("模糊");
-        var forgotten = Action("忘记");
-        var flipCard = Action("翻转卡片");
-        var next = new Button { HorizontalAlignment = HorizontalAlignment.Right };
+        var known = Action("认识", "KnownButton");
+        var vague = Action("模糊", "VagueButton");
+        var forgotten = Action("忘记", "ForgottenButton");
+        var flipCard = new Button
+        {
+            Content = "翻转卡片",
+            Visibility = Visibility.Collapsed,
+            Focusable = false
+        };
+        actionSlot.Children.Add(preFlipHint);
+        actionSlot.Children.Add(actions);
+        actionSlot.Children.Add(flipCard);
+        body.Children.Add(actionSlot);
+
+        var next = new Button { HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.FindResource("AccentButton") };
         body.Children.Add(next);
-        var hint = InputDialog.Text("练习结果仅记录在本组自测中");
-        hint.Margin = new Thickness(0, 9, 0, 0);
+        var hint = InputDialog.Text("快捷键：空格翻卡 · 1 认识 · 2 模糊 · 3 忘记（练习结果仅记录在本组自测中）");
+        hint.FontSize = 11;
+        hint.Margin = new Thickness(0, 10, 0, 0);
         body.Children.Add(hint);
+
         dialog.RegisterName("Flashcard", card);
         dialog.RegisterName("FlashcardProgress", progress);
         dialog.RegisterName("FlashcardKnown", known);
@@ -79,70 +174,140 @@ internal static class StubbornFlashcards
         dialog.RegisterName("FlashcardForgotten", forgotten);
         dialog.RegisterName("FlashcardFlipButton", flipCard);
         dialog.RegisterName("FlashcardNextGroup", next);
+
         var revealed = false;
         var flipping = false;
+        var swiping = false;
         DictionaryEntry? entry = null;
 
-        void Render()
+        void UpdateProgressBar()
+        {
+            if (progressTrack.ActualWidth <= 0) return;
+            var total = Math.Max(1, practice.GroupWordCount);
+            var ratio = Math.Clamp((double)(total - practice.Remaining) / total, 0, 1);
+            UiMotion.AnimateWidth(progressFill, progressTrack.ActualWidth * ratio, 280);
+        }
+        progressTrack.SizeChanged += (_, _) => UpdateProgressBar();
+
+        void Render(bool animateActions = false)
         {
             var word = practice.Current;
             progress.Text = $"第 {practice.GroupNumber} / {practice.GroupCount} 组 · 剩余 {practice.Remaining} / {practice.GroupWordCount} 词";
-            actions.Visibility = word == null ? Visibility.Collapsed : Visibility.Visible;
-            foreach (var button in new[] { known, vague, forgotten }) button.IsEnabled = word != null && revealed;
+            UpdateProgressBar();
+
+            var showRating = word != null && revealed;
+            actions.Visibility = showRating ? Visibility.Visible : Visibility.Collapsed;
+            preFlipHint.Visibility = word != null && !revealed ? Visibility.Visible : Visibility.Collapsed;
+            stackBack1.Visibility = word != null && practice.Remaining > 1 ? Visibility.Visible : Visibility.Collapsed;
+            stackBack2.Visibility = word != null && practice.Remaining > 2 ? Visibility.Visible : Visibility.Collapsed;
+            if (showRating && animateActions)
+                UiMotion.Reveal(actions, distance: 6);
+
+            foreach (var button in new[] { known, vague, forgotten }) button.IsEnabled = showRating;
             flipCard.Content = revealed ? "翻回单词" : "翻转卡片";
             next.Visibility = word == null ? Visibility.Visible : Visibility.Collapsed;
             next.Content = practice.HasNextGroup ? "下一组" : "完成";
             card.IsHitTestVisible = card.Focusable = word != null;
             AutomationProperties.SetName(card, word == null ? "本组已完成" : revealed ? $"{word}，点击隐藏释义" : $"{word}，点击查看释义");
+
             face.Children.Clear();
             face.Children.Add(new TextBlock
             {
                 Text = word ?? (practice.HasNextGroup ? "本组已完成" : "全部练习完成"),
-                FontSize = word == null ? 25 : 32, FontWeight = FontWeights.SemiBold,
-                TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap
+                FontSize = word == null ? 25 : 34,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x13, 0x30, 0x45)),
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap
             });
             if (word == null) return;
             if (!string.IsNullOrWhiteSpace(entry?.phonetic))
             {
                 var phonetic = InputDialog.Text(entry.phonetic);
+                phonetic.FontSize = 14;
                 phonetic.TextAlignment = TextAlignment.Center;
+                phonetic.Margin = new Thickness(0, 3, 0, 0);
                 face.Children.Add(phonetic);
             }
             if (!revealed)
             {
-                var cue = InputDialog.Text("点击翻卡核对释义");
-                cue.TextAlignment = TextAlignment.Center;
-                cue.Margin = new Thickness(0, 14, 0, 0);
-                face.Children.Add(cue);
+                var cuePill = new Border
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 16, 0, 0),
+                    Padding = new Thickness(12, 5, 12, 5),
+                    CornerRadius = new CornerRadius(12),
+                    Background = new SolidColorBrush(Color.FromRgb(0xE6, 0xF5, 0xFF)),
+                    Child = new TextBlock
+                    {
+                        Text = "↻ 点击翻卡核对释义",
+                        FontSize = 12,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = (Brush)Application.Current.FindResource("AccentDeepBrush")
+                    }
+                };
+                face.Children.Add(cuePill);
                 return;
             }
             void Label(string label)
             {
-                face.Children.Add(new TextBlock{Text=label,FontSize=12,FontWeight=FontWeights.SemiBold,
-                    Foreground=(Brush)Application.Current.FindResource("AccentDeepBrush"),Margin=new Thickness(0,7,0,0)});
+                face.Children.Add(new TextBlock
+                {
+                    Text = label,
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)Application.Current.FindResource("AccentDeepBrush"),
+                    Margin = new Thickness(0, 9, 0, 0)
+                });
             }
             Label("中文释义");
             var definition = new WordListMeaningText
             {
                 DataContext = new WordListRow(word, entry?.DisplayMeaning ?? "", online),
-                FontSize = 16, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0)
+                FontSize = 16,
+                LineHeight = 24,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x1F, 0x35, 0x48)),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 3, 0, 0)
             };
             definition.SetBinding(TextBlock.TextProperty, new Binding(nameof(WordListRow.DisplayMeaning)));
             face.Children.Add(definition);
             if (mnemonic(word) is { Length: > 0 } note)
             {
-                Label("助记");
+                var noteBox = new Border
+                {
+                    Margin = new Thickness(0, 10, 0, 0),
+                    Padding = new Thickness(11, 8, 11, 8),
+                    CornerRadius = new CornerRadius(8),
+                    Background = new SolidColorBrush(Color.FromRgb(0xEA, 0xF6, 0xFF)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xD2, 0xEA, 0xFA)),
+                    BorderThickness = new Thickness(1)
+                };
+                var noteStack = new StackPanel();
+                noteStack.Children.Add(new TextBlock
+                {
+                    Text = "助记",
+                    FontSize = 11,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)Application.Current.FindResource("AccentDeepBrush")
+                });
                 var aid = InputDialog.Text(note);
+                aid.FontSize = 12;
+                aid.Foreground = new SolidColorBrush(Color.FromRgb(0x2A, 0x56, 0x73));
                 aid.Margin = new Thickness(0, 2, 0, 0);
-                face.Children.Add(aid);
+                noteStack.Children.Add(aid);
+                noteBox.Child = noteStack;
+                face.Children.Add(noteBox);
             }
         }
 
-        void LoadCurrent()
+        void LoadCurrent(bool animateEntrance = false)
         {
             revealed = false;
             entry = practice.Current is { } word ? dictionary.Lookup(word) : null;
             Render();
+            if (animateEntrance)
+                UiMotion.Reveal(card, distance: 10);
             if (practice.Current == null) next.Focus();
             else card.Focus();
         }
@@ -150,71 +315,81 @@ internal static class StubbornFlashcards
         void SnapshotFace()
         {
             var dpi = VisualTreeHelper.GetDpi(card);
-            var width = Math.Max(1,(int)Math.Ceiling(card.ActualWidth*dpi.DpiScaleX));
-            var height = Math.Max(1,(int)Math.Ceiling(card.ActualHeight*dpi.DpiScaleY));
-            var bitmap = new RenderTargetBitmap(width,height,dpi.PixelsPerInchX,dpi.PixelsPerInchY,PixelFormats.Pbgra32);
+            var width = Math.Max(1, (int)Math.Ceiling(card.ActualWidth * dpi.DpiScaleX));
+            var height = Math.Max(1, (int)Math.Ceiling(card.ActualHeight * dpi.DpiScaleY));
+            var bitmap = new RenderTargetBitmap(width, height, dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
             bitmap.Render(card);
             bitmap.Freeze();
-            image.ImageSource=bitmap;
-            var aspect=card.ActualHeight/Math.Max(1,card.ActualWidth);
-            surface.Positions=new Point3DCollection([new(-1,-aspect,0),new(1,-aspect,0),new(1,aspect,0),new(-1,aspect,0)]);
+            image.ImageSource = bitmap;
+            var aspect = card.ActualHeight / Math.Max(1, card.ActualWidth);
+            surface.Positions = new Point3DCollection([new(-1, -aspect, 0), new(1, -aspect, 0), new(1, aspect, 0), new(-1, aspect, 0)]);
         }
 
         void Flip()
         {
-            if (practice.Current == null || flipping) return;
-            void SwitchFace() { revealed = !revealed; Render(); }
-            if (!SystemParameters.ClientAreaAnimation) { SwitchFace(); return; }
+            if (practice.Current == null || flipping || swiping) return;
+            void SwitchFace(bool animate) { revealed = !revealed; Render(animateActions: animate && revealed); }
+            if (!UiMotion.Enabled) { SwitchFace(false); return; }
             flipping = true;
-            var restoreFocus=card.IsKeyboardFocusWithin;
+            var restoreFocus = card.IsKeyboardFocusWithin;
             void Finish()
             {
-                viewport.Visibility=Visibility.Hidden;
-                image.ImageSource=null;
-                card.Visibility=Visibility.Visible;
-                flipping=false;
-                if(restoreFocus&&dialog.IsVisible)card.Focus();
+                viewport.Visibility = Visibility.Hidden;
+                image.ImageSource = null;
+                card.Visibility = Visibility.Visible;
+                flipping = false;
+                if (revealed) UiMotion.Reveal(actions, distance: 6);
+                if (restoreFocus && dialog.IsVisible) card.Focus();
             }
 
             SnapshotFace();
-            card.Visibility=Visibility.Hidden;
-            viewport.Visibility=Visibility.Visible;
-            var frontTurn=new DoubleAnimation(0,90,TimeSpan.FromMilliseconds(120))
-                {EasingFunction=new CubicEase{EasingMode=EasingMode.EaseIn}};
-            frontTurn.Completed+=(_,_) =>
+            card.Visibility = Visibility.Hidden;
+            viewport.Visibility = Visibility.Visible;
+            var frontTurn = new DoubleAnimation(0, 90, TimeSpan.FromMilliseconds(125))
+            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } };
+            frontTurn.Completed += (_, _) =>
             {
                 if (!dialog.IsVisible) return;
-                card.Visibility=Visibility.Visible;
-                SwitchFace();
+                card.Visibility = Visibility.Visible;
+                SwitchFace(false);
                 card.UpdateLayout();
                 SnapshotFace();
-                card.Visibility=Visibility.Hidden;
-                var backTurn=new DoubleAnimation(-90,0,TimeSpan.FromMilliseconds(155))
-                    {EasingFunction=new CubicEase{EasingMode=EasingMode.EaseOut}};
-                backTurn.Completed+=(_,_)=>Finish();
-                turn.BeginAnimation(AxisAngleRotation3D.AngleProperty,backTurn);
+                card.Visibility = Visibility.Hidden;
+                var backTurn = new DoubleAnimation(-90, 0, TimeSpan.FromMilliseconds(165))
+                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+                backTurn.Completed += (_, _) => Finish();
+                turn.BeginAnimation(AxisAngleRotation3D.AngleProperty, backTurn);
             };
-            turn.BeginAnimation(AxisAngleRotation3D.AngleProperty,frontTurn);
+            turn.BeginAnimation(AxisAngleRotation3D.AngleProperty, frontTurn);
         }
 
         void Answer(FlashcardAnswer answer)
         {
-            if (!revealed || flipping || practice.Current == null) return;
-            practice.Answer(answer);
-            LoadCurrent();
+            if (!revealed || flipping || swiping || practice.Current == null) return;
+            swiping = true;
+            var toX = answer == FlashcardAnswer.Forgotten ? -115.0 : 115.0;
+            var tilt = answer == FlashcardAnswer.Forgotten ? -6.5 : 6.5;
+            UiMotion.SwipeOut(card, toX, tilt, 190, () =>
+            {
+                swiping = false;
+                if (!dialog.IsVisible) return;
+                practice.Answer(answer);
+                LoadCurrent(animateEntrance: true);
+            });
         }
+
         card.Click += (_, _) => Flip();
         flipCard.Click += (_, _) => Flip();
         known.Click += (_, _) => Answer(FlashcardAnswer.Known);
         vague.Click += (_, _) => Answer(FlashcardAnswer.Vague);
         forgotten.Click += (_, _) => Answer(FlashcardAnswer.Forgotten);
-        next.Click += (_, _) => { if (practice.StartNextGroup()) LoadCurrent(); else dialog.Close(); };
+        next.Click += (_, _) => { if (practice.StartNextGroup()) LoadCurrent(animateEntrance: true); else dialog.Close(); };
         dialog.PreviewKeyDown += (_, args) =>
         {
-            if (args.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None && card.IsKeyboardFocusWithin)
+            if (args.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None && (card.IsKeyboardFocusWithin || !revealed))
             {
-                args.Handled=true;
-                if(!args.IsRepeat)Flip();
+                args.Handled = true;
+                if (!args.IsRepeat) Flip();
                 return;
             }
             var answer = args.Key switch
@@ -230,7 +405,7 @@ internal static class StubbornFlashcards
                 if (!args.IsRepeat) Answer(choice);
             }
         };
-        dialog.Loaded += (_, _) => LoadCurrent();
+        dialog.Loaded += (_, _) => LoadCurrent(animateEntrance: true);
         return dialog;
     }
 }

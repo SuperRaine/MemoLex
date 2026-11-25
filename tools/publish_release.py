@@ -240,7 +240,23 @@ def write_json(path, value):
     Path(file.name).replace(path)
 
 
-def prepare_site(site, node, version, share_url):
+def site_release_notes(body):
+    notes = []
+    for line in body.splitlines():
+        line = line.strip()
+        if re.match(r"^#{1,6}\s*(?:备用下载|下载|安装方式)", line):
+            break
+        if not line or line.startswith(("#", "[", "```", ">")):
+            continue
+        line = re.sub(r"^(?:[-*+]\s+|\d+\.\s+)", "", line)
+        line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
+        line = line.replace("**", "").replace("`", "")
+        if line:
+            notes.append(line)
+    return notes
+
+
+def prepare_site(site, node, version, share_url, release_body):
     metadata_path = site / "release.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
     previous = metadata["version"]
@@ -250,6 +266,13 @@ def prepare_site(site, node, version, share_url):
     metadata.update(version=version, quarkUrl=share_url,
                     archiveVersions=sorted(archive, key=version_key, reverse=True))
     write_json(metadata_path, metadata)
+    notes_path = site / "release-notes.json"
+    if notes_path.is_file():
+        all_notes = json.loads(notes_path.read_text(encoding="utf-8-sig"))
+        notes = site_release_notes(release_body)
+        if notes:
+            all_notes[version] = notes
+            write_json(notes_path, all_notes)
     result = run([node, "build.mjs"], directory=site)
     if result.returncode:
         raise RuntimeError("软件主页生成失败，请检查 Sites 源码后重试。\n" + result.stderr)
@@ -309,7 +332,7 @@ def publish(args):
         quark.verify_share(share_url, version, assets)
         print(f"已核对夸克「{QUARK_FOLDER}/{QUARK_LATEST}/{version}」的三个软件包和公开链接。", flush=True)
 
-        prepare_site(site, args.node, version, share_url)
+        prepare_site(site, args.node, version, share_url, release["body"])
         current, current_assets = release_snapshot(args.gh, tag, names)
         if current_assets != assets or current["targetCommitish"] != release["targetCommitish"]:
             raise RuntimeError("同步期间 GitHub 附件或发布提交有变更，请重新运行。")

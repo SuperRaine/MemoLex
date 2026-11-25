@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Automation;
+using System.Windows.Media;
+using System.Windows.Media.Effects;
 using MemoLex.Core;
 using MemoLex.Services;
 
@@ -26,49 +28,86 @@ public partial class MainWindow
             foreach(var breakdown in MnemonicParts.Parse(word,note.NoteType,note.Text))
                 stack.Children.Add(BuildMnemonicParts(breakdown));
             var text=BuildSentenceText(note.Text,EmptyMatches,word,15);text.FontFamily=FontFamily;text.Margin=new Thickness(0,6,0,0);stack.Children.Add(text);
-            NotesPanel.Children.Add(new Border {Child=stack,Padding=new Thickness(15),Margin=new Thickness(0,8,0,0),Background=Brush("#F3F9FE"),CornerRadius=new CornerRadius(8)});
+            NotesPanel.Children.Add(new Border {Child=stack,Padding=new Thickness(16),Margin=new Thickness(0,8,0,0),Background=Brush("#F4FAFF"),BorderBrush=Brush("#DCECF8"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(10)});
         }
+        if(_displayedNotes.Length>0)Desktop.UiMotion.Reveal(NotesPanel,distance:4);
     }
-    private static StackPanel BuildMnemonicParts(MnemonicBreakdown breakdown)
+    private static FrameworkElement BuildMnemonicParts(MnemonicBreakdown breakdown)
     {
-        var panel=new StackPanel{Margin=new Thickness(0,7,0,6)};
-        var chips=new WrapPanel();
-        panel.Children.Add(chips);
-        var detail=InputDialog.Text(breakdown.Explanation);
-        detail.Margin=new Thickness(0,3,0,0);
-        panel.Children.Add(detail);
+        static DropShadowEffect LitShadow(double opacity)=>new()
+        {
+            BlurRadius=12,ShadowDepth=3,Direction=270,Opacity=opacity,Color=Color.FromRgb(18,134,196)
+        };
+        var chipStyle=Application.Current?.TryFindResource("MorphemeChipButton") as Style;
+        var builder=new WrapPanel{Margin=new Thickness(0,8,0,4)};
+        var detail=new TextBlock
+        {
+            Text=breakdown.Explanation,FontSize=12,Foreground=Brush("#1B5A7D"),
+            TextWrapping=TextWrapping.Wrap,MaxWidth=340
+        };
         var buttons=new Dictionary<int,Button>();
         int? active=null;
         for(var index=0;index<breakdown.Parts.Count;index++)
         {
-            if(index>0)chips.Children.Add(new TextBlock{Text="＋",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,6,5)});
+            if(index>0)
+                builder.Children.Add(new TextBlock{Text="＋",FontSize=14,FontWeight=FontWeights.Bold,Foreground=Brush("#6CA9CC"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,7,6)});
             var part=breakdown.Parts[index];
             if(part.Meaning.Length==0)
             {
-                chips.Children.Add(new TextBlock{Text=part.Form,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,6,5)});
+                builder.Children.Add(new Border
+                {
+                    Margin=new Thickness(0,0,7,6),Padding=new Thickness(10,6,10,6),
+                    Background=Brushes.White,BorderBrush=Brush("#D6E8F6"),BorderThickness=new Thickness(1),
+                    CornerRadius=new CornerRadius(10),VerticalAlignment=VerticalAlignment.Center,
+                    Child=new TextBlock{Text=part.Form,FontSize=14,FontWeight=FontWeights.SemiBold,Foreground=Brush("#4B728E")}
+                });
                 continue;
             }
             var choice=index;
+            var body=new StackPanel{Orientation=Orientation.Vertical};
+            body.Children.Add(new TextBlock{Text=part.Form,FontSize=14.5,FontWeight=FontWeights.Bold,Foreground=Brush("#087FAF")});
+            body.Children.Add(new TextBlock{Text=part.Meaning,FontSize=11.5,Foreground=Brush("#58758C"),Margin=new Thickness(0,2,0,0),TextWrapping=TextWrapping.Wrap,MaxWidth=180});
             var chip=new Button
             {
-                Content=part.Form,Margin=new Thickness(0,0,6,5),Padding=new Thickness(10,4,10,4),
-                FontWeight=FontWeights.SemiBold,Foreground=Brush("#087FAF"),Background=Brush("#E1F3FC"),
-                ToolTip=part.Meaning
+                Content=body,Style=chipStyle,Margin=new Thickness(0,0,7,6),
+                Background=Brush("#F0FAFF"),BorderBrush=Brush("#46BEF6"),BorderThickness=new Thickness(1.5),
+                Effect=LitShadow(0.14),ToolTip=part.Meaning,VerticalAlignment=VerticalAlignment.Center
             };
             AutomationProperties.SetName(chip,$"{part.Form}，查看构词含义");
             buttons.Add(index,chip);
-            chips.Children.Add(chip);
+            builder.Children.Add(chip);
             chip.Click+=(_,_) =>
             {
                 active=active==choice?null:choice;
                 detail.Text=active==null?breakdown.Explanation:$"{part.Form} · {part.Meaning}";
                 foreach(var (position,button) in buttons)
-                    button.Background=Brush(active==null||active==position?"#E1F3FC":"#F8FCFF");
+                {
+                    var lit=active==null||active==position;
+                    var solo=active==position;
+                    button.Background=lit?Brush(solo?"#E5F6FF":"#F0FAFF"):Brushes.White;
+                    button.BorderBrush=Brush(solo?"#22B3F6":lit?"#46BEF6":"#C6E4F7");
+                    button.Opacity=lit?1.0:0.72;
+                    button.Effect=lit?LitShadow(solo?0.20:0.14):null;
+                }
+                Desktop.UiMotion.Pop(chip,peakScale:1.05,durationMs:180);
+                Desktop.UiMotion.Reveal(detail,distance:3);
             };
         }
-        if(breakdown.Word is { } word)
-            chips.Children.Add(new TextBlock{Text="→ "+word,FontWeight=FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(2,0,0,5)});
-        return panel;
+        builder.Children.Add(new TextBlock{Text="→",FontSize=14,FontWeight=FontWeights.Bold,Foreground=Brush("#6CA9CC"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(1,0,7,6)});
+        var resultStack=new StackPanel{Orientation=Orientation.Vertical};
+        if(breakdown.Word is {Length:>0} word)
+            resultStack.Children.Add(new TextBlock{Text=word,FontSize=14,FontWeight=FontWeights.Bold,Foreground=Brush("#132E44"),Margin=new Thickness(0,0,0,2)});
+        resultStack.Children.Add(detail);
+        var resultCard=new Border
+        {
+            Margin=new Thickness(0,0,0,6),Padding=new Thickness(12,7,12,7),
+            CornerRadius=new CornerRadius(10),BorderThickness=new Thickness(1),BorderBrush=Brush("#BCE2F8"),
+            VerticalAlignment=VerticalAlignment.Center,
+            Background=new LinearGradientBrush(Color.FromRgb(226,245,255),Color.FromRgb(238,249,255),new Point(0,0),new Point(1,1)),
+            Child=resultStack
+        };
+        builder.Children.Add(resultCard);
+        return builder;
     }
     private string LocalNotesHint()=>_displayedNotes.Length>0?$"本地助记 · {_displayedNotes.Length} 条":"暂无助记，点击「编辑助记」添加。";
     private async Task LoadLocalAndCloudNotesAsync(string word,CancellationToken cancellation)

@@ -418,8 +418,10 @@ public partial class MainWindow : Window
             card.Children.Add(BuildExampleTranslation(sentence.Translation,sentence.English,sourceWord,matches,sentence.MatchedTranslations,sentence.TranslationAligned));
         if (sentence.IsOption && sentence.ContextTranslation.Length > 0)
             card.Children.Add(BuildExampleTranslation("原题译文："+sentence.ContextTranslation,sentence.ContextEnglish,sourceWord,matches,sentence.MatchedTranslations));
-        ExamplesPanel.Children.Add(new Border { Child = card, Background = Brushes.White, BorderBrush = Brush("#E2EBF3"), BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(11), Padding = new Thickness(20, 17, 20, 18), Margin = new Thickness(0, 0, 0, 12) });
+        var cardBorder = new Border { Child = card, Background = Brushes.White, BorderBrush = Brush("#DCE9F4"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 17, 20, 18), Margin = new Thickness(0, 0, 0, 12) };
+        ExamplesPanel.Children.Add(cardBorder);
+        UiMotion.Reveal(cardBorder, distance: 5);
     }
     private static readonly IReadOnlySet<string> EmptyMatches = new HashSet<string>();
     private TextBlock BuildSentenceText(string text, IReadOnlySet<string> matches, string sourceWord, double fontSize = 16)

@@ -124,6 +124,8 @@ public partial class MainWindow
     private void ShuffleStubbornButton_Click(object sender,RoutedEventArgs e)
     {
         _stubbornRotation.Advance();UpdateStubbornCard();StubbornChanged?.Invoke();
+        Desktop.UiMotion.SlideFade(StubbornWordText,12,0,210);
+        Desktop.UiMotion.Pop(ShuffleStubbornButton,peakScale:1.08,durationMs:180);
     }
     private async void StubbornPreviewButton_Click(object sender,RoutedEventArgs e)
     {

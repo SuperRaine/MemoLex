@@ -7,18 +7,45 @@ struct MemoButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
+        MemoButtonChrome(configuration: configuration, accent: accent, compact: compact, enabled: enabled, reduceMotion: reduceMotion)
+    }
+}
+
+private struct MemoButtonChrome: View {
+    let configuration: ButtonStyle.Configuration
+    let accent: Bool
+    let compact: Bool
+    let enabled: Bool
+    let reduceMotion: Bool
+    @State private var hovered = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
         configuration.label
             .font(.system(size: compact ? 12 : 13, weight: accent ? .semibold : .medium))
-            .padding(.horizontal, compact ? 9 : 13)
-            .frame(minHeight: compact ? 27 : 33)
-            .foregroundStyle(accent ? Palette.accentInk : Palette.ink)
-            .background(accent ? Palette.accent.opacity(configuration.isPressed ? 0.78 : 1) :
-                (configuration.isPressed ? Palette.wash : Palette.control),
-                in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(accent ? Color.clear : Palette.border, lineWidth: 0.65))
+            .padding(.horizontal, compact ? 10 : 14)
+            .frame(minHeight: compact ? 28 : 34)
+            .foregroundStyle(accent ? Palette.accentInk : (hovered && enabled ? Palette.deep : Palette.ink))
+            .background {
+                if accent {
+                    LinearGradient(
+                        colors: hovered ? [Color(red: 0.34, green: 0.81, blue: 1.0), Color(red: 0.15, green: 0.70, blue: 0.96)]
+                            : [Color(red: 0.24, green: 0.77, blue: 1.0), Color(red: 0.11, green: 0.65, blue: 0.92)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                    .opacity(configuration.isPressed ? 0.8 : 1)
+                    .clipShape(shape)
+                } else {
+                    shape.fill(configuration.isPressed ? Palette.wash : (hovered && enabled ? Palette.wash.opacity(0.72) : Palette.control))
+                }
+            }
+            .overlay(shape.strokeBorder(accent ? Color.clear : (hovered && enabled ? Palette.accent.opacity(0.65) : Palette.border), lineWidth: 0.75))
+            .shadow(color: accent && enabled ? Palette.accent.opacity(hovered ? 0.28 : 0.16) : .clear, radius: hovered ? 8 : 4, y: 2)
             .opacity(enabled ? 1 : 0.38)
-            .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.98 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
+            .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.78), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hovered)
+            .onHover { hovered = $0 }
     }
 }
 
@@ -31,21 +58,50 @@ struct LookupButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
-        let fill = primary ? Palette.accent : Palette.wash
-        return configuration.label
-            .font(.system(size: small ? 11 : 12, weight: primary ? .semibold : .regular))
+        LookupButtonChrome(configuration: configuration, primary: primary, small: small, expands: expands, fixedWidth: fixedWidth, enabled: enabled, reduceMotion: reduceMotion)
+    }
+}
+
+private struct LookupButtonChrome: View {
+    let configuration: ButtonStyle.Configuration
+    let primary: Bool
+    let small: Bool
+    let expands: Bool
+    let fixedWidth: CGFloat?
+    let enabled: Bool
+    let reduceMotion: Bool
+    @State private var hovered = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        configuration.label
+            .font(.system(size: small ? 11 : 12, weight: primary ? .semibold : .medium))
             .lineLimit(1)
             .padding(.horizontal, primary ? 15 : small && expands ? 6 : 10)
             .frame(maxWidth: expands ? .infinity : nil)
-            .frame(width: fixedWidth, height: small ? 27 : 34)
+            .frame(width: fixedWidth, height: small ? 28 : 34)
             .foregroundStyle(primary ? Palette.accentInk : Palette.deep)
-            .background(fill.opacity(configuration.isPressed ? 0.76 : 1), in: shape)
-            .overlay(shape.strokeBorder(primary ? Palette.accent : Palette.border, lineWidth: 0.75))
+            .background {
+                if primary {
+                    LinearGradient(
+                        colors: hovered ? [Color(red: 0.34, green: 0.81, blue: 1.0), Color(red: 0.15, green: 0.70, blue: 0.96)]
+                            : [Color(red: 0.24, green: 0.77, blue: 1.0), Color(red: 0.11, green: 0.65, blue: 0.92)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                    .opacity(configuration.isPressed ? 0.78 : 1)
+                    .clipShape(shape)
+                } else {
+                    shape.fill(Palette.wash.opacity(configuration.isPressed ? 0.75 : (hovered && enabled ? 1 : 0.88)))
+                }
+            }
+            .overlay(shape.strokeBorder(primary ? Palette.accent.opacity(0.6) : (hovered && enabled ? Palette.accent.opacity(0.75) : Palette.border), lineWidth: 0.8))
+            .shadow(color: primary && enabled ? Palette.accent.opacity(hovered ? 0.28 : 0.16) : .clear, radius: hovered ? 8 : 4, y: 2)
             .contentShape(shape)
             .opacity(enabled ? 1 : 0.43)
-            .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.98 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
+            .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.78), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hovered)
+            .onHover { hovered = $0 }
     }
 }
 
@@ -191,19 +247,52 @@ struct SidebarRowStyle: ButtonStyle {
     static let height: CGFloat = 33
     var selected = false
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(minHeight: Self.height)
-            .padding(.horizontal, 9)
-            .background(selected || configuration.isPressed ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(Rectangle())
+        SidebarRowChrome(configuration: configuration, selected: selected)
+    }
+}
+
+private struct SidebarRowChrome: View {
+    let configuration: ButtonStyle.Configuration
+    let selected: Bool
+    @State private var hovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Capsule()
+                .fill(Palette.accent)
+                .frame(width: 3, height: selected ? 16 : 0)
+                .opacity(selected ? 1 : 0)
+            configuration.label
+                .foregroundStyle(selected ? Palette.deep : Palette.ink)
+                .fontWeight(selected ? .semibold : .regular)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: SidebarRowStyle.height)
+        .padding(.horizontal, 8)
+        .background(
+            selected || configuration.isPressed ? Palette.wash : (hovered ? Palette.wash.opacity(0.55) : Color.clear),
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+        .contentShape(Rectangle())
+        .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.85), value: selected)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovered)
+        .onHover { hovered = $0 }
     }
 }
 
 struct Card<Content: View>: View {
     var padding: CGFloat = 20
     @ViewBuilder var content: Content
-    var body: some View { content.padding(padding).frame(maxWidth: .infinity, alignment: .leading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Palette.border, lineWidth: 0.6)) }
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 15, style: .continuous)
+        content
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Palette.paper, in: shape)
+            .overlay(shape.strokeBorder(Palette.border, lineWidth: 0.7))
+            .shadow(color: Color(red: 0.06, green: 0.24, blue: 0.36).opacity(0.06), radius: 14, y: 4)
+    }
 }
 
 struct DialogHeader: View {

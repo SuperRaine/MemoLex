@@ -18,6 +18,8 @@ internal sealed class HoverLookupWindow : Window
     private readonly TextBlock _pronunciation=InputDialog.Text("");
     private readonly TextBlock _meaning=InputDialog.Text("");
     private readonly TextBlock _mnemonic=InputDialog.Text("");
+    private readonly Border _mnemonicCard;
+    private readonly Border _shell;
     private readonly TextBlock _bookmarkHint=InputDialog.Text("");
     private readonly Button _bookmarkButton=new(){Content="＋ 收藏",Margin=new Thickness(0,0,8,0),Padding=new Thickness(9,5,9,5)};
     private readonly Func<string,HoverBookmark> _bookmarkStatus;
@@ -37,11 +39,14 @@ internal sealed class HoverLookupWindow : Window
         close.Click+=(_,_)=>{Hide();Dismissed?.Invoke();};
         _pronunciation.Margin=new Thickness(0,3,0,10);content.Children.Add(_pronunciation);
         var definitions=new StackPanel();_meaning.FontSize=14;_meaning.LineHeight=22;definitions.Children.Add(_meaning);
-        _mnemonic.Margin=new Thickness(0,12,0,0);_mnemonic.FontSize=12;definitions.Children.Add(_mnemonic);
-        content.Children.Add(new ScrollViewer{Content=definitions,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,MaxHeight=205});
+        _mnemonic.FontSize=12;_mnemonic.Foreground=new SolidColorBrush(Color.FromRgb(0x22,0x55,0x74));
+        _mnemonicCard=new Border{Child=_mnemonic,Margin=new Thickness(0,10,0,0),Padding=new Thickness(10,7,10,7),CornerRadius=new CornerRadius(7),Background=new SolidColorBrush(Color.FromRgb(0xF1,0xF9,0xFF)),BorderBrush=new SolidColorBrush(Color.FromRgb(0xD6,0xEC,0xFB)),BorderThickness=new Thickness(1),Visibility=Visibility.Collapsed};
+        definitions.Children.Add(_mnemonicCard);
+        content.Children.Add(new ScrollViewer{Content=definitions,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,MaxHeight=210});
         var actions=new StackPanel{Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,13,0,0)};
         content.Children.Add(actions);actions.Children.Add(_bookmarkButton);
-        var open=new Button {Content="查看完整释义 →",Padding=new Thickness(9,5,9,5)};
+        var open=new Button {Content="查看完整释义 →",Padding=new Thickness(10,5,10,5)};
+        if(Application.Current.TryFindResource("AccentButton") is Style accentStyle)open.Style=accentStyle;
         open.Click+=(_,_)=>OpenWord?.Invoke(_currentWord);actions.Children.Add(open);
         // Keep the footer a predictable height so the popup can be clicked at the screen edge.
         _bookmarkHint.FontSize=11;_bookmarkHint.Height=23;_bookmarkHint.TextWrapping=TextWrapping.NoWrap;
@@ -63,7 +68,14 @@ internal sealed class HoverLookupWindow : Window
                 _bookmarkHint.ToolTip=_bookmarkHint.Text;
             }
         };
-        Content=new Border {Child=content,CornerRadius=new CornerRadius(10),Background=Brushes.White,BorderBrush=new SolidColorBrush(Color.FromRgb(113,205,249)),BorderThickness=new Thickness(1),Padding=new Thickness(1)};
+        _shell=new Border
+        {
+            Child=content,CornerRadius=new CornerRadius(12),Background=Brushes.White,
+            BorderBrush=new SolidColorBrush(Color.FromRgb(0x7B,0xCE,0xF8)),BorderThickness=new Thickness(1),
+            Padding=new Thickness(1),Margin=new Thickness(8,6,8,12),
+            Effect=new System.Windows.Media.Effects.DropShadowEffect{BlurRadius=16,ShadowDepth=4,Opacity=0.14,Color=Color.FromRgb(0x0E,0x3E,0x60)}
+        };
+        Content=_shell;
         SourceInitialized+=(_,_)=>
         {
             var hwnd=new WindowInteropHelper(this).Handle;var style=GetWindowLongPtr(hwnd,-20);
@@ -81,6 +93,7 @@ internal sealed class HoverLookupWindow : Window
         var x=Math.Clamp((int)hit.Bounds.X,screen.Left,Math.Max(screen.Left,screen.Right-width));
         var y=(int)(hit.Bounds.Y+hit.Bounds.Height+7);if(y+height>screen.Bottom)y=Math.Max(screen.Top,(int)hit.Bounds.Y-height-7);
         SetWindowPos(hwnd,new IntPtr(-1),x,y,0,0,0x0010|0x0001);Opacity=opacity;
+        UiMotion.Reveal(_shell,distance:5);
     }
     internal void SetContent(HoverWord hit,DictionaryEntry entry,IReadOnlyList<StoredMnemonic> notes)
     {
@@ -90,8 +103,9 @@ internal sealed class HoverLookupWindow : Window
         _pronunciation.Text=entry.word.Equals(hit.Word,StringComparison.OrdinalIgnoreCase)?(entry.phonetic.Length>0?entry.phonetic+" · ":"")+"离线释义 · "+hit.Method:"未找到 “"+hit.Word+"”，相近单词："+entry.word+" · 离线释义";
         var meaning = entry.DisplayMeaning;
         _meaning.Text = meaning.Length <= 600 ? meaning : meaning[..600] + "…";
-        _mnemonic.Text=notes.FirstOrDefault()?.Text??"";if(_mnemonic.Text.Length>280)_mnemonic.Text=_mnemonic.Text[..280]+"…";
-        _mnemonic.Visibility=_mnemonic.Text.Length>0?Visibility.Visible:Visibility.Collapsed;
+        var noteText=notes.FirstOrDefault()?.Text??"";if(noteText.Length>280)noteText=noteText[..280]+"…";
+        _mnemonic.Text=noteText.Length>0?"记  "+noteText:"";
+        _mnemonicCard.Visibility=noteText.Length>0?Visibility.Visible:Visibility.Collapsed;
     }
     internal void UpdateBookmark()
     {

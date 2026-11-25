@@ -113,10 +113,25 @@ private struct HoverView: View {
             Button { navigate(value["word"].text) } label: { HStack { Text(value["word"].text).font(.system(size: fontSize + 6, weight: .semibold)); Spacer(); Image(systemName: "arrow.up.right") } }.buttonStyle(.plain).foregroundStyle(Palette.deep)
             if value["entry"] != .null { Text(value["entry"]["translation"].text.decodedLines).font(.system(size: fontSize)).lineLimit(3).foregroundStyle(Palette.ink) }
             else { Text("未找到释义，可试试：").font(.system(size: fontSize)).foregroundStyle(Palette.muted); HStack { ForEach(Array(value["suggestions"].list.prefix(3)), id: \.text) { word in Button(word.text) { navigate(word.text) }.buttonStyle(.plain).foregroundStyle(Palette.deep) } } }
-            if let note = value["notes"].list.first { Text(note["text"].text).font(.system(size: max(11, fontSize - 1))).lineLimit(2).foregroundStyle(Palette.deep) }
+            if let note = value["notes"].list.first {
+                HStack(alignment: .top, spacing: 6) {
+                    Text("记")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Palette.deep)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Palette.accent.opacity(0.2), in: RoundedRectangle(cornerRadius: 4))
+                    Text(note["text"].text)
+                        .font(.system(size: max(11, fontSize - 1)))
+                        .lineLimit(2)
+                        .foregroundStyle(Palette.deep)
+                }
+                .padding(.horizontal, 9).padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.wash, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
             Spacer(minLength: 0)
             if value["entry"] != .null { bookmark }
-        }.padding(16).frame(width: 350, height: height, alignment: .topLeading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.border))
+        }.padding(16).frame(width: 350, height: height, alignment: .topLeading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 13, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(Palette.accent.opacity(0.55), lineWidth: 1))
     }
 
     private var bookmark: some View {

@@ -42,7 +42,13 @@
                         <Button x:Name="ForwardButton" Style="{StaticResource TitleButton}" Click="ForwardButton_Click" IsEnabled="False" ToolTip="前进（Alt+→）" AutomationProperties.Name="前进" Margin="3,0,0,0"><TextBlock Text="&#xE72A;" FontFamily="Segoe MDL2 Assets" FontSize="15"/></Button>
                     </StackPanel>
                     <Grid x:Name="HeaderCenterGrid" Grid.Column="2" SizeChanged="HeaderCenterGrid_SizeChanged" Margin="9,0,10,0">
-                        <Border x:Name="StubbornCard" Background="#F3FAFF" BorderBrush="#E1EFF8" BorderThickness="1" CornerRadius="9" Height="34" Width="250" HorizontalAlignment="Left" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Border x:Name="StubbornCard" BorderBrush="#D6EAF8" BorderThickness="1" CornerRadius="10" Height="34" Width="250" HorizontalAlignment="Left" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#F4FBFF" Offset="0"/>
+                                    <GradientStop Color="#EAF6FF" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
                             <Grid Margin="5,0,3,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBlock x:Name="StubbornLabelText" Text="顽固单词" FontSize="11" Foreground="#7D98AC" VerticalAlignment="Center" Margin="4,0,5,0"/>
                                 <Button x:Name="StubbornPreviewButton" Grid.Column="1" Click="StubbornWordButton_Click" Style="{StaticResource StubbornWordButton}" Background="Transparent" BorderThickness="0" Padding="2,2" ToolTip="点击单词查看释义"><TextBlock x:Name="StubbornWordText" Text="登录" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Foreground="#087FAF"/></Button>
@@ -129,7 +135,13 @@
                                 <TextBlock x:Name="HistoryEmptyText" Grid.Row="1" Text="查过的单词会出现在这里" FontSize="11" Foreground="#A0B0BF" Margin="11,12" IsHitTestVisible="False"/>
                             </Grid>
                         </Grid>
-                        <Border x:Name="CloudNotepadCard" Grid.Row="2" Background="#EFF8FE" BorderBrush="#DFEEF8" BorderThickness="1" CornerRadius="11" Padding="13" Margin="0,12,0,0">
+                        <Border x:Name="CloudNotepadCard" Grid.Row="2" BorderBrush="#D5E9F7" BorderThickness="1" CornerRadius="12" Padding="13" Margin="0,12,0,0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#F2FAFF" Offset="0"/>
+                                    <GradientStop Color="#E8F5FE" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
                             <StackPanel>
                                 <Grid Margin="0,0,0,11"><TextBlock Text="我的云词本" Foreground="#4C7390" FontWeight="SemiBold" FontSize="12"/><Button x:Name="RefreshNotepadsButton" Click="RefreshNotepadsButton_Click" Style="{StaticResource TitleButton}" Width="24" Height="24" HorizontalAlignment="Right" Margin="0,-5,-2,-3" ToolTip="刷新云词本" AutomationProperties.Name="刷新云词本"><TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></Button></Grid>
                                 <ComboBox x:Name="NotepadCombo" DisplayMemberPath="Title" SelectionChanged="NotepadCombo_SelectionChanged" Height="33" FontSize="12" ToolTip="一键添加的目标云词本"/>
@@ -142,7 +154,8 @@
                 <Grid x:Name="MainContentGrid" Grid.Column="1" Margin="27,21,27,17">
                     <Grid.RowDefinitions><RowDefinition Height="*"/></Grid.RowDefinitions>
                             <ScrollViewer x:Name="ResultScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,7,0" ScrollChanged="ResultScroll_ScrollChanged">
-                                <Border x:Name="WordCard" Background="White" BorderBrush="#E2EBF3" BorderThickness="1" CornerRadius="14" Padding="27,23,27,24">
+                                <Border x:Name="WordCard" Background="White" BorderBrush="#DCEAF5" BorderThickness="1" CornerRadius="15" Padding="27,23,27,24" Margin="0,0,0,6">
+                                    <Border.Effect><DropShadowEffect BlurRadius="20" ShadowDepth="5" Opacity="0.06" Color="#103C5C"/></Border.Effect>
                                     <StackPanel x:Name="ResultDocument">
                                       <StackPanel x:Name="DefinitionSection">
                                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="WordText" Text="查词" FontFamily="Segoe UI" FontSize="42" FontWeight="SemiBold" Foreground="#233D53" TextWrapping="Wrap" Margin="0,0,15,0" VerticalAlignment="Center"/>
