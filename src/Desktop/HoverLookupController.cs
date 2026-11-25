@@ -9,7 +9,7 @@ namespace MemoLex.Desktop;
 internal sealed class HoverLookupController : IDisposable
 {
     private readonly ScreenWordReader _reader=new();
-    private readonly HoverLookupWindow _popup=new();
+    private readonly HoverLookupWindow _popup;
     private readonly DispatcherTimer _timer=new(){Interval=TimeSpan.FromMilliseconds(90)};
     private readonly HoverMotionGate _motion=new();
     private readonly Func<string,CancellationToken,Task<(DictionaryEntry? Entry,IReadOnlyList<StoredMnemonic> Notes)>> _lookup;
@@ -23,9 +23,11 @@ internal sealed class HoverLookupController : IDisposable
     private CancellationTokenSource? _cancel;
     private bool _reading,_disposed,_checkingSurface,_modifiersReady;
     internal bool Enabled {get;set;}
-    internal HoverLookupController(Window owner,Preferences preferences,Func<string,CancellationToken,Task<(DictionaryEntry?,IReadOnlyList<StoredMnemonic>)>> lookup,Func<bool> allowed,Action<string> open,Action<string>? found=null)
+    internal HoverLookupController(Window owner,Preferences preferences,Func<string,CancellationToken,Task<(DictionaryEntry?,IReadOnlyList<StoredMnemonic>)>> lookup,Func<bool> allowed,Action<string> open,
+        Func<string,HoverBookmark> bookmarkStatus,Func<string,HoverBookmark,Task<string?>> save,Action<string>? found=null)
     {
         _main=owner;_preferences=preferences;_lookup=lookup;_allowed=allowed;_found=found;
+        _popup=new(bookmarkStatus,save);
         _popup.OpenWord+=word=>{SuppressAtCursor();Hide();open(word);};
         _popup.Dismissed+=()=>{_dismissed=_shown;_shown=null;SuppressAtCursor();};
         _timer.Tick+=async(_,_)=>await TickAsync();_timer.Start();
@@ -54,14 +56,15 @@ internal sealed class HoverLookupController : IDisposable
         var modifiers=_preferences.HoverModifiers;
         var ready=((modifiers&1)==0||(GetAsyncKeyState(0x11)&0x8000)!=0)
             &&((modifiers&2)==0||(GetAsyncKeyState(0x12)&0x8000)!=0)&&((modifiers&4)==0||(GetAsyncKeyState(0x10)&0x8000)!=0);
-        if(!ready){_cancel?.Cancel();Hide();_motion.Suppress(point);_modifiersReady=false;return;}
+        var insidePopup=_popup.ScreenBounds.Contains(point);
+        if(!ready&&!insidePopup){_cancel?.Cancel();Hide();_motion.Suppress(point);_modifiersReady=false;return;}
         if(!_modifiersReady&&modifiers!=0)_motion.Arm(point,now);
         _modifiersReady=true;
-        var insidePopup=_popup.ScreenBounds.Contains(point);
         if(((GetAsyncKeyState(1)|GetAsyncKeyState(2))&0x8000)!=0&&!insidePopup){Hide();SuppressAtCursor();return;}
-        if(_shown!=null&&!insidePopup&&GetAncestor(WindowFromPhysicalPoint(native),2)!=_shownRoot)Hide();
+        if(_shown!=null&&!insidePopup&&_shown.Bounds.Contains(point)&&GetAncestor(WindowFromPhysicalPoint(native),2)!=_shownRoot)Hide();
         if(_shown!=null)
         {
+            _popup.UpdateBookmark();
             if(insidePopup){_outsideSince=default;_motion.Suppress(point);return;}
             if(_shown.Bounds.Contains(point)){_outsideSince=default;await CheckVisibleSurfaceAsync(_shown,now);return;}
             if(_outsideSince==default)_outsideSince=now;

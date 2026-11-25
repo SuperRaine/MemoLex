@@ -14,18 +14,30 @@ import SwiftUI
     private var fingerprint: [UInt8]?
     private var captureRect = CGRect.zero
     private var lastVerification = Date.distantPast
+    private var outsideSince: Date?
     private var verifying = false
     init(model: AppModel) { self.model = model }
     func configure() { stop(); if model.preferences.hoverEnabled { timer = Timer.scheduledTimer(withTimeInterval: 0.10, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } } } }
-    func stop() { timer?.invalidate(); timer = nil; generation += 1; task?.cancel(); panel?.orderOut(nil); panel = nil; attempted = false; fingerprint = nil }
+    func stop() { timer?.invalidate(); timer = nil; generation += 1; task?.cancel(); panel?.orderOut(nil); panel = nil; attempted = false; fingerprint = nil; outsideSince = nil }
     private func modifiersAllowed() -> Bool {
         let required = model.preferences.hoverModifiers; let flags = NSEvent.modifierFlags
         return (required & 1 == 0 || flags.contains(.control)) && (required & 2 == 0 || flags.contains(.option)) && (required & 4 == 0 || flags.contains(.shift))
     }
     private func tick() {
         let point = NSEvent.mouseLocation; let quartz = ScreenText.quartz(point)
-        if let panel, panel.isVisible, (panel.frame.insetBy(dx: -7, dy: -7).contains(point) || wordBounds.insetBy(dx: -3, dy: -3).contains(quartz)), modifiersAllowed() {
-            verifyImage(); return
+        if let panel, panel.isVisible {
+            if panel.frame.insetBy(dx: -7, dy: -7).contains(point)
+                || wordBounds.insetBy(dx: -3, dy: -3).contains(quartz) {
+                outsideSince = nil
+                verifyImage()
+                return
+            }
+            let now = Date()
+            let left = outsideSince ?? now
+            outsideSince = left
+            if now.timeIntervalSince(left) < 0.23 { return }
+            panel.orderOut(nil)
+            outsideSince = nil
         }
         if point != lastPoint {
             lastPoint = point; stoppedAt = Date(); attempted = false; generation += 1; task?.cancel(); panel?.orderOut(nil); fingerprint = nil
@@ -57,10 +69,10 @@ import SwiftUI
                 if value["entry"] == .null, !model.preferences.hoverNearest { return }
                 self.fingerprint = capturedFingerprint; self.captureRect = crop
                 self.show(value, bounds: candidate.bounds, cursor: point)
-                if value["entry"] != .null, model.preferences.hoverAutoAdd, model.loggedIn,
-                   !model.selectingNotepad, !model.writing, model.selectedPad != .null {
-                    let saved = try? await model.core.request("notepads.add", ["id": model.selectedPad["id"], "word": value["word"]])
-                    if let pad = saved?["notepad"], pad["id"] == model.selectedPad["id"] { model.selectedPad = pad; model.refreshMembership() }
+                if value["entry"] != .null, model.preferences.hoverAutoAdd, !model.writing,
+                   let target = model.hoverBookmarkTarget {
+                    let word = value["word"].text
+                    Task { try? await model.saveHoverBookmark(word, target: target) }
                 }
             } catch { }
         }
@@ -75,30 +87,58 @@ import SwiftUI
         }
     }
     private func show(_ value: J, bounds: CGRect, cursor: CGPoint) {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 350, height: 180), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let height: CGFloat = 225
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 350, height: height), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         let size: CGFloat = model.preferences.hoverFontSize == "large" ? 17 : model.preferences.hoverFontSize == "small" ? 12 : 14
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true; panel.level = .floating; panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false; panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = NSHostingView(rootView: HoverView(value: value, fontSize: size) { [weak self] word in self?.panel?.orderOut(nil); self?.model.lookup(word) })
+        panel.contentView = NSHostingView(rootView: HoverView(model: model, value: value, fontSize: size, height: height) { [weak self] word in self?.panel?.orderOut(nil); self?.model.lookup(word) })
         panel.alphaValue = model.preferences.hoverTranslucent ? 0.89 : 1
         let available = NSScreen.screens.first { $0.frame.contains(cursor) }?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1000, height: 750)
-        let x = min(max(cursor.x + 12, available.minX + 6), available.maxX - 356); var y = cursor.y - 192
-        if y < available.minY { y = cursor.y + 20 }
-        panel.setFrameOrigin(CGPoint(x: x, y: min(max(y, available.minY + 6), available.maxY - 186)))
+        let x = min(max(cursor.x + 8, available.minX + 6), available.maxX - 356); var y = cursor.y - height - 8
+        if y < available.minY { y = cursor.y + 8 }
+        panel.setFrameOrigin(CGPoint(x: x, y: min(max(y, available.minY + 6), available.maxY - height - 6)))
         self.panel?.orderOut(nil); self.panel = panel; wordBounds = bounds; panel.orderFrontRegardless()
     }
 }
 
 private struct HoverView: View {
+    @ObservedObject var model: AppModel
     let value: J
     let fontSize: CGFloat
+    let height: CGFloat
     let navigate: (String) -> Void
+    @State private var error = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button { navigate(value["word"].text) } label: { HStack { Text(value["word"].text).font(.system(size: fontSize + 6, weight: .semibold)); Spacer(); Image(systemName: "arrow.up.right") } }.buttonStyle(.plain).foregroundStyle(Palette.deep)
             if value["entry"] != .null { Text(value["entry"]["translation"].text.decodedLines).font(.system(size: fontSize)).lineLimit(3).foregroundStyle(Palette.ink) }
             else { Text("未找到释义，可试试：").font(.system(size: fontSize)).foregroundStyle(Palette.muted); HStack { ForEach(Array(value["suggestions"].list.prefix(3)), id: \.text) { word in Button(word.text) { navigate(word.text) }.buttonStyle(.plain).foregroundStyle(Palette.deep) } } }
-            if let note = value["notes"].list.first { Text(note["text"].text).font(.system(size: max(11, fontSize - 1))).lineLimit(3).foregroundStyle(Palette.deep) }
-        }.padding(16).frame(width: 350, height: 180, alignment: .topLeading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.border))
+            if let note = value["notes"].list.first { Text(note["text"].text).font(.system(size: max(11, fontSize - 1))).lineLimit(2).foregroundStyle(Palette.deep) }
+            Spacer(minLength: 0)
+            if value["entry"] != .null { bookmark }
+        }.padding(16).frame(width: 350, height: height, alignment: .topLeading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.border))
+    }
+
+    private var bookmark: some View {
+        let target = model.hoverBookmarkTarget
+        let word = value["word"].text
+        let state = model.hoverBookmarkStatus(word, target: target)
+        let hint = target.map { "加入「\($0.title)」" } ?? (model.loggedIn ? "请先选择一个云词本" : "登录墨墨账号后可收藏")
+        return HStack {
+            Text(!error.isEmpty ? error : target == nil ? hint : "").font(.caption).foregroundStyle(Palette.muted)
+                .lineLimit(1).help(error)
+            Spacer(minLength: 5)
+            Button(state.pending ? "收藏中…" : state.saved ? "✓ 已收藏" : "＋ 收藏") {
+                guard let target else { return }
+                error = ""
+                Task {
+                    do { try await model.saveHoverBookmark(word, target: target) }
+                    catch { if model.hoverBookmarkTarget == target { self.error = error.localizedDescription } }
+                }
+            }.buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                .disabled(target == nil || state.saved || state.pending)
+                .help(hint)
+        }.onChange(of: target) { _ in error = "" }
     }
 }
 

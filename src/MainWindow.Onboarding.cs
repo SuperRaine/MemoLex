@@ -45,15 +45,15 @@ public partial class MainWindow
         }
         // 新增用户功能时同步补充页面聚焦引导，说明保持简短。
         _onboardingTour=new([
-            new("查词与阅读","输入英文或中文查词。点击相关词查看释义，点击例句旁的“朗读”听整句。",()=>MainPage(false,BodyGrid)),
+            new("查词、助记与例句","输入英文或中文查词。在助记里点击词根或词缀查看含义，也可点击例句旁的“朗读”听整句。",()=>MainPage(false,BodyGrid)),
             new("登录与切换账号","在这里登录墨墨。选择已保存的账号即可切换。",()=>SettingsPage("墨墨账号","OfficialLoginButton")),
-            new("顽固单词","点击顶部单词查词，右侧箭头可换词。在“全部”中选择排序，也可遮住释义，点击揭示答案。",()=>MainPage(false,StubbornCard)),
+            new("顽固单词","在“全部”中筛选或排序，也可开始卡片自测。每组 10 词，翻面核对后选择认识、模糊或忘记。",()=>MainPage(false,StubbornCard)),
             new("收藏与管理云词本","点击“加入云词本”收藏，进入“查看 / 编辑”管理单词和查看释义。",()=>MainPage(false,CloudNotepadCard)),
             new("今日学习","查看待学和复习进度，可搜索单词或遮住释义。选词后确认添加到今日新学。",()=>MainPage(false,TodayPlanButton)),
             new("今日新学","将生词加入墨墨今日新学，添加前请按提示开启手机端同步。",()=>MainPage(false,AddTodayButton)),
             new("段落翻译","输入一段文字，点击“翻译”。",()=>MainPage(true,TranslationInput)),
             new("截图翻译","按 "+ShortcutLabel("screenshot")+"，框选屏幕上的英文即可翻译。",()=>MainPage(true,ScreenshotButton)),
-            new("鼠标取词","开启后，将鼠标停在英文单词上即可查看释义。",()=>SettingsPage("鼠标取词","HoverLookupEnabled")),
+            new("鼠标取词","开启后，将鼠标停在英文单词上即可查看释义。登录并选好云词本后，可在浮窗里点击“收藏”。",()=>SettingsPage("鼠标取词","HoverLookupEnabled")),
             new("剪贴板查词","开启后，选中文字连按两次 Ctrl+C，或按 "+ShortcutLabel("clipboard")+" 查询。",()=>SettingsPage("常规","DoubleCopyEnabled")),
             new("考试倒计时","开启后填写考试名称和日期，即可在标题栏查看倒计时。",()=>SettingsPage("常规","ShowExamCountdown")),
             new("主页与下载","在这里打开软件主页，也可以直接去夸克下载新版。",()=>SettingsPage("关于与赞助","SupportQuarkButton"))

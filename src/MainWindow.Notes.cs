@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Automation;
 using MemoLex.Core;
 using MemoLex.Services;
 
@@ -22,9 +23,52 @@ public partial class MainWindow
             header.Children.Add(new TextBlock {Text=note.NoteType+" · "+origin,FontSize=11,FontWeight=FontWeights.SemiBold,Foreground=Brush("#1688B7"),VerticalAlignment=VerticalAlignment.Center});
             var edit=new Button {Content="编辑",FontSize=11,Padding=new Thickness(7,4,7,4),Background=System.Windows.Media.Brushes.Transparent,BorderThickness=new Thickness(0)};
             edit.Click+=(_,_)=>OpenMnemonicEditor(note);Grid.SetColumn(edit,1);header.Children.Add(edit);stack.Children.Add(header);
+            foreach(var breakdown in MnemonicParts.Parse(word,note.NoteType,note.Text))
+                stack.Children.Add(BuildMnemonicParts(breakdown));
             var text=BuildSentenceText(note.Text,EmptyMatches,word,15);text.FontFamily=FontFamily;text.Margin=new Thickness(0,6,0,0);stack.Children.Add(text);
             NotesPanel.Children.Add(new Border {Child=stack,Padding=new Thickness(15),Margin=new Thickness(0,8,0,0),Background=Brush("#F3F9FE"),CornerRadius=new CornerRadius(8)});
         }
+    }
+    private static StackPanel BuildMnemonicParts(MnemonicBreakdown breakdown)
+    {
+        var panel=new StackPanel{Margin=new Thickness(0,7,0,6)};
+        var chips=new WrapPanel();
+        panel.Children.Add(chips);
+        var detail=InputDialog.Text(breakdown.Explanation);
+        detail.Margin=new Thickness(0,3,0,0);
+        panel.Children.Add(detail);
+        var buttons=new Dictionary<int,Button>();
+        int? active=null;
+        for(var index=0;index<breakdown.Parts.Count;index++)
+        {
+            if(index>0)chips.Children.Add(new TextBlock{Text="＋",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,6,5)});
+            var part=breakdown.Parts[index];
+            if(part.Meaning.Length==0)
+            {
+                chips.Children.Add(new TextBlock{Text=part.Form,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,6,5)});
+                continue;
+            }
+            var choice=index;
+            var chip=new Button
+            {
+                Content=part.Form,Margin=new Thickness(0,0,6,5),Padding=new Thickness(10,4,10,4),
+                FontWeight=FontWeights.SemiBold,Foreground=Brush("#087FAF"),Background=Brush("#E1F3FC"),
+                ToolTip=part.Meaning
+            };
+            AutomationProperties.SetName(chip,$"{part.Form}，查看构词含义");
+            buttons.Add(index,chip);
+            chips.Children.Add(chip);
+            chip.Click+=(_,_) =>
+            {
+                active=active==choice?null:choice;
+                detail.Text=active==null?breakdown.Explanation:$"{part.Form} · {part.Meaning}";
+                foreach(var (position,button) in buttons)
+                    button.Background=Brush(active==null||active==position?"#E1F3FC":"#F8FCFF");
+            };
+        }
+        if(breakdown.Word is { } word)
+            chips.Children.Add(new TextBlock{Text="→ "+word,FontWeight=FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(2,0,0,5)});
+        return panel;
     }
     private string LocalNotesHint()=>_displayedNotes.Length>0?$"本地助记 · {_displayedNotes.Length} 条":"暂无助记，点击「编辑助记」添加。";
     private async Task LoadLocalAndCloudNotesAsync(string word,CancellationToken cancellation)

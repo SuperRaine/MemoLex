@@ -7,18 +7,30 @@ using MemoLex.Core;
 
 namespace MemoLex.Desktop;
 
+internal readonly record struct HoverBookmark(int Account, string Book, string Title, bool Saved, bool Pending)
+{
+    internal bool Available => Book.Length > 0;
+}
+
 internal sealed class HoverLookupWindow : Window
 {
     private readonly TextBlock _word=new(){FontSize=23,FontWeight=FontWeights.SemiBold,TextWrapping=TextWrapping.Wrap,MaxHeight=65};
     private readonly TextBlock _pronunciation=InputDialog.Text("");
     private readonly TextBlock _meaning=InputDialog.Text("");
     private readonly TextBlock _mnemonic=InputDialog.Text("");
+    private readonly TextBlock _bookmarkHint=InputDialog.Text("");
+    private readonly Button _bookmarkButton=new(){Content="＋ 收藏",Margin=new Thickness(0,0,8,0),Padding=new Thickness(9,5,9,5)};
+    private readonly Func<string,HoverBookmark> _bookmarkStatus;
+    private readonly Func<string,HoverBookmark,Task<string?>> _save;
+    private HoverBookmark _bookmark;
+    private int _presentation;
     internal event Action<string>? OpenWord;
     internal event Action? Dismissed;
     private string _currentWord="";
-    internal HoverLookupWindow()
+    internal HoverLookupWindow(Func<string,HoverBookmark> bookmarkStatus,Func<string,HoverBookmark,Task<string?>> save)
     {
-        Width=370;MaxHeight=380;SizeToContent=SizeToContent.Height;ResizeMode=ResizeMode.NoResize;
+        _bookmarkStatus=bookmarkStatus;_save=save;
+        Width=370;MaxHeight=410;SizeToContent=SizeToContent.Height;ResizeMode=ResizeMode.NoResize;
         WindowStyle=WindowStyle.None;AllowsTransparency=true;Background=Brushes.Transparent;ShowInTaskbar=false;ShowActivated=false;Topmost=true;
         var content=new StackPanel {Margin=new Thickness(17,13,17,14)};
         var title=new DockPanel();var close=new Button {Content="×",Padding=new Thickness(7,1,7,1),Background=Brushes.Transparent,BorderThickness=new Thickness(0)};DockPanel.SetDock(close,Dock.Right);title.Children.Add(close);title.Children.Add(_word);content.Children.Add(title);
@@ -27,8 +39,30 @@ internal sealed class HoverLookupWindow : Window
         var definitions=new StackPanel();_meaning.FontSize=14;_meaning.LineHeight=22;definitions.Children.Add(_meaning);
         _mnemonic.Margin=new Thickness(0,12,0,0);_mnemonic.FontSize=12;definitions.Children.Add(_mnemonic);
         content.Children.Add(new ScrollViewer{Content=definitions,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,MaxHeight=205});
-        var open=new Button {Content="查看完整释义 →",HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,13,0,0),Padding=new Thickness(9,5,9,5)};
-        open.Click+=(_,_)=>OpenWord?.Invoke(_currentWord);content.Children.Add(open);
+        var actions=new StackPanel{Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,13,0,0)};
+        content.Children.Add(actions);actions.Children.Add(_bookmarkButton);
+        var open=new Button {Content="查看完整释义 →",Padding=new Thickness(9,5,9,5)};
+        open.Click+=(_,_)=>OpenWord?.Invoke(_currentWord);actions.Children.Add(open);
+        // Keep the footer a predictable height so the popup can be clicked at the screen edge.
+        _bookmarkHint.FontSize=11;_bookmarkHint.Height=23;_bookmarkHint.TextWrapping=TextWrapping.NoWrap;
+        _bookmarkHint.TextTrimming=TextTrimming.CharacterEllipsis;content.Children.Add(_bookmarkHint);
+        _bookmarkButton.Click+=async(_,_) =>
+        {
+            var presentation=_presentation;var word=_currentWord;var target=_bookmarkStatus(word);
+            if(!target.Available||target.Saved||target.Pending||target!=_bookmark){UpdateBookmark();return;}
+            _bookmarkHint.Text="";
+            var saveTask=_save(word,target);
+            UpdateBookmark();
+            var error=await saveTask;
+            if(presentation!=_presentation||!IsVisible)return;
+            UpdateBookmark();
+            var current=_bookmarkStatus(word);
+            if(current.Account==target.Account&&current.Book==target.Book)
+            {
+                _bookmarkHint.Text=error??(current.Saved?$"已收藏到「{current.Title}」":"");
+                _bookmarkHint.ToolTip=_bookmarkHint.Text;
+            }
+        };
         Content=new Border {Child=content,CornerRadius=new CornerRadius(10),Background=Brushes.White,BorderBrush=new SolidColorBrush(Color.FromRgb(113,205,249)),BorderThickness=new Thickness(1),Padding=new Thickness(1)};
         SourceInitialized+=(_,_)=>
         {
@@ -50,12 +84,24 @@ internal sealed class HoverLookupWindow : Window
     }
     internal void SetContent(HoverWord hit,DictionaryEntry entry,IReadOnlyList<StoredMnemonic> notes)
     {
+        _presentation++;_bookmarkHint.Text="";_bookmarkHint.ToolTip=null;
         _currentWord=entry.word;_word.Text=entry.word;
+        UpdateBookmark();
         _pronunciation.Text=entry.word.Equals(hit.Word,StringComparison.OrdinalIgnoreCase)?(entry.phonetic.Length>0?entry.phonetic+" · ":"")+"离线释义 · "+hit.Method:"未找到 “"+hit.Word+"”，相近单词："+entry.word+" · 离线释义";
         var meaning = entry.DisplayMeaning;
         _meaning.Text = meaning.Length <= 600 ? meaning : meaning[..600] + "…";
         _mnemonic.Text=notes.FirstOrDefault()?.Text??"";if(_mnemonic.Text.Length>280)_mnemonic.Text=_mnemonic.Text[..280]+"…";
         _mnemonic.Visibility=_mnemonic.Text.Length>0?Visibility.Visible:Visibility.Collapsed;
+    }
+    internal void UpdateBookmark()
+    {
+        var status=_bookmarkStatus(_currentWord);
+        if(status.Account!=_bookmark.Account||status.Book!=_bookmark.Book){_bookmarkHint.Text="";_bookmarkHint.ToolTip=null;}
+        _bookmark=status;
+        _bookmarkButton.Content=status.Pending?"收藏中…":status.Saved?"✓ 已收藏":"＋ 收藏";
+        _bookmarkButton.IsEnabled=status.Available&&!status.Pending&&!status.Saved;
+        _bookmarkButton.ToolTip=status.Available?$"加入「{status.Title}」":status.Title;
+        ToolTipService.SetShowOnDisabled(_bookmarkButton,true);
     }
     internal void ApplyAppearance(Preferences preferences)
     {

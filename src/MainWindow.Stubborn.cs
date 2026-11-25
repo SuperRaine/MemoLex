@@ -137,7 +137,11 @@ public partial class MainWindow
         for(var row=0;row<3;row++)body.RowDefinitions.Add(new(){Height=GridLength.Auto});
         body.RowDefinitions.Add(new());body.RowDefinitions.Add(new(){Height=GridLength.Auto});InputDialog.SetBody(dialog,body);
         var header=new DockPanel{Margin=new Thickness(0,0,0,12)};body.Children.Add(header);
-        var refresh=new Button{Content="刷新",VerticalAlignment=VerticalAlignment.Top};DockPanel.SetDock(refresh,Dock.Right);header.Children.Add(refresh);
+        var headerActions=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Top};
+        DockPanel.SetDock(headerActions,Dock.Right);header.Children.Add(headerActions);
+        var practiceButton=new Button{Content="卡片自测",Margin=new Thickness(0,0,8,0),IsEnabled=false};
+        headerActions.Children.Add(practiceButton);
+        var refresh=new Button{Content="刷新"};headerActions.Children.Add(refresh);
         var heading=new StackPanel();heading.Children.Add(new TextBlock{Text="顽固单词",FontSize=24,FontWeight=FontWeights.SemiBold,Foreground=Brush("#25516E")});var count=InputDialog.Text("");heading.Children.Add(count);header.Children.Add(heading);
         var filterRow=new Grid{Margin=new Thickness(0,0,0,12)};filterRow.ColumnDefinitions.Add(new(){Width=GridLength.Auto});filterRow.ColumnDefinitions.Add(new());Grid.SetRow(filterRow,1);body.Children.Add(filterRow);filterRow.Children.Add(new TextBlock{Text="筛选",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0),Foreground=Brush("#718DA3")});
         var filter=new TextBox{ToolTip="输入单词或中文释义"};Grid.SetColumn(filter,1);filterRow.Children.Add(filter);AutomationProperties.SetName(filter,"筛选顽固单词或释义");
@@ -188,8 +192,16 @@ public partial class MainWindow
             count.Text=_stubbornLoading?$"刷新中…{progress}":$"{(_tokens.ActiveAccount ?? _tokens.ExpiredAccount)?.Name??"当前账号"} · {visibleCount} 个单词" + (offline ? " · 本地缓存" : "");
             refresh.Content=offline ? "重新登录" : _stubbornLoading?"刷新中…":"刷新";
             refresh.IsEnabled=!_stubbornLoading;
+            practiceButton.IsEnabled=visibleCount>0;
             hint.Text=offline ? "当前显示本地缓存。重新登录后可刷新" : _stubbornError!=null?"刷新未完成："+_stubbornError:displayed is {Complete:false}?$"已获取 {displayed.Words.Count}/{displayed.Total}，部分记录受接口单次上限影响，可稍后刷新。":entries.Count==0&&!_stubbornLoading?"还没有已同步的顽固单词，在墨墨 App 同步后刷新。":_preferences.HideStubbornMeanings?"点击释义区域揭示答案，点击单词查词。":"点击单词查词；手机端同步学习数据后刷新。";
         }
+        practiceButton.Click+=(_,_) =>
+        {
+            if(list.ItemsSource is not WordListRow[] {Length:>0} rows)return;
+            var practice=Desktop.StubbornFlashcards.Build(dialog,rows.Select(row=>row.Word),_dictionary,_onlineDictionary,
+                word=>_mnemonics.Get(word,MnemonicAccountKey).FirstOrDefault()?.Text);
+            practice.ShowDialog();
+        };
         sort.SelectionChanged+=(_,_)=>
         {
             if(sort.SelectedValue is not string mode)return;
@@ -209,7 +221,7 @@ public partial class MainWindow
         };
         filter.TextChanged+=(_,_)=>Render();StubbornChanged+=Render;
         dialog.RegisterName("StubbornWordsList",list);dialog.RegisterName("StubbornFilter",filter);dialog.RegisterName("RefreshStubbornWords",refresh);dialog.RegisterName("StubbornListCount",count);
-        dialog.RegisterName("StubbornSort",sort);dialog.RegisterName("StubbornSortDirection",direction);dialog.RegisterName("HideStubbornMeanings",conceal);dialog.RegisterName("StubbornOptions",options);
+        dialog.RegisterName("StubbornSort",sort);dialog.RegisterName("StubbornSortDirection",direction);dialog.RegisterName("HideStubbornMeanings",conceal);dialog.RegisterName("StubbornOptions",options);dialog.RegisterName("StubbornFlashcards",practiceButton);
         var editing=_editingSettings;_editingSettings=true;ReleaseGlobalShortcut();if(_hover!=null)_hover.Enabled=false;
         try{_ = RefreshStubbornWordsAsync(_stubbornError!=null);Render();PresentStubbornWords(dialog);}
         finally{StubbornChanged-=Render;_stubbornDialog=null;_editingSettings=editing;if(!_exitRequested&&IsVisible&&!editing){RefreshGlobalShortcut();RefreshDoubleCopy();RefreshHoverLookup();}}

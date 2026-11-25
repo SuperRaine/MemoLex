@@ -72,6 +72,7 @@ enum EnglishAccent: String, CaseIterable {
     @Published var membership = false
     @Published var writing = false
     private struct NotepadWord: Hashable { let book: String; let word: String }
+    struct HoverBookmarkTarget: Equatable { let account: Int; let id: String; let title: String }
     @Published private var pendingNotepadWords: Set<NotepadWord> = []
     var savingCurrentNotepadWord: Bool {
         pendingNotepadWords.contains(NotepadWord(book: preferences.selectedNotepad, word: word.lowercased()))
@@ -678,6 +679,37 @@ enum EnglishAccent: String, CaseIterable {
             && selectedPad["content"].text.components(separatedBy: .newlines).contains {
                 !$0.trimmed.hasPrefix("#") && $0.trimmed.caseInsensitiveCompare(word) == .orderedSame
             }
+    }
+    var hoverBookmarkTarget: HoverBookmarkTarget? {
+        let id = selectedPad["id"].text
+        guard loggedIn, !selectingNotepad, !id.isEmpty, id == preferences.selectedNotepad,
+              selectedPad["type"].text != "FAVORITE" else { return nil }
+        return .init(account: accountVersion, id: id, title: selectedPad["title"].text)
+    }
+
+    func hoverBookmarkStatus(_ word: String, target: HoverBookmarkTarget?) -> (saved: Bool, pending: Bool) {
+        guard let target, target == hoverBookmarkTarget else { return (false, false) }
+        let saved = selectedPad["content"].text.components(separatedBy: .newlines).contains {
+            !$0.trimmed.hasPrefix("#") && $0.trimmed.caseInsensitiveCompare(word) == .orderedSame
+        }
+        return (saved, pendingNotepadWords.contains(.init(book: target.id, word: word.lowercased())))
+    }
+
+    func saveHoverBookmark(_ word: String, target: HoverBookmarkTarget) async throws {
+        guard target == hoverBookmarkTarget else {
+            throw CoreFailure(code: "notepad", message: "云词本已切换，请重试")
+        }
+        if hoverBookmarkStatus(word, target: target).saved { return }
+        let key = NotepadWord(book: target.id, word: word.lowercased())
+        guard pendingNotepadWords.insert(key).inserted else { return }
+        defer { if target.account == accountVersion { pendingNotepadWords.remove(key) } }
+        let result = try await core.request("notepads.addHover", ["id": .string(target.id), "word": .string(word)])
+        guard target.account == accountVersion, !Task.isCancelled else { throw CancellationError() }
+        if preferences.selectedNotepad == target.id, result["notepad"]["id"].text == target.id {
+            selectedPad = result["notepad"]
+            refreshMembership()
+        }
+        status = "「\(word)」已在「\(target.title)」中"
     }
     func toggleMembership() async {
         guard loggedIn else { openAccountSettings(); return }

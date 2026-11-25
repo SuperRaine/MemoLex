@@ -412,7 +412,15 @@ private struct WordPage: View {
                     rule
                     HStack { HStack(spacing: 10) { Text("记").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28).background(Palette.wash, in: RoundedRectangle(cornerRadius: 7)); Text("我的助记").font(.system(size: 17, weight: .semibold)) }; Spacer(); Button("编辑助记") { model.sheet = .mnemonic }.buttonStyle(MemoButtonStyle(compact: true)).disabled(model.word.isEmpty) }
                     Text(noteSummary).font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.vertical, 10)
-                    ForEach(Array(model.notes.enumerated()), id: \.offset) { _, note in VStack(alignment: .leading, spacing: 9) { Text(note["noteType"].text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.deep); LinkedText(text: note["text"].text, size: 15, color: Palette.deep) }.padding(18).frame(maxWidth: .infinity, alignment: .leading).background(Palette.wash, in: RoundedRectangle(cornerRadius: 10)).padding(.bottom, 8) }
+                    ForEach(Array(model.notes.enumerated()), id: \.offset) { _, note in
+                        VStack(alignment: .leading, spacing: 9) {
+                            Text(note["noteType"].text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.deep)
+                            MnemonicPartsView(breakdowns: note["breakdowns"].list)
+                                .id("\(model.word)\n\(note["text"].text)")
+                            LinkedText(text: note["text"].text, size: 15, color: Palette.deep)
+                        }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Palette.wash, in: RoundedRectangle(cornerRadius: 10)).padding(.bottom, 8)
+                    }
                     rule
                     HStack {
                         Text("真题例句").font(.system(size: 17, weight: .semibold))

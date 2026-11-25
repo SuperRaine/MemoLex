@@ -167,7 +167,7 @@ internal sealed class CoreService : IDisposable
                 word = ExampleText.ResolveLookupWord(word, candidate => _dictionary.Lookup(candidate) != null);
                 var entry = _dictionary.Lookup(word);
                 if (entry != null) entry.translation = entry.DisplayMeaning;
-                return new { entry, word, notes = _notes.Get(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24) };
+                return new { entry, word, notes = DisplayNotes(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24) };
             }
             case "dictionary.online":
                 return string.IsNullOrEmpty(_dictionary.Lookup(word)?.DisplayMeaning)
@@ -183,11 +183,11 @@ internal sealed class CoreService : IDisposable
             case "examples":
                 var page = await _examples.SearchAsync(word, T(p, "paperType", "ALL"), Number(p, "offset", 0, 0, 100000), 10, cancellation);
                 return new { page.Total, page.Offset, page.ReceivedCount, page.HasMore, items = page.Items.Select(item => new { item.Id, item.English, item.Translation, item.Source, item.OptionLabel, item.ContextEnglish, item.ContextTranslation, item.MatchedWords, translationTerms = TextHighlights.TranslationTerms(item.English, item.Translation, word, item.MatchedWords, value => _dictionary.Lookup(value)?.translation, item.MatchedTranslations, item.TranslationAligned) }) };
-            case "notes.local": return _notes.Get(word, _tokens.CredentialKey);
+            case "notes.local": return DisplayNotes(word, _tokens.CredentialKey);
             case "notes.save":
                 var note = Program.Decode<StoredMnemonic>(p.GetProperty("note"));
                 _notes.SaveEdit(word, note with { Origin = "local", CloudId = null, AccountKey = null }, _tokens.CredentialKey);
-                return _notes.Get(word, _tokens.CredentialKey);
+                return DisplayNotes(word, _tokens.CredentialKey);
             case "notes.cloud":
                 var vocabulary = await RequireWord(word, cancellation);
                 var cloud = await _api.GetNotesAsync(vocabulary.Id, cancellation);
@@ -195,7 +195,7 @@ internal sealed class CoreService : IDisposable
                 {
                     _api.CheckNativeAccount(accountKey!);
                     _notes.SaveCloud(word, cloud.Select(value => new StoredMnemonic(value.Id, value.NoteType, value.Text, value.Id, "cloud", accountKey)), accountKey!);
-                    return _notes.Get(word, accountKey);
+                    return DisplayNotes(word, accountKey);
                 }
             case "notes.publish":
                 var voc = await RequireWord(word, cancellation);
@@ -204,7 +204,7 @@ internal sealed class CoreService : IDisposable
                 {
                     _api.CheckNativeAccount(accountKey!);
                     _notes.SaveEdit(word, new(saved.Id, saved.NoteType, saved.Text, saved.Id, "cloud", accountKey), accountKey);
-                    return _notes.Get(word, accountKey);
+                    return DisplayNotes(word, accountKey);
                 }
             case "study.status":
                 var studyWord = await _api.ResolveWordAsync(word, cancellation);
@@ -220,6 +220,8 @@ internal sealed class CoreService : IDisposable
             case "notepads.get": return await _api.GetNotepadAsync(T(p, "id"), cancellation);
             case "notepads.create": return await _api.CreateNotepadAsync(T(p, "title"), Null(word), cancellation);
             case "notepads.add": return await _api.AddToNotepadAsync(T(p, "id"), word, cancellation);
+            case "notepads.addHover":
+                return await _api.AddToNotepadAsync(T(p, "id"), (await RequireWord(word, cancellation)).Spelling, cancellation);
             case "notepads.remove": return await _api.RemoveFromNotepadAsync(T(p, "id"), word, cancellation);
             case "notepads.update":
                 var original = Program.Decode<CloudNotepad>(p.GetProperty("original"));
@@ -231,6 +233,13 @@ internal sealed class CoreService : IDisposable
             default: throw new ArgumentException("不支持的操作。");
         }
     }
+    private object DisplayNotes(string word, string? accountKey) =>
+        _notes.Get(word, accountKey).Select(note => new
+        {
+            note.Id, note.NoteType, note.Text, note.CloudId, note.Origin, note.AccountKey,
+            Breakdowns = MnemonicParts.Parse(word, note.NoteType, note.Text)
+        }).ToArray();
+
     private async Task<Vocabulary> RequireWord(string word, CancellationToken cancellation) => await _api.ResolveWordAsync(word, cancellation) ?? throw new MaiMemoException("墨墨暂未收录这个单词。");
     private static string T(JsonElement value, string name, string fallback = "") => Program.Text(value, name, fallback);
     private static string? Null(string value) => value.Length == 0 ? null : value;

@@ -15,15 +15,15 @@ struct TourStep {
 }
 @MainActor extension AppModel {
     static let tourSteps: [TourStep] = [
-        .init(title: "查词与阅读", text: "输入英文或中文查词。点击相关词查看释义，点击例句旁的“朗读”听整句。", target: "reading"),
+        .init(title: "查词、助记与例句", text: "输入英文或中文查词。在助记里点击词根或词缀查看含义，也可点击例句旁的“朗读”听整句。", target: "reading"),
         .init(title: "登录与切换账号", text: "在这里登录墨墨。选择已保存的账号即可切换。", target: "login", settings: "墨墨账号"),
-        .init(title: "顽固单词", text: "点击顶部单词查词。在“全部”中选择排序，或遮住释义自测。", target: "stubborn"),
+        .init(title: "顽固单词", text: "在“全部”中筛选或排序，也可开始卡片自测。每组 10 词，翻面核对后选择认识、模糊或忘记。", target: "stubborn"),
         .init(title: "收藏与管理云词本", text: "点击“加入云词本”收藏，进入“查看 / 编辑”管理单词和查看释义。", target: "cloud"),
         .init(title: "今日学习", text: "查看待学和复习进度，可搜索单词或遮住释义。选词后确认添加到今日新学。", target: "today-plan"),
         .init(title: "今日新学", text: "将单词加入今日新学，添加时请留意手机端同步提醒。", target: "today"),
         .init(title: "段落翻译", text: "输入一段文字后点击翻译，英文单词也可点击查词。", target: "translation"),
         .init(title: "截图翻译", text: "框选屏幕中的英文。单个词直接查词，段落进入翻译。", target: "screenshot"),
-        .init(title: "鼠标取词", text: "开启后，将鼠标停在英文单词上即可查看释义。", target: "hover", settings: "鼠标取词"),
+        .init(title: "鼠标取词", text: "开启后，将鼠标停在英文单词上即可查看释义。登录并选好云词本后，可在浮窗里点击“收藏”。", target: "hover", settings: "鼠标取词"),
         .init(title: "剪贴板查词", text: "开启后，选中文字连按两次 ⌘C，唤起软件查词或翻译。", target: "clipboard", settings: "常规"),
         .init(title: "考试倒计时", text: "设置考试名称，分别选择或输入年、月、日。开启后可在标题栏看到剩余天数。", target: "countdown", settings: "常规"),
         .init(title: "软件更新", text: "在这里检查新版。下载完成后，点击“更新并重启”安装。", target: "updates", settings: "软件更新"),
