@@ -1,128 +1,49 @@
-name: Build macOS
-on:
-  workflow_dispatch:
-    inputs:
-      portable_asset_id:
-        description: Windows portable release asset ID (optional for the pinned public data)
-        type: string
-      portable_sha256:
-        description: SHA-256 of the specified portable archive
-        type: string
-      draft_tag:
-        description: Attach the verified DMG to this release draft
-        type: string
+name: Verify MemoLex 2.2.0 on Apple Silicon
+on: workflow_dispatch
 permissions:
-  contents: read
-concurrency:
-  group: macos-${{ github.ref }}
-  cancel-in-progress: true
+  actions: read
+  contents: write
 jobs:
-  build:
-    runs-on: macos-15
-    timeout-minutes: 35
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 8.0.416
-      - name: Prepare offline dictionary from the release asset
-        if: inputs.portable_asset_id != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PORTABLE_ASSET_ID: ${{ inputs.portable_asset_id }}
-          PORTABLE_SHA256: ${{ inputs.portable_sha256 }}
-        run: |
-          [[ "$PORTABLE_ASSET_ID" =~ ^[0-9]+$ && "$PORTABLE_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          DATA_DIR="$RUNNER_TEMP/memolex-release-data"
-          mkdir -p "$DATA_DIR"
-          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$PORTABLE_ASSET_ID" > "$DATA_DIR/windows.zip"
-          printf '%s  %s\n' "$PORTABLE_SHA256" "$DATA_DIR/windows.zip" | shasum -a 256 -c -
-          unzip -q "$DATA_DIR/windows.zip" 'MemoLex/app/data/*' 'MemoLex/app/ThirdParty/*' -d "$DATA_DIR"
-          printf 'MEMOLEX_DATA_ROOT=%s\n' "$DATA_DIR/MemoLex/app" >> "$GITHUB_ENV"
-      - name: Build universal app and packages
-        env:
-          MEMOLEX_DEEPL_KEY: ${{ inputs.draft_tag != '' && secrets.MEMOLEX_DEEPL_KEY || '' }}
-        run: |
-          if [ -n "${MEMOLEX_DEEPL_KEY:-}" ]; then
-            key_file="$(mktemp -t memolex-deepl)"
-            trap 'rm -f "$key_file"' EXIT
-            printf '%s' "$MEMOLEX_DEEPL_KEY" > "$key_file"
-            export MEMOLEX_DEEPL_KEY_FILE="$key_file"
-          fi
-          unset MEMOLEX_DEEPL_KEY
-          bash macos/build.sh
-      - name: Upload Mac packages
-        uses: actions/upload-artifact@v7
-        with:
-          name: MemoLex-macOS
-          path: |
-            macos/output/*.zip
-            macos/output/*.dmg
-          compression-level: 0
-          retention-days: 14
   verify:
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-15, macos-15-intel]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-26
     timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: e4e4045897079af7e744e77645d7c9e39090231b
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: MemoLex-macOS
-      - name: Verify native bundle and offline core
+          repository: SuperRaine/MemoLex
+          run-id: 45637585863
+          artifact-ids: 15035250828
+          github-token: ${{ github.token }}
+      - name: Verify the previously built arm64 app
+        shell: bash
         run: |
-          ditto -x -k MemoLex-*-macOS-universal.zip app
+          test "$(uname -m)" = arm64
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/45637585863 --jq .head_sha)" = "$RELEASE_SHA"
+          DMG=MemoLex-2.2.0-macOS-universal.dmg
+          hdiutil verify "$DMG"
+          ditto -x -k MemoLex-2.2.0-macOS-universal.zip app
           APP="$PWD/app/MemoLex.app"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist" | grep -Fx 2.2.0
           codesign --verify --deep --strict "$APP"
           lipo "$APP/Contents/MacOS/MemoLex" -verify_arch x86_64 arm64
-          ARCH="$(uname -m)"; [ "$ARCH" != x86_64 ] || ARCH=x64
-          MEMOLEX_RESOURCES="$APP/Contents/Resources" MEMOLEX_PROFILE="$RUNNER_TEMP/MemoLex-profile" "$APP/Contents/Resources/Core-$ARCH/MemoLex.Core" --smoke-test
+          MEMOLEX_RESOURCES="$APP/Contents/Resources" MEMOLEX_PROFILE="$RUNNER_TEMP/MemoLex-profile" "$APP/Contents/Resources/Core-arm64/MemoLex.Core" --smoke-test
           "$APP/Contents/MacOS/MemoLex" &
           PID=$!
           sleep 20
           kill -0 "$PID"
           kill "$PID"
-  attach:
-    if: inputs.draft_tag != ''
-    needs: verify
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ inputs.draft_tag }}
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: MemoLex-macOS
-      - name: Attach the verified Mac installer
+      - name: Attach and confirm the original artifact
+        shell: bash
         run: |
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          draft="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish)"
-          jq -e --arg sha "$GITHUB_SHA" '.isDraft and .targetCommitish == $sha' <<< "$draft"
-          VERSION="$(printf '%s' "$RELEASE_TAG" | cut -c2-)"
-          DMG="MemoLex-$VERSION-macOS-universal.dmg"
-          export VERSION DMG
-          python3 - <<'PY'
-          import os
-          import plistlib
-          from pathlib import Path
-          from zipfile import ZipFile
-          disk = Path(os.environ["DMG"])
-          with disk.open("rb") as stream:
-              stream.seek(-512, os.SEEK_END)
-              assert stream.read(4) == b"koly"
-          with ZipFile(disk.with_suffix(".zip")) as bundle:
-              info = plistlib.loads(bundle.read("MemoLex.app/Contents/Info.plist"))
-              assert info["CFBundleShortVersionString"] == os.environ["VERSION"]
-          PY
-          gh release upload "$RELEASE_TAG" "$DMG" --repo "$GITHUB_REPOSITORY"
-          hash="$(sha256sum "$DMG" | cut -d' ' -f1)"
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
-            | jq -e --arg name "$DMG" --arg digest "sha256:$hash" '.assets | any(.name == $name and .digest == $digest)'
+          file=MemoLex-2.2.0-macOS-universal.dmg
+          digest="sha256:$(shasum -a 256 "$file" | cut -d' ' -f1)"
+          get_release() { gh release view v2.2.0 --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets; }
+          release="$(get_release)"
+          jq -e --arg sha "$RELEASE_SHA" '.isDraft and .targetCommitish == $sha' <<< "$release"
+          if ! jq -e --arg name "$file" '.assets | any(.name == $name)' <<< "$release"; then
+            gh release upload v2.2.0 "$file" --repo "$GITHUB_REPOSITORY" || true
+          fi
+          get_release | jq -e --arg name "$file" --arg digest "$digest" '.assets | any(.name == $name and .digest == $digest)'
