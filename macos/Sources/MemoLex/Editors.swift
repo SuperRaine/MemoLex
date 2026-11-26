@@ -55,6 +55,7 @@ struct WordListMeaning: View {
     let local: String?
     var concealed = false
     var lineByLine = false
+    var fontSize: CGFloat? = nil
     let onResolved: (String) -> Void
     @State private var attempt: (word: String, result: J)?
 
@@ -84,7 +85,7 @@ struct WordListMeaning: View {
             } else {
                 Text(display).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
             }
-        }.font(.system(size: lineByLine ? 13 : 12))
+        }.font(.system(size: fontSize ?? (lineByLine ? 13 : 12)))
             .foregroundStyle(concealed ? Palette.muted : Palette.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
             .help(tooltip)

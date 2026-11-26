@@ -168,46 +168,69 @@ struct StubbornFlashcardView: View {
 
     private func face(word: String, data: J?, back: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 15, style: .continuous)
-        return VStack(spacing: 10) {
-            Text(back ? "释义与助记 · 点击翻回" : "第 \(practice.groupNumber) 组 · 点击翻面")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Palette.deep)
-                .padding(.horizontal, 10).padding(.vertical, 3.5)
-                .background(Palette.paper.opacity(0.88), in: Capsule())
-                .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.8))
-            Text(word).font(.system(size: 36, weight: .bold)).multilineTextAlignment(.center)
-            if let phonetic = data?["entry"]["phonetic"].text, !phonetic.isEmpty {
-                Text("/\(phonetic)/").font(.system(size: 14)).foregroundStyle(Palette.muted)
-            }
+        let phonetic = data?["entry"]["phonetic"].text ?? ""
+        return Group {
             if back {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("中文释义").font(.caption.weight(.semibold)).foregroundStyle(Palette.deep)
-                        WordListMeaning(core: core, word: word, local: data?["entry"]["translation"].text, concealed: !revealed) { _ in }.id(word)
-                        if let note = data?["notes"].list.first?["text"].text, !note.isEmpty {
-                            HStack(alignment: .top, spacing: 8) {
-                                Text("记")
-                                    .font(.system(size: 10.5, weight: .bold))
-                                    .foregroundStyle(Palette.deep)
-                                    .frame(width: 20, height: 20)
-                                    .background(Palette.accent.opacity(0.2), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                                Text(note).font(.callout).foregroundStyle(Palette.ink.opacity(0.88)).fixedSize(horizontal: false, vertical: true)
-                            }
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Palette.paper.opacity(0.88), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.border.opacity(0.85)))
-                            .padding(.top, 4)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(word).font(.system(size: 28, weight: .bold))
+                        if !phonetic.isEmpty {
+                            Text("/\(phonetic.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/")
+                                .font(.system(size: 14.5)).foregroundStyle(Palette.muted)
                         }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
+                        Spacer(minLength: 6)
+                        Text("点击翻回")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Palette.deep)
+                            .padding(.horizontal, 9).padding(.vertical, 3)
+                            .background(Palette.paper.opacity(0.88), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.8))
+                    }
+                    Divider().overlay(Palette.border.opacity(0.85))
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 9) {
+                            Text("中文释义").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.deep)
+                            WordListMeaning(core: core, word: word, local: data?["entry"]["translation"].text, concealed: !revealed, fontSize: 16.5) { _ in }
+                                .lineSpacing(4)
+                                .id(word)
+                            if let note = data?["notes"].list.first?["text"].text, !note.isEmpty {
+                                HStack(alignment: .top, spacing: 9) {
+                                    Text("记")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(Palette.deep)
+                                        .frame(width: 22, height: 22)
+                                        .background(Palette.accent.opacity(0.2), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                    Text(note).font(.system(size: 14.5)).lineSpacing(4).foregroundStyle(Palette.ink.opacity(0.9)).fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(11)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Palette.paper.opacity(0.9), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.border.opacity(0.85)))
+                                .padding(.top, 4)
+                            }
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             } else {
-                Label("点击翻卡核对释义", systemImage: "arrow.clockwise")
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(Palette.deep)
-                    .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(Palette.paper.opacity(0.85), in: Capsule())
-                    .padding(.top, 6)
+                VStack(spacing: 12) {
+                    Text("第 \(practice.groupNumber) 组 · 点击翻面")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Palette.deep)
+                        .padding(.horizontal, 11).padding(.vertical, 4)
+                        .background(Palette.paper.opacity(0.88), in: Capsule())
+                        .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.8))
+                    Text(word).font(.system(size: 42, weight: .bold)).multilineTextAlignment(.center)
+                    if !phonetic.isEmpty {
+                        Text("/\(phonetic.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/")
+                            .font(.system(size: 15.5)).foregroundStyle(Palette.muted)
+                    }
+                    Label("点击翻卡核对释义", systemImage: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.deep)
+                        .padding(.horizontal, 13).padding(.vertical, 6)
+                        .background(Palette.paper.opacity(0.88), in: Capsule())
+                        .padding(.top, 6)
+                }
             }
         }
         .padding(24)
