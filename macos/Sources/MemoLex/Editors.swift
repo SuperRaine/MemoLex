@@ -14,8 +14,23 @@ struct HistoryView: View {
                 TextField("筛选单词", text: $filter).inputFrame()
                 HStack { Button("全选当前结果") { selected = Set(records.map(\.id)) }; Button("删除选中") { model.removeHistory(selected); selected = [] }.disabled(selected.isEmpty); Spacer(); Button("清空记录") { if confirm("清空查词历史？", "此操作仅删除本机的查词记录。", action: "清空") { model.clearHistory(); selected = [] } } }.buttonStyle(MemoButtonStyle(compact: true))
                 List(selection: $selected) {
-                    ForEach(records) { record in HStack { Button(record.word) { model.sheet = nil; model.lookup(record.word) }.buttonStyle(.plain).foregroundStyle(Palette.deep); Spacer(); Text(record.date, format: .dateTime.year().month().day().hour().minute()).font(.system(size: 11)).foregroundStyle(Palette.muted); Text("\(record.count) 次").font(.system(size: 11)).foregroundStyle(Palette.muted).frame(width: 55, alignment: .trailing) }.padding(.vertical, 6).tag(record.id) }
-                }.listStyle(.inset).overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.border))
+                    ForEach(records) { record in
+                        HStack(spacing: 10) {
+                            Button(record.word) { model.sheet = nil; model.lookup(record.word) }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Palette.deep)
+                            Spacer()
+                            Text(record.date, format: .dateTime.year().month().day().hour().minute())
+                                .font(.system(size: 11)).foregroundStyle(Palette.muted)
+                            Text("\(record.count) 次")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Palette.deep)
+                                .padding(.horizontal, 8).padding(.vertical, 2.5)
+                                .background(Palette.wash, in: Capsule())
+                        }.padding(.vertical, 6).tag(record.id)
+                    }
+                }.listStyle(.inset).overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.border))
             }.padding(23)
         }.frame(width: 700, height: 570).background(Palette.paper).font(.system(size: 13)).foregroundStyle(Palette.ink)
     }
@@ -110,22 +125,27 @@ struct StubbornView: View {
                     Button("卡片自测") {
                         practiceSession = (words: visible.map(\.spellingText), persists: filter.trimmed.isEmpty)
                     }
-                        .buttonStyle(MemoButtonStyle(compact: true)).disabled(visible.isEmpty)
+                        .buttonStyle(MemoButtonStyle(accent: true, compact: true)).disabled(visible.isEmpty)
                     Button(model.stubbornLoading ? "刷新中…" : model.loggedIn ? "刷新" : "账号设置") {
                         if model.loggedIn { Task { await model.refreshStubborn(force: true) } }
                         else { model.openAccountSettings() }
-                    }.disabled(model.stubbornLoading)
+                    }.buttonStyle(MemoButtonStyle(compact: true)).disabled(model.stubbornLoading)
                 }
-                TextField("筛选单词或释义", text: $filter).inputFrame()
-                HStack(spacing: 10) {
-                    Text("排序").foregroundStyle(Palette.muted)
-                    MemoPicker(title: "排序", selection: $preferences.stubbornSort,
-                               options: [("review", "复习时间"), ("alphabetical", "字母顺序"), ("random", "随机轮换")])
-                        .frame(width: 136).onChange(of: preferences.stubbornSort) { _ in model.reorderStubborn() }
-                    if model.preferences.stubbornSort == "alphabetical" { Button(model.preferences.alphabetDescending ? "Z–A" : "A–Z") { model.preferences.alphabetDescending.toggle(); model.reorderStubborn() }.buttonStyle(MemoButtonStyle(compact: true)) }
-                    Spacer()
-                    Toggle("遮住释义", isOn: $preferences.concealMeanings).toggleStyle(.switch).controlSize(.small).onChange(of: preferences.concealMeanings) { _ in revealed = []; preferences.save() }
+                VStack(spacing: 10) {
+                    TextField("筛选单词或释义", text: $filter).inputFrame()
+                    HStack(spacing: 10) {
+                        Text("排序").foregroundStyle(Palette.muted)
+                        MemoPicker(title: "排序", selection: $preferences.stubbornSort,
+                                   options: [("review", "复习时间"), ("alphabetical", "字母顺序"), ("random", "随机轮换")])
+                            .frame(width: 136).onChange(of: preferences.stubbornSort) { _ in model.reorderStubborn() }
+                        if model.preferences.stubbornSort == "alphabetical" { Button(model.preferences.alphabetDescending ? "Z–A" : "A–Z") { model.preferences.alphabetDescending.toggle(); model.reorderStubborn() }.buttonStyle(MemoButtonStyle(compact: true)) }
+                        Spacer()
+                        Toggle("遮住释义", isOn: $preferences.concealMeanings).toggleStyle(.switch).controlSize(.small).onChange(of: preferences.concealMeanings) { _ in revealed = []; preferences.save() }
+                    }
                 }
+                .padding(12)
+                .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
                 HStack(spacing: 10) {
                     Text("单词").frame(width: 180, alignment: .leading)
                     Text("释义").padding(.leading, 8)

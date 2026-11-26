@@ -32,12 +32,29 @@ public partial class MainWindow
         var body = BuildRows(new Thickness(16, 10, 16, 10), GridLength.Auto, GridLength.Auto, star, GridLength.Auto);
         InputDialog.SetBody(dialog, body);
 
-        var header = new DockPanel { Margin = new Thickness(0, 0, 0, 7) };
-        var refresh = new Button { Content = "刷新", Padding = new Thickness(10, 5, 10, 5), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        var headerCard = new Border
+        {
+            Background = Brush("#F4FAFF"), BorderBrush = Brush("#DAEAF7"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(11), Padding = new Thickness(14, 10, 14, 11), Margin = new Thickness(0, 0, 0, 10)
+        };
+        var headerStack = new StackPanel();
+        headerCard.Child = headerStack;
+        var header = new DockPanel();
+        var refresh = new Button { Content = "刷新", Padding = new Thickness(11, 5, 11, 5), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
         DockPanel.SetDock(refresh, Dock.Right); header.Children.Add(refresh);
         var overview = InputDialog.Text("正在读取今日学习…", status: true);
-        overview.FontSize = 13; overview.LineHeight = 18; overview.VerticalAlignment = VerticalAlignment.Center;
-        header.Children.Add(overview); body.Children.Add(header);
+        overview.FontSize = 13; overview.FontWeight = FontWeights.SemiBold; overview.Foreground = Brush("#163952");
+        overview.LineHeight = 19; overview.VerticalAlignment = VerticalAlignment.Center;
+        header.Children.Add(overview); headerStack.Children.Add(header);
+        var studyTrack = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = Brush("#DFEEF9"), Margin = new Thickness(0, 8, 0, 0), ClipToBounds = true };
+        var studyFill = new Border
+        {
+            Height = 6, Width = 0, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(3),
+            Background = new LinearGradientBrush(Color.FromRgb(0x34, 0xBC, 0xFC), Color.FromRgb(0x0D, 0x85, 0xC1), new Point(0, 0), new Point(1, 0))
+        };
+        studyTrack.Child = studyFill;
+        headerStack.Children.Add(studyTrack);
+        body.Children.Add(headerCard);
         var page = new Grid();
         var card = new Border
         {
@@ -218,6 +235,13 @@ public partial class MainWindow
             dueFilter = index;
             RenderDue();
         }));
+        void UpdateStudyBar()
+        {
+            if (studyTrack.ActualWidth <= 0 || plan == null) return;
+            var ratio = plan.Target > 0 ? Math.Clamp((double)plan.Finished / plan.Target, 0, 1) : 0;
+            Desktop.UiMotion.AnimateWidth(studyFill, studyTrack.ActualWidth * ratio, 320);
+        }
+        studyTrack.SizeChanged += (_, _) => UpdateStudyBar();
         async Task Refresh()
         {
             plan = await _api.GetTodayPlanAsync(cancellation);
@@ -226,6 +250,7 @@ public partial class MainWindow
             var gap = plan.NewWordsNeeded is int needed ? $"还需加入 {needed} 词" : "新词缺口待同步";
             overview.Text = $"{plan.Day} · 已完成 {plan.Finished}/{plan.Target} · 待新学 {remainingNew} · 待复习 {remainingReview} · {gap}"
                 + (plan.Items.Count == MaiMemoClient.StudyBatchLimit ? " · 词表最多显示前 1000 条" : "");
+            UpdateStudyBar();
             if (plan.NewWordsNeeded is int shortage) count.Text = Math.Min(shortage, MaiMemoClient.StudyBatchLimit).ToString();
             var entries = plan.Items.Where(item => !item.IsFinished).ToArray();
             await LoadMeanings(entries.Select(item => item.Spelling));
@@ -373,9 +398,10 @@ public partial class MainWindow
             for (var index = 0; index < buttons.Children.Count; index++)
             {
                 var button = (Button)buttons.Children[index];
-                button.Background = index == current ? Brush("#DDF2FC") : Brushes.Transparent;
-                button.Foreground = index == current ? Brush("#087FAF") : Brush("#50677A");
+                button.Background = index == current ? Brushes.White : Brushes.Transparent;
+                button.Foreground = index == current ? Brush("#0A7FB3") : Brush("#58768E");
                 button.FontWeight = index == current ? FontWeights.SemiBold : FontWeights.Normal;
+                button.Effect = index == current ? new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 6, ShadowDepth = 1, Opacity = 0.09, Color = Color.FromRgb(0x0E, 0x4B, 0x73) } : null;
             }
         }
         for (var index = 0; index < titles.Length; index++)

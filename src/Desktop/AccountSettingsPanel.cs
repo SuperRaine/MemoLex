@@ -9,23 +9,32 @@ internal static class AccountSettingsPanel
     internal static FrameworkElement Build(Window owner,TokenStore store,Func<Task> changed)
     {
         var panel=new StackPanel();
-        var headline=new TextBlock {FontSize=15,FontWeight=FontWeights.SemiBold,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,0,0,8)};panel.Children.Add(headline);
-        var login=new Button {Content="登录或添加账号",Style=(Style)Application.Current.FindResource("AccentButton"),HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,4,0,12)};
-        panel.Children.Add(login);
-        panel.Children.Add(new TextBlock {Text="选择账号即可切换",FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,6)});
-        var accounts=new ComboBox {MinHeight=34,Margin=new Thickness(0,0,0,8)};panel.Children.Add(accounts);
-        var actions=new WrapPanel();panel.Children.Add(actions);
-        Button Add(string text){var b=new Button {Content=text,Margin=new Thickness(0,0,8,10)};actions.Children.Add(b);return b;}
+        var topCard=new StackPanel();
+        var headline=new TextBlock {FontSize=15.5,FontWeight=FontWeights.SemiBold,Foreground=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(14,43,64)),TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,0,0,10)};topCard.Children.Add(headline);
+        var login=new Button {Content="登录或添加账号",Style=(Style)Application.Current.FindResource("AccentButton"),HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,0,0,14)};
+        topCard.Children.Add(login);
+        topCard.Children.Add(new TextBlock {Text="选择账号即可切换",FontSize=12,FontWeight=FontWeights.SemiBold,Foreground=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(91,122,145)),Margin=new Thickness(0,0,0,6)});
+        var accounts=new ComboBox {MinHeight=35,Margin=new Thickness(0,0,0,10)};topCard.Children.Add(accounts);
+        var actions=new WrapPanel();topCard.Children.Add(actions);
+        Button Add(string text){var b=new Button {Content=text,Padding=new Thickness(11,6,11,6),FontSize=12,Margin=new Thickness(0,0,8,10)};actions.Children.Add(b);return b;}
         var relogin=Add("重新登录");var logout=Add("退出登录");var remove=Add("移除账号");
         var nameRow=new DockPanel {Margin=new Thickness(0,2,0,6)};var rename=new Button {Content="保存账号名称",Margin=new Thickness(10,0,0,0),Height=36,VerticalAlignment=VerticalAlignment.Center};DockPanel.SetDock(rename,Dock.Right);nameRow.Children.Add(rename);
-        var name=new TextBox {MaxLength=80,Padding=new Thickness(9,6,9,6),Height=36,VerticalAlignment=VerticalAlignment.Center,ToolTip="给账号起一个方便区分的名称"};nameRow.Children.Add(name);panel.Children.Add(nameRow);
-        var status=InputDialog.Text("", status: true);status.Margin=new Thickness(0,4,0,4);panel.Children.Add(status);
-        panel.Children.Add(InputDialog.Text("登录信息加密保存在本机，过期后请重新登录。"));
+        var name=new TextBox {MaxLength=80,Padding=new Thickness(10,6,10,6),Height=36,VerticalAlignment=VerticalAlignment.Center,ToolTip="给账号起一个方便区分的名称"};nameRow.Children.Add(name);topCard.Children.Add(nameRow);
+        var status=InputDialog.Text("", status: true);status.Margin=new Thickness(0,6,0,2);topCard.Children.Add(status);
+        var safeNote=InputDialog.Text("登录信息加密保存在本机，过期后请重新登录。");safeNote.FontSize=11.5;topCard.Children.Add(safeNote);
+        panel.Children.Add(new Border
+        {
+            Child=topCard,Padding=new Thickness(16,14,16,14),Margin=new Thickness(0,0,0,12),
+            CornerRadius=new CornerRadius(11),
+            Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(248,252,255)),
+            BorderBrush=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(222,236,246)),
+            BorderThickness=new Thickness(1)
+        });
         var importPanel=new StackPanel();
         importPanel.Children.Add(InputDialog.Text("可从墨墨 App 的「开放 API」复制授权，在你自己的电脑上分别导入同一份有效授权。"));
-        var secret=new PasswordBox {MaxLength=512,Padding=new Thickness(9),Margin=new Thickness(0,10,0,10)};importPanel.Children.Add(secret);
-        var import=new Button {Content="验证并导入",HorizontalAlignment=HorizontalAlignment.Left};importPanel.Children.Add(import);
-        panel.Children.Add(new Expander {Header="导入已有的 API 授权",Content=importPanel,Margin=new Thickness(0,10,0,0)});
+        var secret=new PasswordBox {MaxLength=512,Padding=new Thickness(10,8,10,8),Margin=new Thickness(0,10,0,10)};importPanel.Children.Add(secret);
+        var import=new Button {Content="验证并导入",Style=(Style)Application.Current.FindResource("AccentButton"),HorizontalAlignment=HorizontalAlignment.Left};importPanel.Children.Add(import);
+        panel.Children.Add(new Expander {Header="导入已有的 API 授权",Content=importPanel,Margin=new Thickness(0,2,0,0)});
         var busy=false;var refreshing=false;string state="";
         SavedAccount? Selected()=>accounts.SelectedItem as SavedAccount;
         void Enable()
@@ -85,7 +94,7 @@ internal static class AccountSettingsPanel
         rename.Click+=async(_,_)=>{if(Selected() is {} account)await Change(()=>store.RenameAccount(account.Id,name.Text));};
         remove.Click+=async(_,_)=>
         {
-            if(Selected() is {} account&&MessageBox.Show(owner,"移除账号“"+account.Name+"”的登录信息？本地助记和查词历史会保留。","移除账号",MessageBoxButton.OKCancel,MessageBoxImage.Question,MessageBoxResult.Cancel)==MessageBoxResult.OK)
+            if(Selected() is {} account&&InputDialog.Confirm(owner,"移除账号","移除账号「"+account.Name+"」的登录信息？本地助记和查词历史会保留。","移除"))
                 await Change(()=>store.RemoveAccount(account.Id));
         };
         import.Click+=async(_,_)=>

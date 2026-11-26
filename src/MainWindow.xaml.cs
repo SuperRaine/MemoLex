@@ -258,9 +258,7 @@ public partial class MainWindow : Window
         PhoneticText.Text = string.IsNullOrWhiteSpace(entry?.phonetic) ? "" : $"/{entry.phonetic.Trim('/')}/";
         FillWordLinks(DefinitionText, hasLocalMeaning ? localMeaning : lookOnline ? "正在查找释义…" : "暂无释义。",
             EmptyMatches, word, skipPartOfSpeech: true);
-        var exchange = FormatExchange(entry?.exchange);
-        FillWordLinks(ExchangeText, exchange, EmptyMatches, word);
-        ExchangeCard.Visibility = exchange.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        RenderExchange(entry?.exchange, word);
         WordMetaText.Text = hasLocalMeaning ? "内置词库" : "";
         WordMetaText.ToolTip = hasLocalMeaning && int.TryParse(entry?.bnc, out var frequency) && frequency > 0
             ? $"BNC 词频排名 {frequency:N0}"
@@ -395,38 +393,64 @@ public partial class MainWindow : Window
         var matches=new HashSet<string>(sentence.MatchedWords,StringComparer.OrdinalIgnoreCase);
         foreach(var part in ExampleText.Tokenize(sourceWord))if(part.LookupWord!=null)matches.Add(part.LookupWord);
         var card = new StackPanel();
-        var heading = new DockPanel { Margin = new Thickness(0, 0, 0, 9) };
-        var speak = new Button { Content = "朗读", ToolTip = "朗读整条例句", FontSize = 11,
-            MinWidth = 56, Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(10, 0, 0, 0) };
+        var heading = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
+        var speakContent = new StackPanel { Orientation = Orientation.Horizontal };
+        speakContent.Children.Add(new TextBlock { Text = "\uE767", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
+        speakContent.Children.Add(new TextBlock { Text = "朗读", VerticalAlignment = VerticalAlignment.Center });
+        var speak = new Button
+        {
+            Content = speakContent, Style = (Style)FindResource("PillButton"),
+            ToolTip = "朗读整条例句", FontSize = 11,
+            MinWidth = 62, Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(10, 0, 0, 0)
+        };
         speak.Click += async (_, _) => await SpeakExampleAsync(speak, sentence.English);
         DockPanel.SetDock(speak, Dock.Right);
         heading.Children.Add(speak);
-        heading.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(sentence.Source) ? "真题来源未提供" : sentence.Source,
-            FontSize = 11, Foreground = Brush("#718EA5"), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
+        var sourceBadge = new Border
+        {
+            Background = Brush("#E6F5FF"), BorderBrush = Brush("#CBE7FA"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10), Padding = new Thickness(9, 2.5, 9, 2.5),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = string.IsNullOrWhiteSpace(sentence.Source) ? "真题例句" : sentence.Source,
+                FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Brush("#0A7FB3"), TextWrapping = TextWrapping.Wrap
+            }
+        };
+        heading.Children.Add(sourceBadge);
         card.Children.Add(heading);
         if (sentence.IsOption)
         {
-            card.Children.Add(new TextBlock { Text = $"原题选项 {sentence.OptionLabel}", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Brush("#AD7B2E"), Margin = new Thickness(0, 0, 0, 7) });
+            card.Children.Add(new Border
+            {
+                Background = Brush("#FFF6E5"), BorderBrush = Brush("#F3D08A"), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 2, 8, 2), HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 0, 0, 8),
+                Child = new TextBlock { Text = $"原题选项 {sentence.OptionLabel}", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Brush("#B45309") }
+            });
             if (sentence.ContextEnglish.Length > 0)
             {
                 card.Children.Add(BuildSentenceText(sentence.ContextEnglish, matches, sourceWord, 14));
-                card.Children.Add(new TextBlock { Text = "选项", FontSize = 11, Foreground = Brush("#91A7BA"), Margin = new Thickness(0, 10, 0, 4) });
+                card.Children.Add(new TextBlock { Text = "选项", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Brush("#7D97AC"), Margin = new Thickness(0, 10, 0, 4) });
             }
         }
-        card.Children.Add(BuildSentenceText(sentence.English, matches, sourceWord));
+        card.Children.Add(BuildSentenceText(sentence.English, matches, sourceWord, 15.5));
         if (sentence.Translation.Length > 0)
             card.Children.Add(BuildExampleTranslation(sentence.Translation,sentence.English,sourceWord,matches,sentence.MatchedTranslations,sentence.TranslationAligned));
         if (sentence.IsOption && sentence.ContextTranslation.Length > 0)
             card.Children.Add(BuildExampleTranslation("原题译文："+sentence.ContextTranslation,sentence.ContextEnglish,sourceWord,matches,sentence.MatchedTranslations));
-        var cardBorder = new Border { Child = card, Background = Brushes.White, BorderBrush = Brush("#DCE9F4"), BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 17, 20, 18), Margin = new Thickness(0, 0, 0, 12) };
+        var cardBorder = new Border
+        {
+            Child = card, Background = Brush("#F9FCFF"), BorderBrush = Brush("#DAEAF7"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12), Padding = new Thickness(18, 15, 18, 16), Margin = new Thickness(0, 0, 0, 11)
+        };
         ExamplesPanel.Children.Add(cardBorder);
         UiMotion.Reveal(cardBorder, distance: 5);
     }
     private static readonly IReadOnlySet<string> EmptyMatches = new HashSet<string>();
     private TextBlock BuildSentenceText(string text, IReadOnlySet<string> matches, string sourceWord, double fontSize = 16)
     {
-        var block = new TextBlock { TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Segoe UI"), FontSize = fontSize, LineHeight = 28, Foreground = Brush("#426B89") };
+        var block = new TextBlock { TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), FontSize = fontSize, LineHeight = 27, Foreground = Brush("#142E43") };
         FillWordLinks(block, text, matches, sourceWord);
         return block;
     }
@@ -439,11 +463,24 @@ public partial class MainWindow : Window
             var part = parts[index];
             var isLabel = skipPartOfSpeech && part.LookupWord != null && index + 1 < parts.Count
                 && parts[index + 1].Text.StartsWith('.') && DictionaryEntry.IsPartOfSpeechLabel(part.LookupWord);
-            if (part.LookupWord == null || isLabel) { block.Inlines.Add(new Run(part.Text)); continue; }
+            if (isLabel)
+            {
+                block.Inlines.Add(new Run(part.Text + ".")
+                {
+                    Foreground = Brush("#0B84BD"),
+                    FontWeight = FontWeights.Bold,
+                    FontStyle = FontStyles.Italic
+                });
+                var rest = parts[index + 1].Text[1..];
+                if (rest.Length > 0) block.Inlines.Add(new Run(rest));
+                index++;
+                continue;
+            }
+            if (part.LookupWord == null) { block.Inlines.Add(new Run(part.Text)); continue; }
             var word = part.LookupWord;
             var highlighted = matches.Contains(word);
-            var link = new Hyperlink(new Run(part.Text)) { Foreground = Brush(highlighted ? "#087FAF" : "#426B89"), TextDecorations = null,
-                Background=highlighted?Brush("#E1F4FF"):Brushes.Transparent,
+            var link = new Hyperlink(new Run(part.Text)) { Foreground = Brush(highlighted ? "#085680" : "#183952"), TextDecorations = null,
+                Background=highlighted?Brush("#D2EFFE"):Brushes.Transparent,
                 FontWeight = highlighted ? FontWeights.SemiBold : FontWeights.Normal, ToolTip = "查询 " + word, Cursor = Cursors.Hand };
             link.ContextMenu=HaiciWordMenu(word);
             link.MouseEnter += (_, _) => link.TextDecorations = TextDecorations.Underline;
@@ -464,9 +501,9 @@ public partial class MainWindow : Window
             return values.Count==0?null:string.Join('\n',values);
         }
         var terms=TextHighlights.TranslationTerms(english,text,sourceWord,matches,Meaning,explicitTerms,aligned);
-        var block=new TextBlock { TextWrapping=TextWrapping.Wrap,FontSize=13,LineHeight=23,Foreground=Brush("#7D93A6"),Margin=new Thickness(0,11,0,0) };
+        var block=new TextBlock { TextWrapping=TextWrapping.Wrap,FontSize=13.5,LineHeight=23,Foreground=Brush("#4D6D85"),Margin=new Thickness(0,9,0,0) };
         foreach(var part in TextHighlights.Split(text,terms))
-            if(part.Highlighted)block.Inlines.Add(new Run(part.Text){Background=Brush("#DEF4FF"),Foreground=Brush("#087FAF"),FontWeight=FontWeights.SemiBold});
+            if(part.Highlighted)block.Inlines.Add(new Run(part.Text){Background=Brush("#D2EFFE"),Foreground=Brush("#085680"),FontWeight=FontWeights.SemiBold});
             else FillWordLinks(block,part.Text,matches,sourceWord,clear:false);
         return block;
     }
@@ -518,28 +555,75 @@ public partial class MainWindow : Window
         var names = new Dictionary<string, string> { ["zk"] = "中考", ["gk"] = "高考", ["cet4"] = "CET-4", ["cet6"] = "CET-6", ["ky"] = "考研", ["toefl"] = "TOEFL", ["ielts"] = "IELTS", ["gre"] = "GRE" };
         foreach (var tag in (entry?.tag ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries))
             AddTag(names.GetValueOrDefault(tag, tag.ToUpperInvariant()), tag switch { "cet4" => "CET4", "cet6" => "CET6", "ky" => "POSTGRADUATE", "gk" => "COLLEGE_ENTRANCE_EXAM", _ => null });
-        if (entry?.oxford == "1") AddTag("核心词汇");
-        if (int.TryParse(entry?.collins, out var stars) && stars > 0) AddTag(new string('★', Math.Min(5, stars)));
+        if (entry?.oxford == "1") AddTag("核心词汇", tone: "core");
+        if (int.TryParse(entry?.collins, out var stars) && stars > 0) AddTag(new string('★', Math.Min(5, stars)), tone: "gold");
     }
-    private void AddTag(string text, string? paperType = null)
+    private void AddTag(string text, string? paperType = null, string tone = "sky")
     {
-        var label = new TextBlock { Text = text, FontSize = 10, Foreground = Brush("#658DA8") };
+        var (bg, border, fg) = tone switch
+        {
+            "core" => ("#E7FAF2", "#A9E4CA", "#0E7C55"),
+            "gold" => ("#FFF6E2", "#F4D489", "#B45309"),
+            _ => ("#E8F6FF", "#C8E6FA", "#0A78AC")
+        };
+        var label = new TextBlock { Text = text, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Brush(fg) };
         if (paperType == null)
-            TagsPanel.Children.Add(new Border { Background = Brush("#EDF6FC"), CornerRadius = new CornerRadius(5), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 5), Child = label });
+        {
+            TagsPanel.Children.Add(new Border
+            {
+                Background = Brush(bg), BorderBrush = Brush(border), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(11), Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(0, 0, 6, 5),
+                Child = label
+            });
+        }
         else
         {
-            var button = new Button { Content = label, Background = Brush("#E7F6FE"), BorderThickness = new Thickness(0), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 5), ToolTip = $"查看{text}真题例句" };
+            var button = new Button
+            {
+                Content = label, Style = (Style)FindResource("PillButton"),
+                Background = Brush(bg), BorderBrush = Brush(border),
+                Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(0, 0, 6, 5),
+                ToolTip = $"查看{text}真题例句"
+            };
             button.Click += async (_, _) => await OpenExamExamplesAsync(paperType);
             TagsPanel.Children.Add(button);
         }
     }
-    private static Brush Brush(string color) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
-    private static string FormatExchange(string? exchange)
+    private void RenderExchange(string? exchange, string sourceWord)
     {
-        if (string.IsNullOrWhiteSpace(exchange)) return "";
+        ExchangePanel.Children.Clear();
+        if (string.IsNullOrWhiteSpace(exchange))
+        {
+            ExchangeCard.Visibility = Visibility.Collapsed;
+            return;
+        }
         var labels = new Dictionary<string, string> { ["p"] = "过去式", ["d"] = "过去分词", ["i"] = "现在分词", ["3"] = "第三人称单数", ["r"] = "比较级", ["t"] = "最高级", ["s"] = "复数", ["0"] = "原形" };
-        return string.Join("    ", exchange.Split('/').Select(x => x.Split(':', 2)).Where(x => x.Length == 2 && labels.ContainsKey(x[0])).Select(x => $"{labels[x[0]]}  {x[1]}"));
+        var count = 0;
+        foreach (var pair in exchange.Split('/').Select(x => x.Split(':', 2)).Where(x => x.Length == 2 && labels.ContainsKey(x[0])))
+        {
+            var formWord = pair[1].Trim();
+            if (formWord.Length == 0) continue;
+            var pill = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            pill.Children.Add(new TextBlock { Text = labels[pair[0]], FontSize = 11, Foreground = Brush("#6E8DA4"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+            var formText = new TextBlock { FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), FontSize = 12.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+            var link = new Hyperlink(new Run(formWord)) { Foreground = Brush("#0A7FB3"), TextDecorations = null, ToolTip = "查询 " + formWord, Cursor = Cursors.Hand };
+            link.ContextMenu = HaiciWordMenu(formWord);
+            link.MouseEnter += (_, _) => link.TextDecorations = TextDecorations.Underline;
+            link.MouseLeave += (_, _) => link.TextDecorations = null;
+            link.Click += async (_, _) => await NavigateLinkedWordAsync(formWord, sourceWord);
+            formText.Inlines.Add(link);
+            pill.Children.Add(formText);
+            ExchangePanel.Children.Add(new Border
+            {
+                Background = Brushes.White, BorderBrush = Brush("#D9EBF7"), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8), Padding = new Thickness(9, 4, 9, 4), Margin = new Thickness(0, 0, 7, 5),
+                Child = pill
+            });
+            count++;
+        }
+        ExchangeCard.Visibility = count == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
+    private static Brush Brush(string color) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
     private void UpdateHistory()
     {
         _changingLists = true;

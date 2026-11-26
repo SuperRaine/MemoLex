@@ -19,12 +19,12 @@ public partial class MainWindow
     {
         if(!_preferences.ShowExamCountdown||_preferences.ExamDate is not {} date)
         {
-            ExamCountdownText.Visibility=Visibility.Collapsed;ExamCountdownText.Text="";return;
+            ExamCountdownBadge.Visibility=Visibility.Collapsed;ExamCountdownText.Text="";return;
         }
         var days=Math.Max(0,(date.Date-(today??DateTime.Today).Date).Days);
         var name=string.IsNullOrWhiteSpace(_preferences.ExamName)?"考试":_preferences.ExamName.Trim();
         ExamCountdownText.Text=$"距 {name} 还有{days.ToString(CultureInfo.InvariantCulture)}天";
-        ExamCountdownText.ToolTip=ExamCountdownText.Text;
-        ExamCountdownText.Visibility=Visibility.Visible;
+        ExamCountdownBadge.ToolTip=ExamCountdownText.Text;
+        ExamCountdownBadge.Visibility=Visibility.Visible;
     }
 }

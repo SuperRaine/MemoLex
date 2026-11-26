@@ -160,7 +160,7 @@ private struct MorphemeChipCard: View {
     }
 }
 
-private struct MorphemeFlowLayout: Layout {
+struct MorphemeFlowLayout: Layout {
     var spacing: CGFloat = 7
     var lineSpacing: CGFloat = 8
     var expandLast: Bool = true

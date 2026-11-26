@@ -4,54 +4,74 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="查词历史 · 墨墨搜词" Width="660" Height="600" MinWidth="560" MinHeight="420" WindowStyle="None"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        FontFamily="Microsoft YaHei UI" FontSize="13" Background="#F4F9FD" Foreground="#25384A">
-    <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="0" UseAeroCaptionButtons="False"/></shell:WindowChrome.WindowChrome>
-    <Border BorderBrush="#DBE8F2" BorderThickness="1" Background="#F7FBFE" CornerRadius="10"><Grid>
-      <Grid.RowDefinitions><RowDefinition Height="44"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-      <Border Background="White" BorderBrush="#E4EDF5" BorderThickness="0,0,0,1"><Grid Margin="12,0,6,0"><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><Image Source="Assets/owl-logo.png" Width="29" Height="29" Margin="0,0,8,0"/><TextBlock Text="墨墨搜词" FontSize="13" Foreground="#6B879D" VerticalAlignment="Center"/></StackPanel><Button HorizontalAlignment="Right" Style="{StaticResource WindowButton}" Click="CloseHistoryButton_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="关闭"><TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></Button></Grid></Border>
-    <Grid Grid.Row="1" Margin="25,19,25,24">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <StackPanel>
-            <TextBlock Text="查词历史" FontSize="24" FontWeight="SemiBold"/>
-            <TextBlock x:Name="CountText" Foreground="#8BA1B4" Margin="0,8,0,15"/>
-        </StackPanel>
-        <Grid Grid.Row="1" Margin="0,0,0,14">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <TextBlock Text="筛选单词" VerticalAlignment="Center" Margin="0,0,12,0"/>
-            <TextBox x:Name="FilterBox" Grid.Column="1" Padding="10,8" FontSize="15" TextChanged="FilterBox_TextChanged" AutomationProperties.Name="筛选历史单词"/>
+        FontFamily="Microsoft YaHei UI" FontSize="13" Background="#F2F7FC" Foreground="#132C40">
+    <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="46" ResizeBorderThickness="6" GlassFrameThickness="0" UseAeroCaptionButtons="False"/></shell:WindowChrome.WindowChrome>
+    <Border BorderBrush="#D4E5F2" BorderThickness="1" Background="White" CornerRadius="12"><Grid>
+      <Grid.RowDefinitions><RowDefinition Height="46"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+      <Border Background="#F9FCFF" BorderBrush="#E2EDF6" BorderThickness="0,0,0,1" CornerRadius="11,11,0,0">
+        <Grid Margin="14,0,6,0">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Border Width="28" Height="28" CornerRadius="8" Background="#EDF7FF" BorderBrush="#D2E8F8" BorderThickness="1" Padding="2" Margin="0,0,9,0">
+              <Image Source="Assets/owl-logo.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+            </Border>
+            <TextBlock Text="查词历史" FontSize="13.5" FontWeight="SemiBold" Foreground="#1A3A52" VerticalAlignment="Center"/>
+          </StackPanel>
+          <Button HorizontalAlignment="Right" Style="{StaticResource CloseWindowButton}" Click="CloseHistoryButton_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="关闭">
+            <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="11.5"/>
+          </Button>
         </Grid>
+      </Border>
+      <Grid Grid.Row="1" Margin="24,18,24,22">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <DockPanel Margin="0,0,0,14">
+            <TextBlock x:Name="CountText" DockPanel.Dock="Right" Foreground="#607C93" FontSize="12" VerticalAlignment="Bottom" Margin="0,0,0,3"/>
+            <TextBlock Text="查词历史" FontSize="22" FontWeight="SemiBold" Foreground="#0E2B40"/>
+        </DockPanel>
+        <Border Grid.Row="1" Background="#F5FAFF" BorderBrush="#DFEDF8" BorderThickness="1" CornerRadius="10" Padding="12,9" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="13" Foreground="#6E8EA6" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                <TextBox x:Name="FilterBox" Grid.Column="1" Padding="10,7" FontSize="14" TextChanged="FilterBox_TextChanged" ToolTip="输入关键词筛选历史单词" AutomationProperties.Name="筛选历史单词"/>
+            </Grid>
+        </Border>
         <Grid Grid.Row="2">
-            <ListView x:Name="EntriesList" Background="White" BorderBrush="#DCE9F3" BorderThickness="1"
-                      Foreground="#47647B"
+            <ListView x:Name="EntriesList"
                       SelectionMode="Single" MouseDoubleClick="EntriesList_MouseDoubleClick" KeyDown="EntriesList_KeyDown"
                       SelectionChanged="EntriesList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListView.View>
                     <GridView>
-                        <GridViewColumn Header="单词" Width="245" DisplayMemberBinding="{Binding Word}"/>
-                        <GridViewColumn Header="最近查词" Width="165" DisplayMemberBinding="{Binding DisplayTime}"/>
-                        <GridViewColumn Header="次数" Width="65" DisplayMemberBinding="{Binding LookupCount}"/>
+                        <GridViewColumn Header="单词" Width="260">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate><TextBlock Text="{Binding Word}" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14.5" FontWeight="SemiBold" Foreground="#0A7FB3" TextTrimming="CharacterEllipsis"/></DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="最近查词" Width="175">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate><TextBlock Text="{Binding DisplayTime}" FontSize="12.5" Foreground="#648198"/></DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="次数" Width="80">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border Background="#EAF6FF" CornerRadius="10" Padding="8,2" HorizontalAlignment="Left">
+                                        <TextBlock Text="{Binding LookupCount}" FontSize="11.5" FontWeight="SemiBold" Foreground="#0A7FB3"/>
+                                    </Border>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
                     </GridView>
                 </ListView.View>
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
-                        <Setter Property="Padding" Value="7,9"/>
-                        <Setter Property="FontSize" Value="14"/>
-                        <Setter Property="Foreground" Value="#47647B"/>
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                        <Style.Triggers><Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#E3F4FF"/><Setter Property="Foreground" Value="#087FAF"/></Trigger></Style.Triggers>
-                    </Style>
-                </ListView.ItemContainerStyle>
             </ListView>
-            <TextBlock x:Name="EmptyText" Text="还没有查词记录，查过的单词会自动保存在这里。" Foreground="#8BA1B4"
+            <TextBlock x:Name="EmptyText" Text="还没有查词记录，查过的单词会自动保存在这里。" Foreground="#7A96AB"
                        HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
         </Grid>
-        <Grid Grid.Row="3" Margin="0,17,0,0">
+        <Grid Grid.Row="3" Margin="0,16,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <Button x:Name="DeleteButton" Content="删除选中" Click="DeleteButton_Click" Padding="12,8" IsEnabled="False"/>
-            <Button x:Name="ClearButton" Grid.Column="1" Content="清空记录" Click="ClearButton_Click" Padding="12,8" Margin="9,0,0,0"/>
-            <Button x:Name="LookupButton" Grid.Column="3" Content="查看单词" Click="LookupButton_Click" Padding="17,8"
+            <Button x:Name="DeleteButton" Content="删除选中" Click="DeleteButton_Click" Padding="13,8" IsEnabled="False"/>
+            <Button x:Name="ClearButton" Grid.Column="1" Content="清空记录" Click="ClearButton_Click" Padding="13,8" Margin="9,0,0,0"/>
+            <Button x:Name="LookupButton" Grid.Column="3" Content="查看单词" Click="LookupButton_Click" Padding="18,8"
                     Style="{StaticResource AccentButton}" IsEnabled="False" IsDefault="True"/>
         </Grid>
-    </Grid>
+      </Grid>
     </Grid></Border>
 </Window>

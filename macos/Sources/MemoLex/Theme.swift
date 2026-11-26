@@ -23,28 +23,65 @@ private struct MemoButtonChrome: View {
         let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
         configuration.label
             .font(.system(size: compact ? 12 : 13, weight: accent ? .semibold : .medium))
-            .padding(.horizontal, compact ? 10 : 14)
+            .padding(.horizontal, compact ? 11 : 15)
             .frame(minHeight: compact ? 28 : 34)
-            .foregroundStyle(accent ? Palette.accentInk : (hovered && enabled ? Palette.deep : Palette.ink))
+            .foregroundStyle(accent ? Color.white : (hovered && enabled ? Palette.deep : Palette.ink))
             .background {
                 if accent {
                     LinearGradient(
-                        colors: hovered ? [Color(red: 0.34, green: 0.81, blue: 1.0), Color(red: 0.15, green: 0.70, blue: 0.96)]
-                            : [Color(red: 0.24, green: 0.77, blue: 1.0), Color(red: 0.11, green: 0.65, blue: 0.92)],
+                        colors: hovered ? [Color(red: 0.24, green: 0.76, blue: 1.0), Color(red: 0.07, green: 0.59, blue: 0.86)]
+                            : [Color(red: 0.17, green: 0.72, blue: 0.97), Color(red: 0.05, green: 0.53, blue: 0.78)],
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     )
-                    .opacity(configuration.isPressed ? 0.8 : 1)
+                    .opacity(configuration.isPressed ? 0.85 : 1)
                     .clipShape(shape)
                 } else {
-                    shape.fill(configuration.isPressed ? Palette.wash : (hovered && enabled ? Palette.wash.opacity(0.72) : Palette.control))
+                    shape.fill(configuration.isPressed ? Palette.wash : (hovered && enabled ? Palette.wash.opacity(0.75) : Palette.control))
                 }
             }
-            .overlay(shape.strokeBorder(accent ? Color.clear : (hovered && enabled ? Palette.accent.opacity(0.65) : Palette.border), lineWidth: 0.75))
-            .shadow(color: accent && enabled ? Palette.accent.opacity(hovered ? 0.28 : 0.16) : .clear, radius: hovered ? 8 : 4, y: 2)
-            .opacity(enabled ? 1 : 0.38)
+            .overlay(shape.strokeBorder(accent ? Color.white.opacity(0.18) : (hovered && enabled ? Palette.accent.opacity(0.68) : Palette.border), lineWidth: 0.8))
+            .shadow(color: accent && enabled ? Color(red: 0.05, green: 0.53, blue: 0.78).opacity(hovered ? 0.34 : 0.22) : .clear, radius: hovered ? 8 : 5, y: 2)
+            .opacity(enabled ? 1 : 0.42)
             .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.97 : 1)
             .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.78), value: configuration.isPressed)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hovered)
+            .onHover { hovered = $0 }
+    }
+}
+
+struct PillButtonStyle: ButtonStyle {
+    var compact = true
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        PillButtonChrome(configuration: configuration, compact: compact, enabled: enabled, reduceMotion: reduceMotion)
+    }
+}
+
+private struct PillButtonChrome: View {
+    let configuration: ButtonStyle.Configuration
+    let compact: Bool
+    let enabled: Bool
+    let reduceMotion: Bool
+    @State private var hovered = false
+
+    var body: some View {
+        configuration.label
+            .font(.system(size: compact ? 12 : 13, weight: .semibold))
+            .padding(.horizontal, compact ? 11 : 14)
+            .frame(minHeight: compact ? 27 : 31)
+            .foregroundStyle(Palette.deep)
+            .background(
+                Capsule().fill(configuration.isPressed ? Palette.accent.opacity(0.24) : (hovered && enabled ? Palette.accent.opacity(0.18) : Palette.wash))
+            )
+            .overlay(
+                Capsule().strokeBorder(hovered && enabled ? Palette.accent.opacity(0.75) : Palette.accent.opacity(0.28), lineWidth: 0.85)
+            )
+            .contentShape(Capsule())
+            .opacity(enabled ? 1 : 0.42)
+            .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.8), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovered)
             .onHover { hovered = $0 }
     }
 }
@@ -80,22 +117,22 @@ private struct LookupButtonChrome: View {
             .padding(.horizontal, primary ? 15 : small && expands ? 6 : 10)
             .frame(maxWidth: expands ? .infinity : nil)
             .frame(width: fixedWidth, height: small ? 28 : 34)
-            .foregroundStyle(primary ? Palette.accentInk : Palette.deep)
+            .foregroundStyle(primary ? Color.white : Palette.deep)
             .background {
                 if primary {
                     LinearGradient(
-                        colors: hovered ? [Color(red: 0.34, green: 0.81, blue: 1.0), Color(red: 0.15, green: 0.70, blue: 0.96)]
-                            : [Color(red: 0.24, green: 0.77, blue: 1.0), Color(red: 0.11, green: 0.65, blue: 0.92)],
+                        colors: hovered ? [Color(red: 0.24, green: 0.76, blue: 1.0), Color(red: 0.07, green: 0.59, blue: 0.86)]
+                            : [Color(red: 0.17, green: 0.72, blue: 0.97), Color(red: 0.05, green: 0.53, blue: 0.78)],
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     )
-                    .opacity(configuration.isPressed ? 0.78 : 1)
+                    .opacity(configuration.isPressed ? 0.84 : 1)
                     .clipShape(shape)
                 } else {
-                    shape.fill(Palette.wash.opacity(configuration.isPressed ? 0.75 : (hovered && enabled ? 1 : 0.88)))
+                    shape.fill(Palette.wash.opacity(configuration.isPressed ? 0.78 : (hovered && enabled ? 1 : 0.88)))
                 }
             }
-            .overlay(shape.strokeBorder(primary ? Palette.accent.opacity(0.6) : (hovered && enabled ? Palette.accent.opacity(0.75) : Palette.border), lineWidth: 0.8))
-            .shadow(color: primary && enabled ? Palette.accent.opacity(hovered ? 0.28 : 0.16) : .clear, radius: hovered ? 8 : 4, y: 2)
+            .overlay(shape.strokeBorder(primary ? Color.white.opacity(0.18) : (hovered && enabled ? Palette.accent.opacity(0.75) : Palette.accent.opacity(0.28)), lineWidth: 0.85))
+            .shadow(color: primary && enabled ? Color(red: 0.05, green: 0.53, blue: 0.78).opacity(hovered ? 0.34 : 0.22) : .clear, radius: hovered ? 8 : 5, y: 2)
             .contentShape(shape)
             .opacity(enabled ? 1 : 0.43)
             .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.97 : 1)
@@ -339,16 +376,31 @@ struct LinkedText: View {
     var chineseHighlights: [String] = []
     var size: CGFloat = 15
     var color: Color = Palette.ink
+    var highlightPartOfSpeech: Bool = false
+    private static let posRegex = try? NSRegularExpression(pattern: "(?m)^\\s*(?:n|v|vt|vi|adj|adv|prep|conj|pron|num|art|int|aux|abbr|pl|a|ad)\\.(?=\\s|$)")
     private var formatted: AttributedString {
         var value = AttributedString(text)
         value.foregroundColor = color
         let source = text as NSString
+        var posRanges: [NSRange] = []
+        if highlightPartOfSpeech, let posRegex = Self.posRegex {
+            for match in posRegex.matches(in: text, range: NSRange(location: 0, length: source.length)) {
+                posRanges.append(match.range)
+                if let range = Range(match.range, in: text),
+                   let start = AttributedString.Index(range.lowerBound, within: value),
+                   let end = AttributedString.Index(range.upperBound, within: value) {
+                    value[start..<end].foregroundColor = Palette.deep
+                    value[start..<end].font = .system(size: max(13, size - 1), weight: .bold).italic()
+                }
+            }
+        }
         let regex = try? NSRegularExpression(pattern: "[A-Za-zÀ-ÖØ-öø-ÿĀ-ž]+(?:['’-][A-Za-zÀ-ÖØ-öø-ÿĀ-ž]+)*")
         for match in regex?.matches(in: text, range: NSRange(location: 0, length: source.length)) ?? [] {
-            guard let range = Range(match.range, in: text) else { continue }
-            let token = String(text[range]); let prefix = text[..<range.lowerBound].count
-            let start = value.characters.index(value.characters.startIndex, offsetBy: prefix)
-            let end = value.characters.index(start, offsetBy: token.count)
+            if posRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) { continue }
+            guard let range = Range(match.range, in: text),
+                  let start = AttributedString.Index(range.lowerBound, within: value),
+                  let end = AttributedString.Index(range.upperBound, within: value) else { continue }
+            let token = String(text[range])
             if let encoded = token.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed), let url = URL(string: "memolex://word/\(encoded)") { value[start..<end].link = url }
             if highlights.contains(where: { $0.caseInsensitiveCompare(token) == .orderedSame }) {
                 value[start..<end].backgroundColor = Palette.wash; value[start..<end].foregroundColor = Palette.deep; value[start..<end].font = .system(size: size, weight: .semibold)
@@ -357,9 +409,10 @@ struct LinkedText: View {
         for term in chineseHighlights where !term.isEmpty {
             var cursor = text.startIndex
             while cursor < text.endIndex, let range = text.range(of: term, range: cursor..<text.endIndex) {
-                let start = value.characters.index(value.characters.startIndex, offsetBy: text[..<range.lowerBound].count)
-                let end = value.characters.index(start, offsetBy: term.count)
-                value[start..<end].backgroundColor = Palette.wash; value[start..<end].foregroundColor = Palette.deep
+                if let start = AttributedString.Index(range.lowerBound, within: value),
+                   let end = AttributedString.Index(range.upperBound, within: value) {
+                    value[start..<end].backgroundColor = Palette.wash; value[start..<end].foregroundColor = Palette.deep
+                }
                 cursor = range.upperBound
             }
         }

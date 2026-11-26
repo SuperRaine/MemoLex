@@ -8,18 +8,27 @@ internal static class HoverSettingsPanel
 {
     internal static FrameworkElement Build(Window dialog,Preferences preferences,out Func<string?> apply)
     {
-        var panel=new StackPanel();var options=new Grid();options.ColumnDefinitions.Add(new());options.ColumnDefinitions.Add(new());panel.Children.Add(options);
+        var panel=new StackPanel();
+        static Border Card(UIElement child)=>new()
+        {
+            Child=child,Padding=new Thickness(15,13,15,13),Margin=new Thickness(0,0,0,12),
+            CornerRadius=new CornerRadius(11),
+            Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(248,252,255)),
+            BorderBrush=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(222,236,246)),
+            BorderThickness=new Thickness(1)
+        };
+        var options=new Grid();options.ColumnDefinitions.Add(new());options.ColumnDefinitions.Add(new());panel.Children.Add(Card(options));
         CheckBox Option(string label,bool value,int row,int column,string name)
         {
             while(options.RowDefinitions.Count<=row)options.RowDefinitions.Add(new(){Height=GridLength.Auto});
-            var input=new CheckBox{Content=new TextBlock{Text=label,TextWrapping=TextWrapping.Wrap},IsChecked=value,Margin=new Thickness(0,0,14,8),MinHeight=28,VerticalAlignment=VerticalAlignment.Center,VerticalContentAlignment=VerticalAlignment.Center};Grid.SetRow(input,row);Grid.SetColumn(input,column);options.Children.Add(input);dialog.RegisterName(name,input);return input;
+            var input=new CheckBox{Content=new TextBlock{Text=label,TextWrapping=TextWrapping.Wrap},IsChecked=value,Margin=new Thickness(0,0,14,row==0?8:0),MinHeight=28,VerticalAlignment=VerticalAlignment.Center,VerticalContentAlignment=VerticalAlignment.Center};Grid.SetRow(input,row);Grid.SetColumn(input,column);options.Children.Add(input);dialog.RegisterName(name,input);return input;
         }
         var enabled=Option("开启鼠标自动取词",preferences.HoverLookupEnabled,0,0,"HoverLookupEnabled");
         var translucent=Option("取词浮窗半透明",preferences.HoverTranslucent,0,1,"HoverTranslucent");
         var autoAdd=Option("找到单词后自动加入云词本",preferences.HoverAutoAdd,1,1,"HoverAutoAdd");
         var nearest=Option("未找到释义时显示相近单词",preferences.HoverNearest,1,0,"HoverNearest");
         nearest.ToolTip="推荐拼写相近的单词，例如 enviroment → environment。仅供参考，不会自动收藏。";
-        var grid=new Grid{Margin=new Thickness(0,8,0,12)};grid.ColumnDefinitions.Add(new(){Width=new GridLength(105)});grid.ColumnDefinitions.Add(new());panel.Children.Add(grid);
+        var grid=new Grid();grid.ColumnDefinitions.Add(new(){Width=new GridLength(105)});grid.ColumnDefinitions.Add(new());panel.Children.Add(Card(grid));
         TextBlock InlineText(string text)=>new(){Text=text,VerticalAlignment=VerticalAlignment.Center,Foreground=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100,126,147))};
         void Label(string label,int row){while(grid.RowDefinitions.Count<=row)grid.RowDefinitions.Add(new(){Height=GridLength.Auto});var text=InlineText(label);text.Margin=new Thickness(0,0,12,12);Grid.SetRow(text,row);grid.Children.Add(text);}
         Label("取词方式",0);var mode=new WrapPanel{Margin=new Thickness(0,0,0,12),ItemHeight=36};mode.Children.Add(InlineText("鼠标悬停  ＋  "));

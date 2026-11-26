@@ -69,19 +69,29 @@ public partial class MainWindow
         MoreChineseResultsButton.IsEnabled=true;
         foreach(var item in page.Items)
         {
-            var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(145)});body.ColumnDefinitions.Add(new ColumnDefinition());body.ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
-            var heading=new TextBlock {Text=item.Word,FontSize=16,FontFamily=new System.Windows.Media.FontFamily("Segoe UI"),Foreground=Brush("#087FAF"),FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,12,0),TextTrimming=TextTrimming.CharacterEllipsis,VerticalAlignment=VerticalAlignment.Center,ToolTip=item.Word};
+            var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(154)});body.ColumnDefinitions.Add(new ColumnDefinition());body.ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
+            var heading=new TextBlock {Text=item.Word,FontSize=15.5,FontFamily=new System.Windows.Media.FontFamily("Segoe UI, Microsoft YaHei UI"),Foreground=Brush("#0A7FB3"),FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,12,0),TextTrimming=TextTrimming.CharacterEllipsis,VerticalAlignment=VerticalAlignment.Center,ToolTip=item.Word};
             body.Children.Add(heading);
             var matchedMeaning = item.DisplayMatchedMeaning;
-            var meaning=new TextBlock {FontSize=13,LineHeight=22,TextTrimming=TextTrimming.CharacterEllipsis,Foreground=Brush("#4F6D85"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0),ToolTip=item.DisplayMeaning};Grid.SetColumn(meaning,1);
+            var meaning=new TextBlock {FontSize=13.5,LineHeight=22,TextTrimming=TextTrimming.CharacterEllipsis,Foreground=Brush("#33536B"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0),ToolTip=item.DisplayMeaning};Grid.SetColumn(meaning,1);
             foreach(var part in TextHighlights.Split(matchedMeaning,new[]{ChineseReverseSearch.Normalize(_chineseQuery)}))
-                meaning.Inlines.Add(new Run(part.Text){Background=part.Highlighted?Brush("#E1F4FF"):System.Windows.Media.Brushes.Transparent,FontWeight=part.Highlighted?FontWeights.SemiBold:FontWeights.Normal});
-            body.Children.Add(meaning);var kind=new TextBlock {Text=item.Kind,FontSize=10,Foreground=Brush(item.IsExactMatch?"#1688B7":"#99ACBA"),VerticalAlignment=VerticalAlignment.Center};Grid.SetColumn(kind,2);body.Children.Add(kind);
+                meaning.Inlines.Add(new Run(part.Text){Background=part.Highlighted?Brush("#D2EFFE"):System.Windows.Media.Brushes.Transparent,Foreground=part.Highlighted?Brush("#085680"):Brush("#33536B"),FontWeight=part.Highlighted?FontWeights.SemiBold:FontWeights.Normal});
+            body.Children.Add(meaning);
+            var kindBadge=new Border
+            {
+                Background=Brush(item.IsExactMatch?"#E4F5FF":"#F1F7FB"),
+                BorderBrush=Brush(item.IsExactMatch?"#C0E4FA":"#E0ECF5"),
+                BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(10),
+                Padding=new Thickness(8,2,8,2),VerticalAlignment=VerticalAlignment.Center,
+                Child=new TextBlock{Text=item.Kind,FontSize=10.5,FontWeight=FontWeights.SemiBold,Foreground=Brush(item.IsExactMatch?"#0A7FB3":"#7492A8")}
+            };
+            Grid.SetColumn(kindBadge,2);body.Children.Add(kindBadge);
             var row=new Button
             {
                 Content=body, HorizontalContentAlignment=HorizontalAlignment.Stretch,
-                BorderBrush=Brush("#E2EBF3"), Padding=new Thickness(13,8,13,8),
-                Margin=new Thickness(0,0,0,4), ContextMenu=HaiciWordMenu(item.Word)
+                Background=System.Windows.Media.Brushes.White,
+                BorderBrush=Brush("#DCEBF7"), Padding=new Thickness(15,10,14,10),
+                Margin=new Thickness(0,0,0,6), ContextMenu=HaiciWordMenu(item.Word)
             };
             AutomationProperties.SetName(row,$"{item.Word}，{matchedMeaning}");
             row.Click+=async(_,_)=>await LoadWordAsync(item.Word);

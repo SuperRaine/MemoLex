@@ -163,18 +163,22 @@ struct SettingsCard<Content: View>: View {
 private struct HoverSettings: View {
     @ObservedObject var preferences: Preferences
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Grid(alignment: .leading, horizontalSpacing: 25, verticalSpacing: 10) {
-                GridRow { Toggle("开启鼠标自动取词", isOn: $preferences.hoverEnabled).tourTarget("hover"); Toggle("取词浮窗半透明", isOn: $preferences.hoverTranslucent) }
-                GridRow { Toggle("未找到释义时显示相近单词", isOn: $preferences.hoverNearest); Toggle("找到单词后自动加入云词本", isOn: $preferences.hoverAutoAdd) }
+        VStack(alignment: .leading, spacing: 14) {
+            SettingsCard(title: "取词开关") {
+                Grid(alignment: .leading, horizontalSpacing: 25, verticalSpacing: 10) {
+                    GridRow { Toggle("开启鼠标自动取词", isOn: $preferences.hoverEnabled).tourTarget("hover"); Toggle("取词浮窗半透明", isOn: $preferences.hoverTranslucent) }
+                    GridRow { Toggle("未找到释义时显示相近单词", isOn: $preferences.hoverNearest); Toggle("找到单词后自动加入云词本", isOn: $preferences.hoverAutoAdd) }
+                }
             }
-            Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 14) {
-                GridRow { Text("取词方式").foregroundStyle(Palette.muted); HStack(spacing: 12) { Text("鼠标悬停 ＋").foregroundStyle(Palette.muted); modifier("⌃", flag: 1); modifier("⌥", flag: 2); modifier("⇧", flag: 4) }.frame(height: 36) }
-                GridRow { Text("取词延迟").foregroundStyle(Palette.muted); HStack { TextField("750", value: $preferences.hoverDelay, format: .number).inputFrame().frame(width: 100); Text("毫秒（100–3000）").foregroundStyle(Palette.muted) } }
-                GridRow {
-                    Text("浮窗字体大小").foregroundStyle(Palette.muted)
-                    MemoPicker(title: "浮窗字体大小", selection: $preferences.hoverFontSize,
-                               options: [("small", "较小"), ("standard", "标准"), ("large", "较大")]).frame(width: 160)
+            SettingsCard(title: "触发与外观") {
+                Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 14) {
+                    GridRow { Text("取词方式").foregroundStyle(Palette.muted); HStack(spacing: 12) { Text("鼠标悬停 ＋").foregroundStyle(Palette.muted); modifier("⌃", flag: 1); modifier("⌥", flag: 2); modifier("⇧", flag: 4) }.frame(height: 36) }
+                    GridRow { Text("取词延迟").foregroundStyle(Palette.muted); HStack { TextField("750", value: $preferences.hoverDelay, format: .number).inputFrame().frame(width: 100); Text("毫秒（100–3000）").foregroundStyle(Palette.muted) } }
+                    GridRow {
+                        Text("浮窗字体大小").foregroundStyle(Palette.muted)
+                        MemoPicker(title: "浮窗字体大小", selection: $preferences.hoverFontSize,
+                                   options: [("small", "较小"), ("standard", "标准"), ("large", "较大")]).frame(width: 160)
+                    }
                 }
             }
             Text("将鼠标停在英文单词上即可取词，移开后浮窗自动收起。开启组合键后，取词时需同时按住。图片在本机识别。").font(.system(size: 12)).foregroundStyle(Palette.muted)
@@ -191,43 +195,56 @@ private struct AccountSettings: View {
     @State private var token = ""
     @State private var importing = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。").font(.system(size: 12)).foregroundStyle(Palette.muted)
-            Text(model.activeAccount.map { "当前账号：\($0.displayName)" } ?? "还未登录墨墨账号").font(.headline)
-            Button("登录或添加账号") { model.loginTarget = nil; model.showLogin = true }.buttonStyle(MemoButtonStyle(accent: true)).tourTarget("login")
-            Text("选择账号即可切换").font(.system(size: 12, weight: .semibold))
-            MemoPicker(title: "切换账号", selection: Binding(get: { selected }, set: { id in
-                selected = id
-                guard let account = model.accounts.first(where: { $0.id == id }), !account.needsLogin else { return }
-                if id != model.activeAccountID || (!model.loggedIn && model.accountStatus != "正在连接") {
-                    Task { await model.activate(id) }
-                }
-            }), options: model.accounts.map { account in
-                (account.id, account.displayName + (account.needsLogin ? " · 需要登录" : ""))
-            }, placeholder: "请选择账号").onChange(of: selected) { id in
-                name = model.accounts.first { $0.id == id }?.displayName ?? ""
-            }
-            HStack {
-                Button("重新登录") { model.loginTarget = model.accounts.first { $0.id == selected }; model.showLogin = true }.disabled(selected.isEmpty)
-                Button("退出登录") { Task { await model.logout() } }.disabled(!model.loggedIn)
-                Button("移除账号") { model.notice = .init(title: "移除账号？", message: "只移除本机登录信息，助记与查词历史会保留。", confirm: "移除", destructive: true, action: { Task { await model.removeAccount(selected); selected = "" } }) }.disabled(selected.isEmpty)
-            }.buttonStyle(MemoButtonStyle(compact: true))
-            HStack { TextField("账号名称", text: $name).inputFrame(); Button("保存账号名称") { model.renameAccount(selected, name) }.buttonStyle(MemoButtonStyle()).disabled(selected.isEmpty) }
-            Text(model.accountStatus).font(.system(size: 12)).foregroundStyle(Palette.muted)
-            Text("登录凭证保存在这台 Mac，过期后请重新登录。").font(.system(size: 12)).foregroundStyle(Palette.muted)
-            DisclosureGroup("导入已有的 API 授权") {
-                Text("可从墨墨 App 的「开放 API」复制授权，在你自己的电脑上分别导入同一份有效授权。").font(.footnote).foregroundStyle(.secondary)
-                SecureField("墨墨 API 授权", text: $token).inputFrame().padding(.vertical, 8)
-                Button(importing ? "正在验证…" : "验证并导入") {
-                    Task {
-                        importing = true
-                        defer { importing = false }
-                        do {
-                            try await model.finishLogin(.object(["token": .string(token.trimmed)]), identity: "")
-                            token = ""
-                        } catch { model.fail(error) }
+            SettingsCard(title: "当前账号") {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.activeAccount.map { $0.displayName } ?? "还未登录墨墨账号").font(.system(size: 15, weight: .semibold))
+                        Text(model.accountStatus).font(.system(size: 12)).foregroundStyle(Palette.muted)
                     }
-                }.disabled(importing || token.trimmed.isEmpty)
+                    Spacer()
+                    Button("登录或添加账号") { model.loginTarget = nil; model.showLogin = true }.buttonStyle(MemoButtonStyle(accent: true)).tourTarget("login")
+                }
+            }
+            SettingsCard(title: "切换与管理") {
+                Text("选择账号即可切换").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.muted)
+                MemoPicker(title: "切换账号", selection: Binding(get: { selected }, set: { id in
+                    selected = id
+                    guard let account = model.accounts.first(where: { $0.id == id }), !account.needsLogin else { return }
+                    if id != model.activeAccountID || (!model.loggedIn && model.accountStatus != "正在连接") {
+                        Task { await model.activate(id) }
+                    }
+                }), options: model.accounts.map { account in
+                    (account.id, account.displayName + (account.needsLogin ? " · 需要登录" : ""))
+                }, placeholder: "请选择账号").onChange(of: selected) { id in
+                    name = model.accounts.first { $0.id == id }?.displayName ?? ""
+                }
+                HStack(spacing: 8) {
+                    Button("重新登录") { model.loginTarget = model.accounts.first { $0.id == selected }; model.showLogin = true }.disabled(selected.isEmpty)
+                    Button("退出登录") { Task { await model.logout() } }.disabled(!model.loggedIn)
+                    Button("移除账号") { model.notice = .init(title: "移除账号？", message: "只移除本机登录信息，助记与查词历史会保留。", confirm: "移除", destructive: true, action: { Task { await model.removeAccount(selected); selected = "" } }) }.disabled(selected.isEmpty)
+                }.buttonStyle(MemoButtonStyle(compact: true))
+                HStack { TextField("账号名称", text: $name).inputFrame(); Button("保存账号名称") { model.renameAccount(selected, name) }.buttonStyle(MemoButtonStyle()).disabled(selected.isEmpty) }
+                Text("登录凭证保存在这台 Mac，过期后请重新登录。").font(.system(size: 12)).foregroundStyle(Palette.muted)
+            }
+            SettingsCard(title: "手动导入授权") {
+                DisclosureGroup("导入已有的 API 授权") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("可从墨墨 App 的「开放 API」复制授权，在你自己的电脑上分别导入同一份有效授权。").font(.footnote).foregroundStyle(.secondary)
+                        SecureField("墨墨 API 授权", text: $token).inputFrame()
+                        Button(importing ? "正在验证…" : "验证并导入") {
+                            Task {
+                                importing = true
+                                defer { importing = false }
+                                do {
+                                    try await model.finishLogin(.object(["token": .string(token.trimmed)]), identity: "")
+                                    token = ""
+                                } catch { model.fail(error) }
+                            }
+                        }.buttonStyle(MemoButtonStyle(accent: true, compact: true)).disabled(importing || token.trimmed.isEmpty)
+                    }.padding(.top, 6)
+                }
             }
         }.onAppear { selected = model.activeAccountID; name = model.activeAccount?.displayName ?? "" }
           .onChange(of: model.activeAccountID) { selected = $0 }

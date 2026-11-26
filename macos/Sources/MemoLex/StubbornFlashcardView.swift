@@ -169,9 +169,15 @@ struct StubbornFlashcardView: View {
     private func face(word: String, data: J?, back: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 15, style: .continuous)
         return VStack(spacing: 10) {
-            Text(word).font(.system(size: 36, weight: .semibold)).multilineTextAlignment(.center)
+            Text(back ? "释义与助记 · 点击翻回" : "第 \(practice.groupNumber) 组 · 点击翻面")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Palette.deep)
+                .padding(.horizontal, 10).padding(.vertical, 3.5)
+                .background(Palette.paper.opacity(0.88), in: Capsule())
+                .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.8))
+            Text(word).font(.system(size: 36, weight: .bold)).multilineTextAlignment(.center)
             if let phonetic = data?["entry"]["phonetic"].text, !phonetic.isEmpty {
-                Text(phonetic).foregroundStyle(Palette.muted)
+                Text("/\(phonetic)/").font(.system(size: 14)).foregroundStyle(Palette.muted)
             }
             if back {
                 ScrollView {
@@ -179,14 +185,18 @@ struct StubbornFlashcardView: View {
                         Text("中文释义").font(.caption.weight(.semibold)).foregroundStyle(Palette.deep)
                         WordListMeaning(core: core, word: word, local: data?["entry"]["translation"].text, concealed: !revealed) { _ in }.id(word)
                         if let note = data?["notes"].list.first?["text"].text, !note.isEmpty {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("助记").font(.caption.weight(.semibold)).foregroundStyle(Palette.deep)
-                                Text(note).font(.callout).foregroundStyle(Palette.ink.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
+                            HStack(alignment: .top, spacing: 8) {
+                                Text("记")
+                                    .font(.system(size: 10.5, weight: .bold))
+                                    .foregroundStyle(Palette.deep)
+                                    .frame(width: 20, height: 20)
+                                    .background(Palette.accent.opacity(0.2), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                Text(note).font(.callout).foregroundStyle(Palette.ink.opacity(0.88)).fixedSize(horizontal: false, vertical: true)
                             }
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Palette.paper.opacity(0.82), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Palette.border.opacity(0.75)))
+                            .background(Palette.paper.opacity(0.88), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.border.opacity(0.85)))
                             .padding(.top, 4)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)

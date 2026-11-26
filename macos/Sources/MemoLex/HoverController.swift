@@ -87,14 +87,14 @@ import SwiftUI
         }
     }
     private func show(_ value: J, bounds: CGRect, cursor: CGPoint) {
-        let height: CGFloat = 225
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 350, height: height), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let height: CGFloat = 238
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: height), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         let size: CGFloat = model.preferences.hoverFontSize == "large" ? 17 : model.preferences.hoverFontSize == "small" ? 12 : 14
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true; panel.level = .floating; panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false; panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = NSHostingView(rootView: HoverView(model: model, value: value, fontSize: size, height: height) { [weak self] word in self?.panel?.orderOut(nil); self?.model.lookup(word) })
         panel.alphaValue = model.preferences.hoverTranslucent ? 0.89 : 1
         let available = NSScreen.screens.first { $0.frame.contains(cursor) }?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1000, height: 750)
-        let x = min(max(cursor.x + 8, available.minX + 6), available.maxX - 356); var y = cursor.y - height - 8
+        let x = min(max(cursor.x + 8, available.minX + 6), available.maxX - 366); var y = cursor.y - height - 8
         if y < available.minY { y = cursor.y + 8 }
         panel.setFrameOrigin(CGPoint(x: x, y: min(max(y, available.minY + 6), available.maxY - height - 6)))
         self.panel?.orderOut(nil); self.panel = panel; wordBounds = bounds; panel.orderFrontRegardless()
@@ -109,9 +109,27 @@ private struct HoverView: View {
     let navigate: (String) -> Void
     @State private var error = ""
     var body: some View {
+        let phonetic = value["entry"]["phonetic"].text
         VStack(alignment: .leading, spacing: 10) {
-            Button { navigate(value["word"].text) } label: { HStack { Text(value["word"].text).font(.system(size: fontSize + 6, weight: .semibold)); Spacer(); Image(systemName: "arrow.up.right") } }.buttonStyle(.plain).foregroundStyle(Palette.deep)
-            if value["entry"] != .null { Text(value["entry"]["translation"].text.decodedLines).font(.system(size: fontSize)).lineLimit(3).foregroundStyle(Palette.ink) }
+            Button { navigate(value["word"].text) } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(value["word"].text)
+                        .font(.system(size: fontSize + 6, weight: .bold))
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                    if !phonetic.isEmpty {
+                        Text("/\(phonetic)/")
+                            .font(.system(size: max(11, fontSize - 1)))
+                            .foregroundStyle(Palette.muted)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Palette.deep)
+                }
+            }.buttonStyle(.plain)
+            if value["entry"] != .null { Text(value["entry"]["translation"].text.decodedLines).font(.system(size: fontSize)).lineLimit(3).lineSpacing(3).foregroundStyle(Palette.ink) }
             else { Text("未找到释义，可试试：").font(.system(size: fontSize)).foregroundStyle(Palette.muted); HStack { ForEach(Array(value["suggestions"].list.prefix(3)), id: \.text) { word in Button(word.text) { navigate(word.text) }.buttonStyle(.plain).foregroundStyle(Palette.deep) } } }
             if let note = value["notes"].list.first {
                 HStack(alignment: .top, spacing: 6) {
@@ -128,10 +146,14 @@ private struct HoverView: View {
                 .padding(.horizontal, 9).padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Palette.wash, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.accent.opacity(0.22), lineWidth: 0.7))
             }
             Spacer(minLength: 0)
-            if value["entry"] != .null { bookmark }
-        }.padding(16).frame(width: 350, height: height, alignment: .topLeading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 13, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(Palette.accent.opacity(0.55), lineWidth: 1))
+            if value["entry"] != .null {
+                Divider().overlay(Palette.border.opacity(0.8))
+                bookmark
+            }
+        }.padding(15).frame(width: 360, height: height, alignment: .topLeading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Palette.accent.opacity(0.45), lineWidth: 1))
     }
 
     private var bookmark: some View {
@@ -139,20 +161,36 @@ private struct HoverView: View {
         let word = value["word"].text
         let state = model.hoverBookmarkStatus(word, target: target)
         let hint = target.map { "加入「\($0.title)」" } ?? (model.loggedIn ? "请先选择一个云词本" : "登录墨墨账号后可收藏")
-        return HStack {
-            Text(!error.isEmpty ? error : target == nil ? hint : "").font(.caption).foregroundStyle(Palette.muted)
-                .lineLimit(1).help(error)
+        return HStack(spacing: 8) {
+            if !error.isEmpty || target == nil {
+                Text(!error.isEmpty ? error : hint).font(.caption).foregroundStyle(Palette.muted)
+                    .lineLimit(1).help(error)
+            } else {
+                Button("查看完整释义 →") { navigate(word) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(Palette.deep)
+            }
             Spacer(minLength: 5)
-            Button(state.pending ? "收藏中…" : state.saved ? "✓ 已收藏" : "＋ 收藏") {
-                guard let target else { return }
-                error = ""
-                Task {
-                    do { try await model.saveHoverBookmark(word, target: target) }
-                    catch { if model.hoverBookmarkTarget == target { self.error = error.localizedDescription } }
-                }
-            }.buttonStyle(MemoButtonStyle(accent: true, compact: true))
-                .disabled(target == nil || state.saved || state.pending)
-                .help(hint)
+            if state.saved {
+                Text("✓ 已收藏")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 11).frame(height: 28)
+                    .background(Color(red: 0.09, green: 0.68, blue: 0.46), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .help(hint)
+            } else {
+                Button(state.pending ? "收藏中…" : "＋ 收藏") {
+                    guard let target else { return }
+                    error = ""
+                    Task {
+                        do { try await model.saveHoverBookmark(word, target: target) }
+                        catch { if model.hoverBookmarkTarget == target { self.error = error.localizedDescription } }
+                    }
+                }.buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                    .disabled(target == nil || state.pending)
+                    .help(hint)
+            }
         }.onChange(of: target) { _ in error = "" }
     }
 }

@@ -25,29 +25,29 @@ public partial class MainWindow
         if(_compactLayout!=compact)
         {
             _compactLayout=compact;
-            SidebarColumn.Width=new GridLength(compact?220:264);
+            SidebarColumn.Width=new GridLength(compact?224:268);
             BrandColumn.Width=GridLength.Auto;
             BrandGroup.Margin=new Thickness(0,0,compact?6:12,0);
-            BrandLogo.Width=BrandLogo.Height=compact?34:42;BrandTitleText.FontSize=compact?15:17;
-            BackButton.Width=ForwardButton.Width=compact?27:32;
-            MinimizeWindowButton.Width=MaximizeButton.Width=CloseWindowButton.Width=compact?30:44;
-            SettingsButton.Width=PinButton.Width=compact?28:34;
-            SettingsButton.Margin=new Thickness(0,0,compact?0:5,0);
-            PinButton.Margin=new Thickness(0,0,compact?2:6,0);
-            WindowControlsSeparator.Margin=new Thickness(0,0,compact?3:7,0);
+            BrandLogoBadge.Width=BrandLogoBadge.Height=compact?32:38;BrandTitleText.FontSize=compact?14.5:16.5;
+            BackButton.Width=ForwardButton.Width=compact?28:32;
+            MinimizeWindowButton.Width=MaximizeButton.Width=CloseWindowButton.Width=compact?32:40;
+            SettingsButton.Width=PinButton.Width=compact?29:34;
+            SettingsButton.Margin=new Thickness(0,0,compact?1:3,0);
+            PinButton.Margin=new Thickness(0,0,compact?3:6,0);
+            WindowControlsSeparator.Margin=new Thickness(0,0,compact?3:6,0);
             AccountButton.Margin=new Thickness(0,0,compact?3:5,0);
-            ExamCountdownText.Margin=new Thickness(0,0,compact?8:14,0);
-            HeaderCenterGrid.Margin=compact?new Thickness(6,0,6,0):new Thickness(9,0,10,0);
-            CloudStatusText.MaxWidth=compact?72:100;
-            AccountButton.MaxWidth=compact?115:145;
-            AccountButton.Padding=compact?new Thickness(8,7,8,7):new Thickness(11,7,11,7);
-            ExamCountdownText.MaxWidth=compact?120:210;
-            MainContentGrid.Margin=compact?new Thickness(15,15,15,13):new Thickness(27,21,27,17);
-            WordCard.Padding=compact?new Thickness(18):new Thickness(27,23,27,24);
-            WordText.FontSize=compact?32:42;
+            ExamCountdownBadge.Margin=new Thickness(0,0,compact?6:10,0);
+            HeaderCenterGrid.Margin=compact?new Thickness(6,0,6,0):new Thickness(10,0,10,0);
+            CloudStatusText.MaxWidth=compact?72:104;
+            AccountButton.MaxWidth=compact?118:152;
+            AccountButton.Padding=compact?new Thickness(8,6,8,6):new Thickness(11,6,11,6);
+            ExamCountdownText.MaxWidth=compact?115:200;
+            MainContentGrid.Margin=compact?new Thickness(15,15,15,13):new Thickness(26,20,26,16);
+            WordCard.Padding=compact?new Thickness(18):new Thickness(28,24,28,26);
+            WordText.FontSize=compact?32:40;
             WordActions.Orientation=compact?System.Windows.Controls.Orientation.Vertical:System.Windows.Controls.Orientation.Horizontal;
             AddTodayButton.Margin=compact?new Thickness(0,6,0,0):new Thickness(8,0,0,0);
-            AddTodayButton.Padding=compact?new Thickness(10,7,10,7):new Thickness(12,11,12,11);
+            AddTodayButton.Padding=compact?new Thickness(10,7,10,7):new Thickness(14,10,14,10);
         }
     }
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
@@ -77,7 +77,8 @@ public partial class MainWindow
         if(status=="已连接")status=_accountRejected?"登录失效":_accountAuthenticated?"已连接":"连接中";
         var accountName=_tokens.ActiveAccount?.Name;
         CloudStatusText.Text = hasToken&&!string.IsNullOrWhiteSpace(accountName)?accountName:status=="未连接"?"未登录":status;
-        CloudStatusText.Foreground = Brush(status == "已连接" ? "#087FAF" : status is "登录已失效" or "登录失效" or "连接受限" ? "#B58236" : "#8399AA");
+        CloudStatusText.Foreground = Brush(status == "已连接" ? "#0A7FB3" : status is "登录已失效" or "登录失效" or "连接受限" ? "#B45309" : "#648198");
+        AccountStatusDot.Fill = Brush(status == "已连接" ? "#17B877" : status is "登录已失效" or "登录失效" or "连接受限" ? "#F59E0B" : "#94A3B8");
         AccountButton.ToolTip = $"墨墨账号：{accountName??"未选择账号"} · {status}\n点击登录或切换账号";
         System.Windows.Automation.AutomationProperties.SetName(AccountButton,$"墨墨账号：{accountName??"未登录"}，{status}");
     }

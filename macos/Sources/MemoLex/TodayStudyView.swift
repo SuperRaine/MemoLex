@@ -31,19 +31,34 @@ struct TodayStudyView: View {
     var body: some View {
         VStack(spacing: 0) {
             DialogHeader(title: "今日学习") { if !writing { model.sheet = nil } }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .center) {
-                    Text(summary).foregroundStyle(Palette.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer()
-                    Button("刷新") {
-                        Task { await run("正在刷新今日学习…") {
-                            try await refresh()
-                            if books.isEmpty { try await readBooks() }
-                            status = "今日学习已刷新"
-                        } }
-                    }.buttonStyle(MemoButtonStyle(compact: true)).disabled(busy)
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(alignment: .center) {
+                        Text(summary).font(.system(size: 13, weight: .medium)).foregroundStyle(Palette.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("刷新") {
+                            Task { await run("正在刷新今日学习…") {
+                                try await refresh()
+                                if books.isEmpty { try await readBooks() }
+                                status = "今日学习已刷新"
+                            } }
+                        }.buttonStyle(MemoButtonStyle(compact: true)).disabled(busy)
+                    }
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Palette.paper.opacity(0.9))
+                            Capsule()
+                                .fill(LinearGradient(colors: [Color(red: 0.17, green: 0.72, blue: 0.97), Color(red: 0.05, green: 0.53, blue: 0.78)], startPoint: .leading, endPoint: .trailing))
+                                .frame(width: max(0, geo.size.width * studyProgress))
+                                .animation(.easeOut(duration: 0.25), value: studyProgress)
+                        }
+                    }
+                    .frame(height: 6)
                 }
+                .padding(12)
+                .background(Palette.wash.opacity(0.6), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
                 HStack(spacing: 12) {
                     segments(["待学词汇", "加入新学"], selection: $page)
                         .fixedSize(horizontal: true, vertical: false)
@@ -94,6 +109,11 @@ struct TodayStudyView: View {
         candidates.values.filter { matches($0.spellingText, query: candidateSearch) }
             .sorted { $0.spellingText.localizedStandardCompare($1.spellingText) == .orderedAscending }
             .map(\.idText)
+    }
+    private var studyProgress: CGFloat {
+        guard plan != .null else { return 0 }
+        let target = max(1, plan["target"].integer)
+        return min(1, max(0, CGFloat(plan["finished"].integer) / CGFloat(target)))
     }
     private var summary: String {
         guard plan != .null else { return "今日学习进度待获取" }
@@ -161,20 +181,22 @@ struct TodayStudyView: View {
     }
 
     private func segments(_ titles: [String], selection: Binding<Int>) -> some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 3) {
             ForEach(titles.indices, id: \.self) { index in
                 let active = selection.wrappedValue == index
                 Button { selection.wrappedValue = index } label: {
                     Text(titles[index])
-                        .font(.system(size: 13, weight: active ? .semibold : .regular))
-                        .foregroundStyle(active ? Palette.deep : Palette.ink)
+                        .font(.system(size: 13, weight: active ? .semibold : .medium))
+                        .foregroundStyle(active ? Palette.deep : Palette.muted)
                         .padding(.horizontal, 14).frame(height: 29)
-                        .background(active ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                        .background(active ? Palette.paper : Color.clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .shadow(color: active ? Color.black.opacity(0.08) : .clear, radius: 3, y: 1)
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain)
                     .accessibilityAddTraits(active ? .isSelected : [])
             }
-        }.padding(3).background(Palette.control, in: RoundedRectangle(cornerRadius: 9))
+        }.padding(3).background(Palette.wash.opacity(0.75), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border.opacity(0.8), lineWidth: 0.75))
     }
 
     private func wordList<Content: View>(showKind: Bool, empty: String?, @ViewBuilder list: () -> Content) -> some View {

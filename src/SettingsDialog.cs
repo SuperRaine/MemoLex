@@ -22,7 +22,7 @@ internal static class SettingsDialog
     internal const string BugReportUrl=RepositoryUrl+"/issues/new?template=bug_report.yml";
     internal const string FeatureRequestUrl=RepositoryUrl+"/issues/new?template=feature_request.yml";
     internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
-    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.2.2";
+    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.2.3";
     [Flags]
     private enum SettingsArea { None=0, General=1, Hover=2, Shortcuts=4 }
     public static void Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null)
@@ -37,10 +37,10 @@ internal static class SettingsDialog
         dialog.Width=Math.Min(980,SystemParameters.WorkArea.Width-60);dialog.Height=Math.Min(740,SystemParameters.WorkArea.Height-50);
         dialog.MinWidth=680;dialog.MinHeight=520;dialog.SizeToContent=SizeToContent.Manual;dialog.ResizeMode=ResizeMode.CanResize;
         WindowChrome.GetWindowChrome(dialog).ResizeBorderThickness=new Thickness(6);
-        var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(146)});body.ColumnDefinitions.Add(new ColumnDefinition());
+        var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(172)});body.ColumnDefinitions.Add(new ColumnDefinition());
         InputDialog.SetBody(dialog,body);
-        var navigation=new ListBox {Margin=new Thickness(10,18,10,14),BorderThickness=new Thickness(0),Background=Brushes.Transparent,FontSize=13,HorizontalContentAlignment=HorizontalAlignment.Stretch};
-        var side=new Border {Background=new SolidColorBrush(Color.FromRgb(246,250,254)),BorderBrush=new SolidColorBrush(Color.FromRgb(229,237,245)),BorderThickness=new Thickness(0,0,1,0),Child=navigation};body.Children.Add(side);
+        var navigation=new ListBox {Margin=new Thickness(10,16,10,14),BorderThickness=new Thickness(0),Background=Brushes.Transparent,FontSize=13,HorizontalContentAlignment=HorizontalAlignment.Stretch};
+        var side=new Border {Background=new SolidColorBrush(Color.FromRgb(246,250,254)),BorderBrush=new SolidColorBrush(Color.FromRgb(225,236,246)),BorderThickness=new Thickness(0,0,1,0),Child=navigation};body.Children.Add(side);
         var right=new Grid();right.RowDefinitions.Add(new RowDefinition());right.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});Grid.SetColumn(right,1);body.Children.Add(right);
         var host=new ContentControl {HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Stretch};right.Children.Add(host);
         var status=InputDialog.Text("", status: true);
@@ -107,8 +107,14 @@ internal static class SettingsDialog
         var guide=new Button{Content="查看新手引导",HorizontalAlignment=HorizontalAlignment.Left,IsEnabled=startOnboarding!=null};guide.Click+=(_,_)=>{dialog.Close();owner.Dispatcher.BeginInvoke(startOnboarding!);};general.Children.Add(guide);dialog.RegisterName("OpenOnboarding",guide);
 
         var shortcutsPage=Page("快捷键","点击输入框后按下组合键，按 Delete 清除。");
-        var shortcutInputs=new Dictionary<string,TextBox>();var shortcutRows=new System.Windows.Controls.Primitives.UniformGrid{Columns=2};shortcutsPage.Children.Add(shortcutRows);
-        shortcutRows.SizeChanged+=(_,_)=>shortcutRows.Columns=shortcutRows.ActualWidth>=560?2:1;
+        var shortcutInputs=new Dictionary<string,TextBox>();var shortcutRows=new System.Windows.Controls.Primitives.UniformGrid{Columns=2};
+        shortcutsPage.Children.Add(new Border
+        {
+            Child=shortcutRows,Padding=new Thickness(14,12,2,6),Margin=new Thickness(0,0,0,10),
+            CornerRadius=new CornerRadius(11),Background=new SolidColorBrush(Color.FromRgb(248,252,255)),
+            BorderBrush=new SolidColorBrush(Color.FromRgb(222,236,246)),BorderThickness=new Thickness(1)
+        });
+        shortcutRows.SizeChanged+=(_,_)=>shortcutRows.Columns=shortcutRows.ActualWidth>=540?2:1;
         foreach(var definition in ShortcutDefinitions.All)
         {
             var row=new Grid {Margin=new Thickness(0,0,12,8)};row.ColumnDefinitions.Add(new ColumnDefinition());row.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(142)});
@@ -209,6 +215,23 @@ internal static class SettingsDialog
         dialog.RegisterName("SettingsHoverPage",PageView("鼠标取词"));
         var pageOrder=new[]{"常规","墨墨账号","鼠标取词","快捷键","软件更新","反馈","关于与赞助"};
         pages=pageOrder.Select(title=>pages.Single(page=>page.Title==title)).ToList();
+        var navRowFactory=new FrameworkElementFactory(typeof(StackPanel));
+        navRowFactory.SetValue(StackPanel.OrientationProperty,Orientation.Horizontal);
+        navRowFactory.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center);
+        var navIconFactory=new FrameworkElementFactory(typeof(TextBlock));
+        navIconFactory.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("."){Converter=new SettingsNavIconConverter()});
+        navIconFactory.SetValue(TextBlock.FontFamilyProperty,new FontFamily("Segoe MDL2 Assets"));
+        navIconFactory.SetValue(TextBlock.FontSizeProperty,14.0);
+        navIconFactory.SetValue(FrameworkElement.WidthProperty,20.0);
+        navIconFactory.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center);
+        navIconFactory.SetValue(FrameworkElement.MarginProperty,new Thickness(0,0,8,0));
+        var navTextFactory=new FrameworkElementFactory(typeof(TextBlock));
+        navTextFactory.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("."));
+        navTextFactory.SetValue(TextBlock.FontSizeProperty,13.0);
+        navTextFactory.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center);
+        navRowFactory.AppendChild(navIconFactory);
+        navRowFactory.AppendChild(navTextFactory);
+        navigation.ItemTemplate=new DataTemplate{VisualTree=navRowFactory};
         foreach(var page in pages)navigation.Items.Add(page.Title);
         navigation.SelectionChanged += (_, _) =>
         {
@@ -304,6 +327,19 @@ internal static class SettingsDialog
         dialog.Closing+=(_,_)=>ApplyPending();
         foreach(var (name,control) in new (string,FrameworkElement)[]{("RememberCloseAction",rememberClose),("StartWithWindows",autoStart),("SettingsStatus",status),("SettingsNav",navigation),("SettingsPageHost",host),("SettingsGeneralPage",PageView("常规")),("SettingsShortcutsPage",PageView("快捷键")),("SettingsAccountPage",PageView("墨墨账号")),("SettingsFeedbackPage",PageView("反馈")),("SettingsSupportPage",PageView("关于与赞助")),("SponsorPaymentCards",payments)})dialog.RegisterName(name,control);
         return dialog;
+    }
+
+    private sealed class SettingsNavIconConverter : System.Windows.Data.IValueConverter
+    {
+        private static readonly Dictionary<string, string> Icons = new()
+        {
+            ["常规"] = "\uE713", ["墨墨账号"] = "\uE77B", ["鼠标取词"] = "\uE8B0",
+            ["快捷键"] = "\uE765", ["软件更新"] = "\uE896", ["反馈"] = "\uE90A", ["关于与赞助"] = "\uE946"
+        };
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => value is string key && Icons.TryGetValue(key, out var icon) ? icon : "\uE713";
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => throw new NotSupportedException();
     }
 
     internal static Window BuildPaymentDialog(Window owner,string label,string asset)

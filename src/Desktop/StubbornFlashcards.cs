@@ -256,12 +256,30 @@ internal static class StubbornFlashcards
             AutomationProperties.SetName(card, word == null ? "本组已完成" : revealed ? $"{word}，点击隐藏释义" : $"{word}，点击查看释义");
 
             face.Children.Clear();
+            if (word != null)
+            {
+                face.Children.Add(new Border
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 8),
+                    Padding = new Thickness(10, 3, 10, 3),
+                    CornerRadius = new CornerRadius(10),
+                    Background = new SolidColorBrush(Color.FromRgb(0xE8, 0xF6, 0xFF)),
+                    Child = new TextBlock
+                    {
+                        Text = revealed ? "释义与助记 · 点击翻回" : $"第 {practice.GroupNumber} 组 · 点击翻面",
+                        FontSize = 11,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x0A, 0x7F, 0xB3))
+                    }
+                });
+            }
             face.Children.Add(new TextBlock
             {
                 Text = word ?? (practice.HasNextGroup ? "本组已完成" : "全部练习完成"),
-                FontSize = word == null ? 25 : 34,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x13, 0x30, 0x45)),
+                FontSize = word == null ? 24 : 34,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x0B, 0x22, 0x34)),
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap
             });
@@ -323,25 +341,29 @@ internal static class StubbornFlashcards
                 {
                     Margin = new Thickness(0, 10, 0, 0),
                     Padding = new Thickness(11, 8, 11, 8),
-                    CornerRadius = new CornerRadius(8),
-                    Background = new SolidColorBrush(Color.FromRgb(0xEA, 0xF6, 0xFF)),
+                    CornerRadius = new CornerRadius(9),
+                    Background = new SolidColorBrush(Color.FromRgb(0xF1, 0xF9, 0xFF)),
                     BorderBrush = new SolidColorBrush(Color.FromRgb(0xD2, 0xEA, 0xFA)),
                     BorderThickness = new Thickness(1)
                 };
-                var noteStack = new StackPanel();
-                noteStack.Children.Add(new TextBlock
+                var noteRow = new Grid();
+                noteRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                noteRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var badge = new Border
                 {
-                    Text = "助记",
-                    FontSize = 11,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = (Brush)Application.Current.FindResource("AccentDeepBrush")
-                });
+                    Width = 20, Height = 20, CornerRadius = new CornerRadius(5),
+                    Background = new SolidColorBrush(Color.FromRgb(0xD8, 0xF0, 0xFE)),
+                    VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 1, 8, 0),
+                    Child = new TextBlock { Text = "记", FontSize = 10.5, FontWeight = FontWeights.Bold, Foreground = (Brush)Application.Current.FindResource("AccentDeepBrush"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+                };
+                noteRow.Children.Add(badge);
                 var aid = InputDialog.Text(note);
-                aid.FontSize = 12;
-                aid.Foreground = new SolidColorBrush(Color.FromRgb(0x2A, 0x56, 0x73));
-                aid.Margin = new Thickness(0, 2, 0, 0);
-                noteStack.Children.Add(aid);
-                noteBox.Child = noteStack;
+                aid.FontSize = 12.5;
+                aid.LineHeight = 19;
+                aid.Foreground = new SolidColorBrush(Color.FromRgb(0x21, 0x54, 0x73));
+                Grid.SetColumn(aid, 1);
+                noteRow.Children.Add(aid);
+                noteBox.Child = noteRow;
                 face.Children.Add(noteBox);
             }
         }

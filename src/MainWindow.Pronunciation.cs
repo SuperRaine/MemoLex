@@ -42,6 +42,7 @@ public partial class MainWindow
             rotation.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(850))
             { RepeatBehavior = RepeatBehavior.Forever });
 
+        var originalContent = button.Content;
         button.IsEnabled = false;
         button.Content = loadingLabel;
         AutomationProperties.SetName(button, "正在加载例句语音");
@@ -49,7 +50,7 @@ public partial class MainWindow
         finally
         {
             rotation.BeginAnimation(RotateTransform.AngleProperty, null);
-            button.Content = "朗读";
+            button.Content = originalContent;
             button.ClearValue(AutomationProperties.NameProperty);
             button.IsEnabled = true;
         }
