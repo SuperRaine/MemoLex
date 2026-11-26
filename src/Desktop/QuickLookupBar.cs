@@ -1,6 +1,8 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using MemoLex.Core;
@@ -10,12 +12,19 @@ namespace MemoLex.Desktop;
 
 internal sealed class QuickLookupBar : Window
 {
+    private const int WhMouseLl = 14;
+    private const int WmLButtonDown = 0x0201;
+    private const int WmRButtonDown = 0x0204;
+    private const int WmMButtonDown = 0x0207;
+    private const int WmXButtonDown = 0x020B;
+
     private readonly LocalDictionary _dictionary;
     private readonly MnemonicStore _mnemonics;
     private readonly Func<string, EnglishAccent, Task> _speak;
     private readonly Func<string, Task<string?>> _bookmark;
     private readonly Action<string> _openMain;
     private readonly Func<string?> _accountKey;
+    private readonly Border _shell;
     private readonly TextBox _input;
     private readonly TextBlock _placeholder;
     private readonly StackPanel _resultPanel;
@@ -30,6 +39,8 @@ internal sealed class QuickLookupBar : Window
     private readonly Button _speakBtn;
     private readonly Button _bookmarkBtn;
     private readonly Button _openBtn;
+    private readonly LowLevelMouseProc _mouseProc;
+    private IntPtr _mouseHook;
     private string _currentWord = "";
     private bool _suppressDeactivate;
 
@@ -276,7 +287,7 @@ internal sealed class QuickLookupBar : Window
         _resultContainer.SetResourceReference(Border.BorderBrushProperty, "RuleBrush");
         layout.Children.Add(_resultContainer);
 
-        var shell = new Border
+        _shell = new Border
         {
             CornerRadius = new CornerRadius(18),
             BorderThickness = new Thickness(1.2),
@@ -284,9 +295,11 @@ internal sealed class QuickLookupBar : Window
             Effect = new DropShadowEffect { BlurRadius = 32, ShadowDepth = 10, Opacity = 0.24, Color = Color.FromRgb(8, 28, 46) },
             Child = layout
         };
-        shell.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
-        shell.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-        Content = shell;
+        _shell.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+        _shell.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        Content = _shell;
+
+        _mouseProc = MouseHookCallback;
 
         _input.TextChanged += (_, _) =>
         {
@@ -295,7 +308,7 @@ internal sealed class QuickLookupBar : Window
         };
         _input.PreviewKeyDown += (_, e) =>
         {
-            if (e.Key == Key.Escape) { e.Handled = true; Hide(); }
+            if (e.Key == Key.Escape) { e.Handled = true; HideBar(); }
             else if (e.Key == Key.Enter)
             {
                 e.Handled = true;
@@ -333,7 +346,8 @@ internal sealed class QuickLookupBar : Window
             var target = _currentWord.Length > 0 ? _currentWord : _input.Text.Trim();
             if (target.Length > 0) OpenInMain(target);
         };
-        Deactivated += (_, _) => { if (!_suppressDeactivate && IsVisible) Hide(); };
+        Deactivated += (_, _) => { if (!_suppressDeactivate && IsVisible) HideBar(); };
+        Closed += (_, _) => UninstallMouseHook();
     }
 
     internal void Popup()
@@ -345,15 +359,79 @@ internal sealed class QuickLookupBar : Window
         _statusText.Text = "";
         _placeholder.Visibility = string.IsNullOrEmpty(_input.Text) ? Visibility.Visible : Visibility.Collapsed;
         Show();
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero)
+            new ForegroundWindow().Activate(handle, Topmost);
         Activate();
+        Keyboard.Focus(_input);
         _input.Focus();
         _input.SelectAll();
+        InstallMouseHook();
         UpdateLiveResult();
+    }
+
+    internal void HideBar()
+    {
+        UninstallMouseHook();
+        if (IsVisible) Hide();
+    }
+
+    private void InstallMouseHook()
+    {
+        if (_mouseHook != IntPtr.Zero) return;
+        _mouseHook = SetWindowsHookEx(WhMouseLl, _mouseProc, IntPtr.Zero, 0);
+    }
+
+    private void UninstallMouseHook()
+    {
+        if (_mouseHook == IntPtr.Zero) return;
+        UnhookWindowsHookEx(_mouseHook);
+        _mouseHook = IntPtr.Zero;
+    }
+
+    private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0 && IsVisible && !_suppressDeactivate)
+        {
+            var msg = wParam.ToInt32();
+            if (msg is WmLButtonDown or WmRButtonDown or WmMButtonDown or WmXButtonDown)
+            {
+                var info = Marshal.PtrToStructure<MsllHookStruct>(lParam);
+                var pt = info.Pt;
+                if (!IsPointInsideCard(pt.X, pt.Y))
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (!_suppressDeactivate && IsVisible) HideBar();
+                    }));
+                }
+            }
+        }
+        return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+    }
+
+    private bool IsPointInsideCard(int screenX, int screenY)
+    {
+        try
+        {
+            if (_shell.ActualWidth > 0 && _shell.ActualHeight > 0)
+            {
+                var topLeft = _shell.PointToScreen(new Point(0, 0));
+                var bottomRight = _shell.PointToScreen(new Point(_shell.ActualWidth, _shell.ActualHeight));
+                return screenX >= topLeft.X && screenX <= bottomRight.X
+                    && screenY >= topLeft.Y && screenY <= bottomRight.Y;
+            }
+        }
+        catch (InvalidOperationException) { }
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero && GetWindowRect(handle, out var rect))
+            return screenX >= rect.Left && screenX <= rect.Right && screenY >= rect.Top && screenY <= rect.Bottom;
+        return true;
     }
 
     private void OpenInMain(string word)
     {
-        Hide();
+        HideBar();
         _openMain(word);
     }
 
@@ -444,4 +522,13 @@ internal sealed class QuickLookupBar : Window
         }
         _suggestionsPanel.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+    [StructLayout(LayoutKind.Sequential)] private struct NativePoint { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct MsllHookStruct { public NativePoint Pt; public uint MouseData, Flags, Time; public IntPtr ExtraInfo; }
+    [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+    [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
 }

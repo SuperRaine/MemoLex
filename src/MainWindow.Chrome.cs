@@ -81,7 +81,7 @@ public partial class MainWindow
         var maximized = WindowState == WindowState.Maximized;
         MaximizeGlyph.Text = maximized ? "\uE923" : "\uE922";
         MaximizeButton.ToolTip = maximized ? "还原" : "最大化";
-        RootFrame.CornerRadius = new CornerRadius(maximized ? 0 : 11);
+        RootFrame.CornerRadius = new CornerRadius(maximized ? 0 : 8);
     }
     private void UpdatePinAppearance()
     {

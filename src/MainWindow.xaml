@@ -10,7 +10,7 @@
         Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource InkBrush}"
         FontFamily="Microsoft YaHei UI" FontSize="13" Icon="app.ico" UseLayoutRounding="True">
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="7" GlassFrameThickness="0" CornerRadius="12" UseAeroCaptionButtons="False"/>
+        <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="7" GlassFrameThickness="0,0,0,1" CornerRadius="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
     <Window.Resources>
         <DataTemplate DataType="{x:Type core:ChineseSearchResult}"><StackPanel><TextBlock Text="{Binding Word}" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14" LineHeight="22" Padding="0,0,0,2" FontWeight="SemiBold" Foreground="{DynamicResource AccentDeepBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding DisplayMatchedMeaning}" FontFamily="Microsoft YaHei UI" FontSize="10.5" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/></StackPanel></DataTemplate>
@@ -27,7 +27,7 @@
             </ControlTemplate></Setter.Value></Setter>
         </Style>
     </Window.Resources>
-    <Border x:Name="RootFrame" Background="{DynamicResource CanvasBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12">
+    <Border x:Name="RootFrame" Background="{DynamicResource CanvasBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
         <Grid>
             <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition Height="*"/><RowDefinition Height="29"/></Grid.RowDefinitions>
             <Border Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" CornerRadius="11,11,0,0">

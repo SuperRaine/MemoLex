@@ -10,6 +10,8 @@ private final class SpotlightPanel: NSPanel {
     private unowned let model: AppModel
     private var panel: NSPanel?
     private let state = QuickLookupState()
+    private var globalMouseMonitor: Any?
+    private var localMouseMonitor: Any?
 
     init(model: AppModel) {
         self.model = model
@@ -60,10 +62,35 @@ private final class SpotlightPanel: NSPanel {
         state.status = ""
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        installOutsideClickMonitors()
     }
 
     func hide() {
+        removeOutsideClickMonitors()
         panel?.orderOut(nil)
+    }
+
+    private func installOutsideClickMonitors() {
+        removeOutsideClickMonitors()
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            Task { @MainActor in self?.dismissIfClickOutside() }
+        }
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+            self?.dismissIfClickOutside()
+            return event
+        }
+    }
+
+    private func removeOutsideClickMonitors() {
+        if let globalMouseMonitor { NSEvent.removeMonitor(globalMouseMonitor); self.globalMouseMonitor = nil }
+        if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor); self.localMouseMonitor = nil }
+    }
+
+    private func dismissIfClickOutside() {
+        guard !state.suppressDismiss, let panel, panel.isVisible else { return }
+        if !panel.frame.contains(NSEvent.mouseLocation) {
+            hide()
+        }
     }
 
     func windowDidResignKey(_ notification: Notification) {
