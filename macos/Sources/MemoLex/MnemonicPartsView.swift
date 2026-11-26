@@ -2,11 +2,17 @@ import SwiftUI
 
 struct MnemonicPartsView: View {
     let breakdowns: [J]
+    var lookupWord: ((String) -> Void)? = nil
+    var loadFamily: ((String, String) async -> [J])? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(breakdowns.indices, id: \.self) { index in
-                MnemonicBreakdownView(breakdown: breakdowns[index])
+                MnemonicBreakdownView(
+                    breakdown: breakdowns[index],
+                    lookupWord: lookupWord,
+                    loadFamily: loadFamily
+                )
             }
         }
     }
@@ -14,7 +20,13 @@ struct MnemonicPartsView: View {
 
 private struct MnemonicBreakdownView: View {
     let breakdown: J
+    let lookupWord: ((String) -> Void)?
+    let loadFamily: ((String, String) async -> [J])?
     @State private var selected: Set<Int> = []
+    @State private var familyKey: String? = nil
+    @State private var familyTitle = ""
+    @State private var familyMembers: [J] = []
+    @State private var loadingFamily = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -22,92 +34,156 @@ private struct MnemonicBreakdownView: View {
         let word = breakdown["word"].text
         let clickableIndices = Set(parts.indices.filter { !parts[$0]["meaning"].text.isEmpty })
         let allLit = selected.isEmpty || selected.count >= clickableIndices.count
+        let chosenParts: [J] = allLit ? [] : selected.sorted().compactMap { parts.indices.contains($0) ? parts[$0] : nil }
         let detail: String = {
             if allLit {
                 return breakdown["explanation"].text
             }
-            let lines = selected.sorted().compactMap { index -> String? in
-                guard parts.indices.contains(index) else { return nil }
-                let focus = parts[index]["focusExplanation"].text
+            let lines = chosenParts.map { part -> String in
+                let focus = part["focusExplanation"].text
                 if !focus.isEmpty { return focus }
-                return "\(parts[index]["form"].text) · \(parts[index]["meaning"].text)"
+                return "\(part["form"].text) · \(part["meaning"].text)"
             }
             return lines.isEmpty ? breakdown["explanation"].text : lines.joined(separator: "\n")
         }()
-
-        MorphemeFlowLayout(spacing: 7, lineSpacing: 8, expandLast: true, lastMinWidth: 185) {
-            ForEach(parts.indices, id: \.self) { index in
-                let part = parts[index]
-                let form = part["form"].text
-                let meaning = part["meaning"].text
-                let focus = part["focusExplanation"].text
-                if index > 0 {
-                    Text("＋")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Palette.accent.opacity(0.82))
-                        .accessibilityHidden(true)
+        let cognateExamples: [String] = {
+            var seen = Set<String>()
+            var result: [String] = []
+            for part in chosenParts {
+                for item in part["examples"].list {
+                    let text = item.text
+                    if !text.isEmpty, seen.insert(text.lowercased()).inserted {
+                        result.append(text)
+                    }
                 }
-                if meaning.isEmpty {
-                    Text(form)
-                        .font(.system(size: 14.5, weight: .bold))
-                        .foregroundStyle(Palette.muted)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 7)
-                        .background(Palette.paper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border, lineWidth: 1.5))
-                } else {
-                    MorphemeChipCard(
-                        form: form,
-                        meaning: meaning,
-                        tooltip: focus.isEmpty ? meaning : focus,
-                        lit: allLit || selected.contains(index),
-                        active: !allLit && selected.contains(index),
-                        reduceMotion: reduceMotion
-                    ) {
-                        withAnimation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.78)) {
-                            if allLit {
-                                selected = [index]
-                            } else if selected.contains(index) {
-                                if selected.count == 1 {
-                                    selected.removeAll()
+            }
+            return Array(result.prefix(6))
+        }()
+
+        VStack(alignment: .leading, spacing: 8) {
+            MorphemeFlowLayout(spacing: 7, lineSpacing: 8, expandLast: true, lastMinWidth: 185) {
+                ForEach(parts.indices, id: \.self) { index in
+                    let part = parts[index]
+                    let form = part["form"].text
+                    let meaning = part["meaning"].text
+                    let focus = part["focusExplanation"].text
+                    if index > 0 {
+                        Text("＋")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Palette.accent.opacity(0.82))
+                            .accessibilityHidden(true)
+                    }
+                    if meaning.isEmpty {
+                        Text(form)
+                            .font(.system(size: 14.5, weight: .bold))
+                            .foregroundStyle(Palette.muted)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 7)
+                            .background(Palette.paper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border, lineWidth: 1.5))
+                    } else {
+                        MorphemeChipCard(
+                            form: form,
+                            meaning: meaning,
+                            tooltip: focus.isEmpty ? meaning : focus,
+                            lit: allLit || selected.contains(index),
+                            active: !allLit && selected.contains(index),
+                            reduceMotion: reduceMotion
+                        ) {
+                            withAnimation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.78)) {
+                                familyKey = nil
+                                familyMembers = []
+                                if allLit {
+                                    selected = [index]
+                                } else if selected.contains(index) {
+                                    if selected.count == 1 {
+                                        selected.removeAll()
+                                    } else {
+                                        selected.remove(index)
+                                    }
                                 } else {
-                                    selected.remove(index)
-                                }
-                            } else {
-                                selected.insert(index)
-                                if selected.count >= clickableIndices.count {
-                                    selected.removeAll()
+                                    selected.insert(index)
+                                    if selected.count >= clickableIndices.count {
+                                        selected.removeAll()
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
-            Text("→")
-                .font(.system(size: 14.5, weight: .bold))
-                .foregroundStyle(Palette.accent.opacity(0.82))
-                .accessibilityHidden(true)
-            Button {
-                if !selected.isEmpty {
-                    withAnimation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.78)) {
-                        selected.removeAll()
+                Text("→")
+                    .font(.system(size: 14.5, weight: .bold))
+                    .foregroundStyle(Palette.accent.opacity(0.82))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Button {
+                        if !selected.isEmpty {
+                            withAnimation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.78)) {
+                                selected.removeAll()
+                                familyKey = nil
+                                familyMembers = []
+                            }
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            if !word.isEmpty {
+                                Text(word)
+                                    .font(.system(size: 14.5, weight: .bold))
+                                    .foregroundStyle(Palette.ink)
+                            }
+                            Text(detail)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Palette.deep)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .id(detail)
+                                .transition(.opacity)
+                                .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: detail)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                }
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    if !word.isEmpty {
-                        Text(word)
-                            .font(.system(size: 14.5, weight: .bold))
-                            .foregroundStyle(Palette.ink)
+                    .buttonStyle(.plain)
+                    .help("点击还原完整构词解释")
+
+                    if !allLit && (lookupWord != nil) && (!cognateExamples.isEmpty || (chosenParts.count == 1 && loadFamily != nil)) {
+                        MorphemeFlowLayout(spacing: 5, lineSpacing: 5, expandLast: false) {
+                            if !cognateExamples.isEmpty {
+                                Text("同根词：")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Palette.muted)
+                                ForEach(cognateExamples, id: \.self) { ex in
+                                    Button(ex) { lookupWord?(ex) }
+                                        .buttonStyle(PillButtonStyle())
+                                        .help("点击查询「\(ex)」")
+                                }
+                            }
+                            if chosenParts.count == 1, let loadFamily {
+                                let part = chosenParts[0]
+                                let form = part["form"].text
+                                let meaning = part["meaning"].text
+                                let key = "\(form)|\(meaning)"
+                                Button(familyKey == key ? "收起家族" : (loadingFamily ? "加载中…" : "同根词家族 →")) {
+                                    if familyKey == key {
+                                        familyKey = nil
+                                        familyMembers = []
+                                    } else {
+                                        loadingFamily = true
+                                        Task {
+                                            let items = await loadFamily(form, meaning)
+                                            loadingFamily = false
+                                            if !items.isEmpty {
+                                                familyTitle = "「\(form)（\(meaning)）」同根词家族 · 共 \(items.count) 词"
+                                                familyMembers = items
+                                                familyKey = key
+                                            }
+                                        }
+                                    }
+                                }
+                                .buttonStyle(PillButtonStyle())
+                                .disabled(loadingFamily)
+                            }
+                        }
                     }
-                    Text(detail)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Palette.deep)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .id(detail)
-                        .transition(.opacity)
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: detail)
                 }
                 .padding(.horizontal, 13)
                 .padding(.vertical, 8)
@@ -125,10 +201,44 @@ private struct MnemonicBreakdownView: View {
                         .strokeBorder(Palette.accent.opacity(0.42), lineWidth: 1)
                 )
             }
-            .buttonStyle(.plain)
-            .help("点击还原完整构词解释")
+            .padding(.vertical, 2)
+
+            if familyKey != nil, !familyMembers.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(familyTitle)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Palette.deep)
+                    MorphemeFlowLayout(spacing: 7, lineSpacing: 7, expandLast: false) {
+                        ForEach(Array(familyMembers.enumerated()), id: \.offset) { _, member in
+                            let memberWord = member["word"].text
+                            let memberMeaning = member["meaning"].text
+                            Button { lookupWord?(memberWord) } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(memberWord)
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(Palette.deep)
+                                    Text(memberMeaning)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Palette.muted)
+                                        .lineLimit(1)
+                                }
+                                .frame(maxWidth: 168, alignment: .leading)
+                                .padding(.horizontal, 9).padding(.vertical, 6)
+                                .background(Palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.85))
+                            }
+                            .buttonStyle(.plain)
+                            .noFocusRing()
+                            .help("\(memberWord)\n\(memberMeaning)")
+                        }
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.paper.opacity(0.9), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.9))
+            }
         }
-        .padding(.vertical, 2)
     }
 }
 

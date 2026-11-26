@@ -18,6 +18,7 @@ private final class MemoLexWindow: NSWindow {
     let model = AppModel()
     var window: NSWindow!
     var integration: SystemIntegration!
+    private var quickLookup: QuickLookupController!
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private var settingsSubscription: AnyCancellable?
@@ -59,6 +60,8 @@ private final class MemoLexWindow: NSWindow {
         }
         window.setFrameAutosaveName("MemoLex.Main")
         model.showWindow = { [weak self] in self?.show() }
+        quickLookup = QuickLookupController(model: model)
+        model.showQuickLookup = { [weak self] in self?.quickLookup?.toggle() }
         model.openHaici = { [weak self] word in self?.openHaici(word) }
         model.applySystemPreferences = { [weak self] in self?.applyPreferences() }
         model.presentNotice = { [weak self] in DispatchQueue.main.async { self?.presentNotice() } }
@@ -214,6 +217,7 @@ private final class MemoLexWindow: NSWindow {
         NSApp.terminate(nil)
     }
     @objc func showMain() { show(); model.focusSearch?() }
+    @objc func toggleQuickLookup() { quickLookup?.toggle() }
     @objc func settings() { show(); model.sheet = .settings }
     @objc func history() { show(); model.sheet = .history }
     @objc func clipboard() { show(); integration.clipboard() }
@@ -230,14 +234,14 @@ private final class MemoLexWindow: NSWindow {
         let edit = NSMenu(title: "编辑"); let editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: ""); editItem.submenu = edit; menu.addItem(editItem)
         for (title, action, key) in [("撤销", "undo:", "z"), ("重做", "redo:", "Z"), ("剪切", "cut:", "x"), ("复制", "copy:", "c"), ("粘贴", "paste:", "v"), ("全选", "selectAll:", "a")] { edit.addItem(NSMenuItem(title: title, action: Selector(action), keyEquivalent: key)) }
         let lookup = NSMenu(title: "查词"); let lookupItem = NSMenuItem(title: "查词", action: nil, keyEquivalent: ""); lookupItem.submenu = lookup; menu.addItem(lookupItem)
-        add(lookup, "快速查词", #selector(showMain), "l"); add(lookup, "查词历史", #selector(history), "y"); add(lookup, "段落翻译", #selector(translate), "t"); add(lookup, "查询剪贴板", #selector(clipboard), ""); add(lookup, "截图翻译", #selector(screenshot), ""); lookup.addItem(.separator()); add(lookup, "后退", #selector(back), "["); add(lookup, "前进", #selector(forward), "]"); add(lookup, "收藏单词 / 翻译", #selector(primaryAction), "\r")
+        add(lookup, "快速查词", #selector(showMain), "l"); add(lookup, "悬浮快查条", #selector(toggleQuickLookup), "k"); add(lookup, "查词历史", #selector(history), "y"); add(lookup, "段落翻译", #selector(translate), "t"); add(lookup, "查询剪贴板", #selector(clipboard), ""); add(lookup, "截图翻译", #selector(screenshot), ""); lookup.addItem(.separator()); add(lookup, "后退", #selector(back), "["); add(lookup, "前进", #selector(forward), "]"); add(lookup, "收藏单词 / 翻译", #selector(primaryAction), "\r")
     }
     private func add(_ menu: NSMenu, _ title: String, _ action: Selector, _ key: String, modifiers: NSEvent.ModifierFlags = .command, target: AnyObject? = nil) { let item = NSMenuItem(title: title, action: action, keyEquivalent: key); item.keyEquivalentModifierMask = modifiers; item.target = target ?? self; menu.addItem(item) }
     @objc func about() { show(); model.settingsPage = "关于与赞助"; model.sheet = .settings }
     private func makeStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let image = NSImage(contentsOf: AppPaths.resources.appendingPathComponent("owl-logo.png")) { image.size = NSSize(width: 21, height: 21); statusItem.button?.image = image } else { statusItem.button?.title = "墨" }
-        let menu = NSMenu(); add(menu, "打开墨墨搜词", #selector(showMain), ""); add(menu, "查询剪贴板", #selector(clipboard), ""); add(menu, "截图翻译", #selector(screenshot), ""); add(menu, "设置…", #selector(settings), ""); menu.addItem(.separator()); add(menu, "退出", #selector(quit), ""); statusItem.menu = menu
+        let menu = NSMenu(); add(menu, "打开墨墨搜词", #selector(showMain), ""); add(menu, "悬浮快查条", #selector(toggleQuickLookup), ""); add(menu, "查询剪贴板", #selector(clipboard), ""); add(menu, "截图翻译", #selector(screenshot), ""); add(menu, "设置…", #selector(settings), ""); menu.addItem(.separator()); add(menu, "退出", #selector(quit), ""); statusItem.menu = menu
     }
     private func openHaici(_ word: String) {
         if let haiciWindow, let haici { haici.navigate(word: word); haiciWindow.makeKeyAndOrderFront(nil); return }

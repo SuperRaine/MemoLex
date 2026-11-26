@@ -111,24 +111,40 @@ private struct HoverView: View {
     var body: some View {
         let phonetic = value["entry"]["phonetic"].text
         VStack(alignment: .leading, spacing: 10) {
-            Button { navigate(value["word"].text) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(value["word"].text)
-                        .font(.system(size: fontSize + 6, weight: .bold))
-                        .foregroundStyle(Palette.ink)
-                        .lineLimit(1)
-                    if !phonetic.isEmpty {
-                        Text("/\(phonetic)/")
-                            .font(.system(size: max(11, fontSize - 1)))
-                            .foregroundStyle(Palette.muted)
+            HStack(alignment: .center, spacing: 8) {
+                Button { navigate(value["word"].text) } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(value["word"].text)
+                            .font(.system(size: fontSize + 6, weight: .bold))
+                            .foregroundStyle(Palette.ink)
                             .lineLimit(1)
+                        if !phonetic.isEmpty {
+                            Text("/\(phonetic)/")
+                                .font(.system(size: max(11, fontSize - 1)))
+                                .foregroundStyle(Palette.muted)
+                                .lineLimit(1)
+                        }
                     }
-                    Spacer(minLength: 4)
+                }.buttonStyle(.plain)
+                if value["entry"] != .null {
+                    Button { model.speakWord(value["word"].text, accent: .american) } label: {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(Palette.deep)
+                            .frame(width: 24, height: 24)
+                            .background(Palette.wash, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .noFocusRing()
+                    .help("播放单词发音")
+                }
+                Spacer(minLength: 4)
+                Button { navigate(value["word"].text) } label: {
                     Image(systemName: "arrow.up.right")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Palette.deep)
-                }
-            }.buttonStyle(.plain)
+                }.buttonStyle(.plain)
+            }
             if value["entry"] != .null { Text(value["entry"]["translation"].text.decodedLines).font(.system(size: fontSize)).lineLimit(3).lineSpacing(3).foregroundStyle(Palette.ink) }
             else { Text("未找到释义，可试试：").font(.system(size: fontSize)).foregroundStyle(Palette.muted); HStack { ForEach(Array(value["suggestions"].list.prefix(3)), id: \.text) { word in Button(word.text) { navigate(word.text) }.buttonStyle(.plain).foregroundStyle(Palette.deep) } } }
             if let note = value["notes"].list.first {

@@ -23,17 +23,19 @@ internal sealed class HoverLookupWindow : Window
     private readonly Border _shell;
     private readonly TextBlock _bookmarkHint = new() { FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(0x64, 0x81, 0x98)), Margin = new Thickness(0, 6, 0, 0), TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis, Visibility = Visibility.Collapsed };
     private readonly Button _bookmarkButton = new() { Content = "＋ 收藏", Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(11, 5, 11, 5), FontSize = 11.5, FontWeight = FontWeights.SemiBold };
+    private readonly Button _speakButton = new() { Content = "\uE767", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12, Width = 24, Height = 24, Padding = new Thickness(0), Margin = new Thickness(7, 2, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = "播放单词发音" };
     private readonly Func<string, HoverBookmark> _bookmarkStatus;
     private readonly Func<string, HoverBookmark, Task<string?>> _save;
+    private readonly Func<string, Task>? _speak;
     private HoverBookmark _bookmark;
     private int _presentation;
     internal event Action<string>? OpenWord;
     internal event Action? Dismissed;
     private string _currentWord = "";
 
-    internal HoverLookupWindow(Func<string, HoverBookmark> bookmarkStatus, Func<string, HoverBookmark, Task<string?>> save)
+    internal HoverLookupWindow(Func<string, HoverBookmark> bookmarkStatus, Func<string, HoverBookmark, Task<string?>> save, Func<string, Task>? speak = null)
     {
-        _bookmarkStatus = bookmarkStatus; _save = save;
+        _bookmarkStatus = bookmarkStatus; _save = save; _speak = speak;
         Width = 376; MaxHeight = 420; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent; ShowInTaskbar = false; ShowActivated = false; Topmost = true;
 
@@ -48,6 +50,16 @@ internal sealed class HoverLookupWindow : Window
         var wordRow = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
         wordRow.Children.Add(_word);
         wordRow.Children.Add(_ipa);
+        if (Application.Current.TryFindResource("PillButton") is Style pillStyle) _speakButton.Style = pillStyle;
+        _speakButton.Visibility = _speak == null ? Visibility.Collapsed : Visibility.Visible;
+        _speakButton.Click += async (_, _) =>
+        {
+            if (_speak == null || string.IsNullOrWhiteSpace(_currentWord)) return;
+            _speakButton.IsEnabled = false;
+            try { await _speak(_currentWord); }
+            finally { _speakButton.IsEnabled = true; }
+        };
+        wordRow.Children.Add(_speakButton);
         titleBar.Children.Add(wordRow);
         content.Children.Add(titleBar);
         content.Children.Add(_notice);

@@ -167,8 +167,16 @@ internal sealed class CoreService : IDisposable
                 word = ExampleText.ResolveLookupWord(word, candidate => _dictionary.Lookup(candidate) != null);
                 var entry = _dictionary.Lookup(word);
                 if (entry != null) entry.translation = entry.DisplayMeaning;
-                return new { entry, word, notes = DisplayNotes(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24) };
+                var spellingSuggestions = entry == null ? _dictionary.SuggestSpellingCorrections(word, 5) : Array.Empty<string>();
+                return new { entry, word, notes = DisplayNotes(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24), spellingSuggestions };
             }
+            case "mnemonic.family":
+                return _notes.FindMorphemeFamily(
+                    T(p, "form"), T(p, "meaning"), T(p, "excludeWord"),
+                    candidate => _dictionary.Lookup(candidate)?.DisplayMeaning,
+                    Number(p, "limit", 18, 1, 40));
+            case "translation.extract":
+                return VocabularyExtractor.Extract(T(p, "text"), _dictionary, Number(p, "limit", 24, 1, 60));
             case "dictionary.online":
                 return string.IsNullOrEmpty(_dictionary.Lookup(word)?.DisplayMeaning)
                     ? await _onlineDictionary.LookupAsync(word, cancellation) : null;
@@ -220,6 +228,24 @@ internal sealed class CoreService : IDisposable
             case "notepads.get": return await _api.GetNotepadAsync(T(p, "id"), cancellation);
             case "notepads.create": return await _api.CreateNotepadAsync(T(p, "title"), Null(word), cancellation);
             case "notepads.add": return await _api.AddToNotepadAsync(T(p, "id"), word, cancellation);
+            case "notepads.addWords":
+            {
+                var padId = T(p, "id");
+                var incomingWords = Program.Decode<string[]>(p.GetProperty("words"));
+                var currentPad = await _api.GetNotepadAsync(padId, cancellation);
+                var existing = new HashSet<string>(NotepadContent.Words(currentPad.Content), StringComparer.OrdinalIgnoreCase);
+                var toAdd = new List<string>();
+                foreach (var w in incomingWords)
+                {
+                    if (string.IsNullOrWhiteSpace(w) || existing.Contains(w.Trim())) continue;
+                    toAdd.Add(w.Trim());
+                    existing.Add(w.Trim());
+                }
+                if (toAdd.Count == 0) return new { notepad = currentPad, added = 0 };
+                var updatedContent = NotepadContent.AddWords(currentPad.Content, toAdd);
+                var updatedPad = await _api.UpdateNotepadAsync(currentPad, currentPad.Title, currentPad.Brief, updatedContent, cancellation);
+                return new { notepad = updatedPad, added = toAdd.Count };
+            }
             case "notepads.addHover":
                 return await _api.AddToNotepadAsync(T(p, "id"), (await RequireWord(word, cancellation)).Spelling, cancellation);
             case "notepads.remove": return await _api.RemoveFromNotepadAsync(T(p, "id"), word, cancellation);

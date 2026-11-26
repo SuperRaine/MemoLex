@@ -8,6 +8,9 @@ public sealed class Preferences
     public const int HistoryLimit = 500;
     public string? NotepadId { get; set; }
     public bool AlwaysOnTop { get; set; }
+    public string ThemeMode { get; set; } = "light";
+    public bool UseQuickLookupBar { get; set; }
+    public string FlashcardAutoSpeak { get; set; } = "off";
     public bool CloseToTray { get; set; }
     public bool RememberCloseAction { get; set; }
     public bool DoubleCopyEnabled { get; set; }
@@ -52,6 +55,8 @@ public sealed class Preferences
         if(result.ExamName.Length>40)result.ExamName=result.ExamName[..40];
         result.ExamDate=result.ExamDate?.Date;
         if(result.StubbornSort is not ("review" or "alphabetical" or "random"))result.StubbornSort="review";
+        if(result.ThemeMode is not ("light" or "dark" or "system"))result.ThemeMode="light";
+        if(result.FlashcardAutoSpeak is not ("off" or "en-GB" or "en-US"))result.FlashcardAutoSpeak="off";
         if(result.UpdateSource is not ("ghfast" or "auto" or "ghproxy" or "github"))result.UpdateSource="ghfast";
         result.ConfirmedLearnedWords=(result.ConfirmedLearnedWords??[])
             .Where(item=>!string.IsNullOrWhiteSpace(item.Key)&&item.Key.Length<=100&&item.Value!=null)

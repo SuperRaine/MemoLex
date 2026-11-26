@@ -22,7 +22,7 @@ internal static class SettingsDialog
     internal const string BugReportUrl=RepositoryUrl+"/issues/new?template=bug_report.yml";
     internal const string FeatureRequestUrl=RepositoryUrl+"/issues/new?template=feature_request.yml";
     internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
-    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.2.6";
+    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.3.0";
     [Flags]
     private enum SettingsArea { None=0, General=1, Hover=2, Shortcuts=4 }
     public static void Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null)
@@ -40,7 +40,10 @@ internal static class SettingsDialog
         var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(172)});body.ColumnDefinitions.Add(new ColumnDefinition());
         InputDialog.SetBody(dialog,body);
         var navigation=new ListBox {Margin=new Thickness(10,16,10,14),BorderThickness=new Thickness(0),Background=Brushes.Transparent,FontSize=13,HorizontalContentAlignment=HorizontalAlignment.Stretch};
-        var side=new Border {Background=new SolidColorBrush(Color.FromRgb(246,250,254)),BorderBrush=new SolidColorBrush(Color.FromRgb(225,236,246)),BorderThickness=new Thickness(0,0,1,0),Child=navigation};body.Children.Add(side);
+        var side=new Border {BorderThickness=new Thickness(0,0,1,0),Child=navigation};
+        side.SetResourceReference(Border.BackgroundProperty,"SidebarBrush");
+        side.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");
+        body.Children.Add(side);
         var right=new Grid();right.RowDefinitions.Add(new RowDefinition());right.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});Grid.SetColumn(right,1);body.Children.Add(right);
         var host=new ContentControl {HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Stretch};right.Children.Add(host);
         var status=InputDialog.Text("", status: true);
@@ -56,23 +59,37 @@ internal static class SettingsDialog
         StackPanel Page(string title,string description)
         {
             var panel=new StackPanel {Margin=new Thickness(20,14,20,12)};
-            panel.Children.Add(new TextBlock {Text=title,FontSize=20,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(38,63,83))});
+            var pageTitle=new TextBlock {Text=title,FontSize=20,FontWeight=FontWeights.SemiBold};
+            pageTitle.SetResourceReference(TextBlock.ForegroundProperty,"InkStrongBrush");
+            panel.Children.Add(pageTitle);
             var subtitle=InputDialog.Text(description);subtitle.FontSize=12;subtitle.Margin=new Thickness(0,4,0,14);panel.Children.Add(subtitle);
             var view=new ScrollViewer {Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
             pages.Add((title,view));return panel;
         }
         ScrollViewer PageView(string title)=>pages.Single(page=>page.Title==title).View;
-        var general=Page("常规","设置关闭方式、启动选项和考试倒计时。");
+        var general=Page("常规","设置外观主题、关闭方式、启动选项和考试倒计时。");
         var generalGrid=new Grid();generalGrid.ColumnDefinitions.Add(new());generalGrid.ColumnDefinitions.Add(new());general.Children.Add(generalGrid);
-        for(var row=0;row<3;row++)generalGrid.RowDefinitions.Add(new(){Height=GridLength.Auto});
+        for(var row=0;row<4;row++)generalGrid.RowDefinitions.Add(new(){Height=GridLength.Auto});
         StackPanel Card(string title,int row,int column,int span,out Border border)
         {
-            var content=new StackPanel();content.Children.Add(new TextBlock{Text=title,FontSize=14,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,10)});
-            border=new Border{Child=content,Padding=new Thickness(12),Margin=new Thickness(0,0,0,12),CornerRadius=new CornerRadius(10),
-                Background=new SolidColorBrush(Color.FromRgb(248,252,255)),BorderBrush=new SolidColorBrush(Color.FromRgb(225,237,247)),BorderThickness=new Thickness(1)};
+            var content=new StackPanel();
+            var cardTitle=new TextBlock{Text=title,FontSize=14,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,10)};
+            cardTitle.SetResourceReference(TextBlock.ForegroundProperty,"InkStrongBrush");
+            content.Children.Add(cardTitle);
+            border=new Border{Child=content,Padding=new Thickness(12),Margin=new Thickness(0,0,0,12),CornerRadius=new CornerRadius(10),BorderThickness=new Thickness(1)};
+            border.SetResourceReference(Border.BackgroundProperty,"CardSoftBrush");
+            border.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");
             Grid.SetRow(border,row);Grid.SetColumn(border,column);Grid.SetColumnSpan(border,span);generalGrid.Children.Add(border);return content;
         }
-        var countdownCard=Card("考试倒计时",0,0,2,out _);
+        var themeCard=Card("外观主题",0,0,2,out _);
+        var themeRow=new StackPanel{Orientation=Orientation.Horizontal};
+        var themeLight=new RadioButton{Content="浅色模式",GroupName="ThemeMode",IsChecked=preferences.ThemeMode=="light",Margin=new Thickness(0,0,22,0)};
+        var themeDark=new RadioButton{Content="深色模式",GroupName="ThemeMode",IsChecked=preferences.ThemeMode=="dark",Margin=new Thickness(0,0,22,0)};
+        var themeSystem=new RadioButton{Content="跟随系统",GroupName="ThemeMode",IsChecked=preferences.ThemeMode=="system"};
+        themeRow.Children.Add(themeLight);themeRow.Children.Add(themeDark);themeRow.Children.Add(themeSystem);
+        themeCard.Children.Add(themeRow);
+
+        var countdownCard=Card("考试倒计时",1,0,2,out _);
         var showCountdown=new CheckBox {Content="在标题栏显示考试倒计时",IsChecked=preferences.ShowExamCountdown,Margin=new Thickness(0,0,0,8)};
         countdownCard.Children.Add(showCountdown);
         var examFields=new WrapPanel();countdownCard.Children.Add(examFields);
@@ -85,16 +102,16 @@ internal static class SettingsDialog
         dateField.Children.Add(examDate);
         dialog.RegisterName("ShowExamCountdown",showCountdown);dialog.RegisterName("ExamName",examName);dialog.RegisterName("ExamDate",examDate);
         dialog.RegisterName("ExamDateYear",examDate.Year);dialog.RegisterName("ExamDateMonth",examDate.Month);dialog.RegisterName("ExamDateDay",examDate.Day);
-        var closeCard=Card("关闭窗口",1,0,1,out var closeBorder);
+        var closeCard=Card("关闭窗口",2,0,1,out var closeBorder);
         var tray=new RadioButton {Content="最小化到托盘",GroupName="CloseAction",IsChecked=preferences.CloseToTray,Margin=new Thickness(0,0,0,8)};
         var exit=new RadioButton {Content="退出软件",GroupName="CloseAction",IsChecked=!preferences.CloseToTray,Margin=new Thickness(0,0,0,8)};
         var rememberClose=new CheckBox {Content=new TextBlock{Text="记住关闭方式，下次不再询问",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.RememberCloseAction,Margin=new Thickness(0,2,0,0)};
         closeCard.Children.Add(tray);closeCard.Children.Add(exit);closeCard.Children.Add(rememberClose);
-        var launchCard=Card("启动与快捷查词",1,1,1,out var launchBorder);
+        var launchCard=Card("启动与快捷查词",2,1,1,out var launchBorder);
         void ArrangeGeneralCards()
         {
             var compact=generalGrid.ActualWidth<520;
-            Grid.SetColumnSpan(closeBorder,compact?2:1);Grid.SetColumn(launchBorder,compact?0:1);Grid.SetColumnSpan(launchBorder,compact?2:1);Grid.SetRow(launchBorder,compact?2:1);
+            Grid.SetColumnSpan(closeBorder,compact?2:1);Grid.SetColumn(launchBorder,compact?0:1);Grid.SetColumnSpan(launchBorder,compact?2:1);Grid.SetRow(launchBorder,compact?3:2);
             closeBorder.Margin=new Thickness(0,0,compact?0:6,12);launchBorder.Margin=new Thickness(compact?0:6,0,0,12);
         }
         generalGrid.SizeChanged+=(_,_)=>ArrangeGeneralCards();ArrangeGeneralCards();
@@ -102,6 +119,8 @@ internal static class SettingsDialog
         try{startupEnabled=startupRegistration.Enabled;}catch{startupReadError="无法读取开机自启动状态，请检查当前用户权限。";}
         var autoStart=new CheckBox {Content="开机自启动",IsChecked=startupEnabled==true,IsEnabled=startupEnabled.HasValue,Margin=new Thickness(0,0,0,8)};
         launchCard.Children.Add(autoStart);if(startupReadError!=null)launchCard.Children.Add(InputDialog.Text(startupReadError));
+        var quickBarToggle=new CheckBox {Content=new TextBlock{Text="全局查词快捷键使用悬浮快查条",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.UseQuickLookupBar,Margin=new Thickness(0,4,0,8)};
+        launchCard.Children.Add(quickBarToggle);
         var doubleCopy=new CheckBox {Content=new TextBlock{Text="连按两次 Ctrl+C 查词或翻译",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.DoubleCopyEnabled,Margin=new Thickness(0,4,0,8)};
         dialog.RegisterName("DoubleCopyEnabled",doubleCopy);launchCard.Children.Add(doubleCopy);launchCard.Children.Add(InputDialog.Text("选中文字后，在 750 毫秒内连按两次 Ctrl+C。"));
         var guide=new Button{Content="查看新手引导",HorizontalAlignment=HorizontalAlignment.Left,IsEnabled=startOnboarding!=null};guide.Click+=(_,_)=>{dialog.Close();owner.Dispatcher.BeginInvoke(startOnboarding!);};general.Children.Add(guide);dialog.RegisterName("OpenOnboarding",guide);
@@ -260,7 +279,10 @@ internal static class SettingsDialog
             string? error=null;
             if(areas.HasFlag(SettingsArea.General))
             {
+                preferences.ThemeMode=themeDark.IsChecked==true?"dark":themeSystem.IsChecked==true?"system":"light";
+                preferences.UseQuickLookupBar=quickBarToggle.IsChecked==true;
                 preferences.DoubleCopyEnabled=doubleCopy.IsChecked==true;
+                ThemeManager.Apply(preferences.ThemeMode);
                 if(showCountdown.IsChecked!=true)preferences.ShowExamCountdown=false;
                 else if(examDate.TryGetDate(out var date,out var dateError)&&date!=null)
                 {
@@ -311,7 +333,7 @@ internal static class SettingsDialog
         exit.Checked+=(_,_)=>SaveClosingOptions();
         rememberClose.Checked+=(_,_)=>SaveClosingOptions();
         rememberClose.Unchecked+=(_,_)=>SaveClosingOptions();
-        foreach(var control in new System.Windows.Controls.Primitives.ToggleButton[]{showCountdown,autoStart,doubleCopy})
+        foreach(var control in new System.Windows.Controls.Primitives.ToggleButton[]{showCountdown,autoStart,doubleCopy,quickBarToggle,themeLight,themeDark,themeSystem})
             Watch(control,SettingsArea.General);
         examName.TextChanged+=(_,_)=>QueueSave(SettingsArea.General);
         foreach(var part in new[]{examDate.Year,examDate.Month,examDate.Day})

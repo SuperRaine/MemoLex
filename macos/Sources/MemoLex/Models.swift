@@ -124,6 +124,8 @@ struct NativeShortcut: Codable, Equatable {
     @Published var hoverModifiers = 0
     @Published var hoverFontSize = "standard"
     @Published var alwaysOnTop = false
+    @Published var useQuickLookupBar = false
+    @Published var flashcardAutoSpeak = "off"
     @Published var showCountdown = false
     @Published var examName = "考试"
     @Published var examDate = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
@@ -138,7 +140,7 @@ struct NativeShortcut: Codable, Equatable {
     @Published var onboardingCompleted = false
     @Published var shortcuts = NativeShortcut.defaults
     private let defaults = UserDefaults.standard
-    private let keys = ["closeToTray", "rememberClose", "doubleCopy", "hoverEnabled", "hoverNearest", "hoverTranslucent", "hoverAutoAdd", "hoverDelay", "hoverModifiers", "hoverFontSize", "alwaysOnTop", "showCountdown", "examName", "examDate", "stubbornSort", "alphabetDescending", "concealMeanings", "automaticUpdates", "automaticDownloads", "updateFrequency", "updateSource", "selectedNotepad", "onboardingCompleted"]
+    private let keys = ["closeToTray", "rememberClose", "doubleCopy", "hoverEnabled", "hoverNearest", "hoverTranslucent", "hoverAutoAdd", "hoverDelay", "hoverModifiers", "hoverFontSize", "alwaysOnTop", "useQuickLookupBar", "flashcardAutoSpeak", "showCountdown", "examName", "examDate", "stubbornSort", "alphabetDescending", "concealMeanings", "automaticUpdates", "automaticDownloads", "updateFrequency", "updateSource", "selectedNotepad", "onboardingCompleted"]
 
     init() {
         func bool(_ key: String, _ fallback: Bool = false) -> Bool { defaults.object(forKey: key) == nil ? fallback : defaults.bool(forKey: key) }
@@ -146,7 +148,10 @@ struct NativeShortcut: Codable, Equatable {
         hoverEnabled = bool("hoverEnabled"); hoverNearest = bool("hoverNearest"); hoverTranslucent = bool("hoverTranslucent"); hoverAutoAdd = bool("hoverAutoAdd")
         if defaults.object(forKey: "hoverDelay") != nil { hoverDelay = min(3000, max(100, defaults.integer(forKey: "hoverDelay"))) }
         hoverModifiers = defaults.integer(forKey: "hoverModifiers"); hoverFontSize = defaults.string(forKey: "hoverFontSize") ?? "standard"
-        alwaysOnTop = bool("alwaysOnTop"); showCountdown = bool("showCountdown"); examName = defaults.string(forKey: "examName") ?? "考试"
+        alwaysOnTop = bool("alwaysOnTop"); useQuickLookupBar = bool("useQuickLookupBar")
+        flashcardAutoSpeak = defaults.string(forKey: "flashcardAutoSpeak") ?? "off"
+        if !["off", "en-GB", "en-US"].contains(flashcardAutoSpeak) { flashcardAutoSpeak = "off" }
+        showCountdown = bool("showCountdown"); examName = defaults.string(forKey: "examName") ?? "考试"
         if let date = defaults.object(forKey: "examDate") as? Date { examDate = date }
         stubbornSort = defaults.string(forKey: "stubbornSort") ?? "review"; if !["review", "alphabetical", "random"].contains(stubbornSort) { stubbornSort = "review" }
         alphabetDescending = bool("alphabetDescending"); concealMeanings = bool("concealMeanings")
@@ -159,7 +164,7 @@ struct NativeShortcut: Codable, Equatable {
         if let data = defaults.data(forKey: "shortcuts"), let saved = try? JSONDecoder().decode([String: NativeShortcut].self, from: data) { shortcuts.merge(saved) { _, new in new } }
     }
     func save() {
-        let values: [String: Any] = ["closeToTray": closeToTray, "rememberClose": rememberClose, "doubleCopy": doubleCopy, "hoverEnabled": hoverEnabled, "hoverNearest": hoverNearest, "hoverTranslucent": hoverTranslucent, "hoverAutoAdd": hoverAutoAdd, "hoverDelay": min(3000, max(100, hoverDelay)), "hoverModifiers": hoverModifiers, "hoverFontSize": hoverFontSize, "alwaysOnTop": alwaysOnTop, "showCountdown": showCountdown, "examName": String(examName.prefix(40)), "examDate": examDate, "stubbornSort": stubbornSort, "alphabetDescending": alphabetDescending, "concealMeanings": concealMeanings, "automaticUpdates": automaticUpdates, "automaticDownloads": automaticDownloads, "updateFrequency": updateFrequency, "updateSource": updateSource, "selectedNotepad": selectedNotepad, "onboardingCompleted": onboardingCompleted]
+        let values: [String: Any] = ["closeToTray": closeToTray, "rememberClose": rememberClose, "doubleCopy": doubleCopy, "hoverEnabled": hoverEnabled, "hoverNearest": hoverNearest, "hoverTranslucent": hoverTranslucent, "hoverAutoAdd": hoverAutoAdd, "hoverDelay": min(3000, max(100, hoverDelay)), "hoverModifiers": hoverModifiers, "hoverFontSize": hoverFontSize, "alwaysOnTop": alwaysOnTop, "useQuickLookupBar": useQuickLookupBar, "flashcardAutoSpeak": flashcardAutoSpeak, "showCountdown": showCountdown, "examName": String(examName.prefix(40)), "examDate": examDate, "stubbornSort": stubbornSort, "alphabetDescending": alphabetDescending, "concealMeanings": concealMeanings, "automaticUpdates": automaticUpdates, "automaticDownloads": automaticDownloads, "updateFrequency": updateFrequency, "updateSource": updateSource, "selectedNotepad": selectedNotepad, "onboardingCompleted": onboardingCompleted]
         for key in keys {
             guard let value = values[key] else { continue }
             if (defaults.object(forKey: key) as? NSObject)?.isEqual(value) != true {
@@ -178,7 +183,7 @@ struct NativeShortcut: Codable, Equatable {
 enum AppPaths {
     static let profile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MemoLex", isDirectory: true)
     static var resources: URL { Bundle.main.resourceURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath) }
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.2.6" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.3.0" }
     static let repository = "https://github.com/SuperRaine/MemoLex"
     static let homepage = "https://memolex.de5.net/"
     static let quarkDownload = homepage + "quark.html"

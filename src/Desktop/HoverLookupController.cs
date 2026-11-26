@@ -24,10 +24,10 @@ internal sealed class HoverLookupController : IDisposable
     private bool _reading,_disposed,_checkingSurface,_modifiersReady;
     internal bool Enabled {get;set;}
     internal HoverLookupController(Window owner,Preferences preferences,Func<string,CancellationToken,Task<(DictionaryEntry?,IReadOnlyList<StoredMnemonic>)>> lookup,Func<bool> allowed,Action<string> open,
-        Func<string,HoverBookmark> bookmarkStatus,Func<string,HoverBookmark,Task<string?>> save,Action<string>? found=null)
+        Func<string,HoverBookmark> bookmarkStatus,Func<string,HoverBookmark,Task<string?>> save,Action<string>? found=null,Func<string,Task>? speak=null)
     {
         _main=owner;_preferences=preferences;_lookup=lookup;_allowed=allowed;_found=found;
-        _popup=new(bookmarkStatus,save);
+        _popup=new(bookmarkStatus,save,speak);
         _popup.OpenWord+=word=>{SuppressAtCursor();Hide();open(word);};
         _popup.Dismissed+=()=>{_dismissed=_shown;_shown=null;SuppressAtCursor();};
         _timer.Tick+=async(_,_)=>await TickAsync();_timer.Start();

@@ -211,7 +211,12 @@ public partial class MainWindow
                 savedProgress:saved,
                 onProgressChanged:snapshot=>FlashcardProgressStore.Save(_tokens.ProfileDirectory,accountId,snapshot),
                 onResetProgress:()=>FlashcardProgressStore.Remove(_tokens.ProfileDirectory,accountId),
-                persistProgress:persist);
+                persistProgress:persist,
+                title:"顽固单词 · 卡片自测",
+                speak:(w,accent)=>PlaySpeechAsync(w,accent),
+                getMnemonics:w=>_mnemonics.Get(w,MnemonicAccountKey),
+                mnemonicStore:_mnemonics,
+                preferences:_preferences);
             practice.ShowDialog();
         };
         sort.SelectionChanged+=(_,_)=>

@@ -44,9 +44,12 @@ internal static class InputDialog
         panel = new StackPanel { Margin = new Thickness(26, 22, 26, 24) };
         var dialog = new Window { Owner = owner?.IsLoaded==true?owner:null, Title = title + " · 墨墨搜词", Width = 470, SizeToContent = SizeToContent.Height,
             ResizeMode = ResizeMode.NoResize, WindowStyle = WindowStyle.None, WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Background = Brushes.White, FontFamily = new FontFamily("Microsoft YaHei UI"), FontSize = 13, ShowInTaskbar = false };
+            FontFamily = new FontFamily("Microsoft YaHei UI"), FontSize = 13, ShowInTaskbar = false };
+        dialog.SetResourceReference(Control.BackgroundProperty, "SurfaceBrush");
+        dialog.SetResourceReference(Control.ForegroundProperty, "InkBrush");
         WindowChrome.SetWindowChrome(dialog, new WindowChrome { CaptionHeight = 46, GlassFrameThickness = new Thickness(0), ResizeBorderThickness = new Thickness(0), UseAeroCaptionButtons = false });
         RoundedWindow.Attach(dialog);
+        dialog.SourceInitialized += (_, _) => Desktop.ThemeManager.ApplyWindowFrame(dialog);
         var layout = new Grid();
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(46) });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -62,7 +65,9 @@ internal static class InputDialog
         };
         RenderOptions.SetBitmapScalingMode(logo, BitmapScalingMode.HighQuality);
         brand.Children.Add(logo);
-        brand.Children.Add(new TextBlock { Text = title, FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(26,58,82)), VerticalAlignment = VerticalAlignment.Center });
+        var titleBlock = new TextBlock { Text = title, FontSize = 13.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        titleBlock.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
+        brand.Children.Add(titleBlock);
         bar.Children.Add(brand);
         var close = new Button { Content = "\uE8BB", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 11.5, Style = (Style)Application.Current.FindResource("CloseWindowButton"), ToolTip = "关闭" };
         WindowChrome.SetIsHitTestVisibleInChrome(close, true);
@@ -70,14 +75,19 @@ internal static class InputDialog
         Grid.SetColumn(close,1); bar.Children.Add(close);
         var titleBar = new Border
         {
-            Child = bar, Background = new SolidColorBrush(Color.FromRgb(249,252,255)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(226,237,246)), BorderThickness = new Thickness(0,0,0,1),
+            Child = bar,
+            BorderThickness = new Thickness(0,0,0,1),
             CornerRadius = new CornerRadius(11,11,0,0)
         };
+        titleBar.SetResourceReference(Border.BackgroundProperty, "ChromeBrush");
+        titleBar.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         layout.Children.Add(titleBar);
         var body = new ContentControl { Content = panel };
         Grid.SetRow(body,1); layout.Children.Add(body);
-        dialog.Content = new Border { Child = layout, Tag = body, Background = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(212,229,242)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12) };
+        var outer = new Border { Child = layout, Tag = body, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12) };
+        outer.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+        outer.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        dialog.Content = outer;
         dialog.PreviewKeyDown += (_,e) => { if (e.Key == Key.Escape) { e.Handled = true; dialog.Close(); } };
         NameScope.SetNameScope(dialog,new NameScope());
         return dialog;
@@ -89,7 +99,7 @@ internal static class InputDialog
         label.Text = text;
         label.TextWrapping = TextWrapping.Wrap;
         label.LineHeight = 23;
-        label.Foreground = new SolidColorBrush(Color.FromRgb(100,126,147));
+        label.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         return label;
     }
 }

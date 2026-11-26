@@ -6,55 +6,49 @@
         xmlns:local="clr-namespace:MemoLex"
         Title="墨墨搜词 · MemoLex" Width="1160" Height="800" MinWidth="760" MinHeight="520"
         WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterScreen"
-        Background="{StaticResource CanvasBrush}" Foreground="{StaticResource InkBrush}"
+        Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource InkBrush}"
         FontFamily="Microsoft YaHei UI" FontSize="13" Icon="app.ico" UseLayoutRounding="True">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="7" GlassFrameThickness="0" CornerRadius="12" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
     <Window.Resources>
-        <DataTemplate DataType="{x:Type core:ChineseSearchResult}"><StackPanel><TextBlock Text="{Binding Word}" FontSize="14" FontWeight="SemiBold" Foreground="#0A7FB3" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding DisplayMatchedMeaning}" FontFamily="Microsoft YaHei UI" FontSize="10.5" Foreground="#7592A8" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/></StackPanel></DataTemplate>
+        <DataTemplate DataType="{x:Type core:ChineseSearchResult}"><StackPanel><TextBlock Text="{Binding Word}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource AccentDeepBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding DisplayMatchedMeaning}" FontFamily="Microsoft YaHei UI" FontSize="10.5" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/></StackPanel></DataTemplate>
         <Style x:Key="StubbornWordButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
                 <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
                     <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
                 </Border>
                 <ControlTemplate.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#DFF3FF"/></Trigger>
-                    <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#CCEAFE"/></Trigger>
-                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#CCEAFE"/></Trigger>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HoverBgBrush}"/></Trigger>
+                    <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource SelectedBgBrush}"/></Trigger>
+                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource SelectedBgBrush}"/></Trigger>
                 </ControlTemplate.Triggers>
             </ControlTemplate></Setter.Value></Setter>
         </Style>
     </Window.Resources>
-    <Border x:Name="RootFrame" Background="{StaticResource CanvasBrush}" BorderBrush="#D6E5F1" BorderThickness="1" CornerRadius="12">
+    <Border x:Name="RootFrame" Background="{DynamicResource CanvasBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12">
         <Grid>
             <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition Height="*"/><RowDefinition Height="29"/></Grid.RowDefinitions>
-            <Border Background="White" BorderBrush="#E3EDF5" BorderThickness="0,0,0,1" CornerRadius="11,11,0,0">
+            <Border Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" CornerRadius="11,11,0,0">
                 <Grid Margin="13,0,6,0">
                     <Grid.ColumnDefinitions><ColumnDefinition x:Name="BrandColumn" Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <StackPanel x:Name="BrandGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
                         <Image x:Name="BrandLogo" Source="Assets/owl-logo.png" Width="34" Height="34" Margin="0,0,9,0" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
-                        <StackPanel VerticalAlignment="Center"><TextBlock x:Name="BrandTitleText" Text="墨墨搜词" FontSize="16.5" FontWeight="Bold" Foreground="#0E2B40"/><TextBlock Text="MemoLex" FontFamily="Segoe UI" FontSize="9.5" FontWeight="SemiBold" Foreground="#88A1B5" Margin="1,0,0,0"/></StackPanel>
+                        <StackPanel VerticalAlignment="Center"><TextBlock x:Name="BrandTitleText" Text="墨墨搜词" FontSize="16.5" FontWeight="Bold" Foreground="{DynamicResource InkStrongBrush}"/><TextBlock Text="MemoLex" FontFamily="Segoe UI" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource SubtleBrush}" Margin="1,0,0,0"/></StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Border Width="1" Height="20" Background="#E4EEF6" Margin="0,0,12,0"/>
+                        <Border Width="1" Height="20" Background="{DynamicResource RuleBrush}" Margin="0,0,12,0"/>
                         <Button x:Name="BackButton" Style="{StaticResource TitleButton}" Click="BackButton_Click" IsEnabled="False" ToolTip="后退（Alt+←）" AutomationProperties.Name="后退"><TextBlock Text="&#xE72B;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
                         <Button x:Name="ForwardButton" Style="{StaticResource TitleButton}" Click="ForwardButton_Click" IsEnabled="False" ToolTip="前进（Alt+→）" AutomationProperties.Name="前进" Margin="2,0,0,0"><TextBlock Text="&#xE72A;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
                     </StackPanel>
                     <Grid x:Name="HeaderCenterGrid" Grid.Column="2" SizeChanged="HeaderCenterGrid_SizeChanged" Margin="10,0,10,0">
-                        <Border x:Name="StubbornCard" BorderBrush="#CFE6F7" BorderThickness="1" CornerRadius="11" Height="35" Width="256" HorizontalAlignment="Left" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#F6FCFF" Offset="0"/>
-                                    <GradientStop Color="#EBF7FF" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
+                        <Border x:Name="StubbornCard" Background="{DynamicResource CardSoftBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="11" Height="35" Width="256" HorizontalAlignment="Left" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                             <Grid Margin="5,0,3,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <Border x:Name="StubbornLabelText" Background="#DCF1FF" CornerRadius="7" Padding="6,2" VerticalAlignment="Center" Margin="2,0,6,0">
-                                    <TextBlock Text="顽固" FontSize="10.5" FontWeight="SemiBold" Foreground="#0A7FB3"/>
+                                <Border x:Name="StubbornLabelText" Background="{DynamicResource PillBgBrush}" CornerRadius="7" Padding="6,2" VerticalAlignment="Center" Margin="2,0,6,0">
+                                    <TextBlock Text="顽固" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource AccentDeepBrush}"/>
                                 </Border>
-                                <Button x:Name="StubbornPreviewButton" Grid.Column="1" Click="StubbornWordButton_Click" Style="{StaticResource StubbornWordButton}" Background="Transparent" BorderThickness="0" Padding="3,2" ToolTip="点击单词查看释义"><TextBlock x:Name="StubbornWordText" Text="登录" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Foreground="#0E2B40"/></Button>
-                                <Button x:Name="AllStubbornButton" Grid.Column="2" Click="StubbornPreviewButton_Click" Background="Transparent" BorderThickness="0" Padding="6,4" ToolTip="查看全部顽固单词"><TextBlock x:Name="StubbornCountText" Text="全部" FontSize="10.5" FontWeight="Medium" Foreground="#537E9C"/></Button>
+                                <Button x:Name="StubbornPreviewButton" Grid.Column="1" Click="StubbornWordButton_Click" Style="{StaticResource StubbornWordButton}" Background="Transparent" BorderThickness="0" Padding="3,2" ToolTip="点击单词查看释义"><TextBlock x:Name="StubbornWordText" Text="登录" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource InkStrongBrush}"/></Button>
+                                <Button x:Name="AllStubbornButton" Grid.Column="2" Click="StubbornPreviewButton_Click" Background="Transparent" BorderThickness="0" Padding="6,4" ToolTip="查看全部顽固单词"><TextBlock x:Name="StubbornCountText" Text="全部" FontSize="10.5" FontWeight="Medium" Foreground="{DynamicResource MutedBrush}"/></Button>
                                 <Button x:Name="ShuffleStubbornButton" Grid.Column="3" Click="ShuffleStubbornButton_Click" Style="{StaticResource TitleButton}" Width="26" Height="28" IsEnabled="False" ToolTip="下一个顽固单词" AutomationProperties.Name="下一个顽固单词"><TextBlock x:Name="StubbornNextGlyph" Text="&#xE72A;" FontFamily="Segoe MDL2 Assets" FontSize="11.5"/></Button>
                             </Grid>
                         </Border>
@@ -63,15 +57,18 @@
                         <Border x:Name="ExamCountdownBadge" Background="#FFF1F2" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="12" Padding="10,4" VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed" shell:WindowChrome.IsHitTestVisibleInChrome="False">
                             <TextBlock x:Name="ExamCountdownText" Foreground="#BE123C" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center" MaxWidth="200" TextTrimming="CharacterEllipsis"/>
                         </Border>
-                        <Button x:Name="AccountButton" Click="AccountButton_Click" Style="{StaticResource PillButton}" Background="#F4FAFF" BorderBrush="#D6E9F7" Padding="11,6" Height="34" MaxWidth="152" ToolTip="登录或切换墨墨账号" AutomationProperties.Name="墨墨账号" Margin="0,0,5,0">
+                        <Button x:Name="AccountButton" Click="AccountButton_Click" Style="{StaticResource PillButton}" Padding="11,6" Height="34" MaxWidth="152" ToolTip="登录或切换墨墨账号" AutomationProperties.Name="墨墨账号" Margin="0,0,5,0">
                             <StackPanel Orientation="Horizontal">
                                 <Ellipse x:Name="AccountStatusDot" Width="7" Height="7" Fill="#94A3B8" VerticalAlignment="Center" Margin="0,0,7,0"/>
                                 <TextBlock x:Name="CloudStatusText" Text="未登录" FontSize="11.5" FontWeight="Medium" VerticalAlignment="Center" MaxWidth="104" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
                         </Button>
+                        <Button x:Name="QuickLookupButton" Style="{StaticResource TitleButton}" Click="QuickLookupButton_Click" ToolTip="打开悬浮快查条" AutomationProperties.Name="悬浮快查条" Margin="0,0,2,0"><TextBlock Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
+                        <Button x:Name="DashboardButton" Style="{StaticResource TitleButton}" Click="DashboardButton_Click" ToolTip="学习统计看板" AutomationProperties.Name="学习统计看板" Margin="0,0,2,0"><TextBlock Text="&#xE9D2;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
+                        <Button x:Name="ThemeToggleButton" Style="{StaticResource TitleButton}" Click="ThemeToggleButton_Click" ToolTip="切换深色 / 浅色模式" AutomationProperties.Name="切换主题" Margin="0,0,2,0"><TextBlock x:Name="ThemeToggleGlyph" Text="&#xE708;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
                         <Button x:Name="SettingsButton" Style="{StaticResource TitleButton}" Click="SettingsButton_Click" ToolTip="设置" AutomationProperties.Name="设置" Margin="0,0,3,0"><TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="15"/></Button>
                         <Button x:Name="PinButton" Style="{StaticResource TitleButton}" Click="PinButton_Click" ToolTip="窗口置顶" AutomationProperties.Name="窗口置顶" Margin="0,0,6,0"><Path x:Name="PinGlyph" Data="M6,2 H14 M8,2 V8 L5,12 H15 L12,8 V2 M10,12 V19" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="14" Height="18" Stretch="Uniform"/></Button>
-                        <Border x:Name="WindowControlsSeparator" Width="1" Height="20" Background="#E4EEF6" Margin="0,0,6,0"/>
+                        <Border x:Name="WindowControlsSeparator" Width="1" Height="20" Background="{DynamicResource RuleBrush}" Margin="0,0,6,0"/>
                         <Button x:Name="MinimizeWindowButton" Style="{StaticResource WindowButton}" Click="MinimizeButton_Click" ToolTip="最小化" AutomationProperties.Name="最小化"><TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="11.5"/></Button>
                         <Button x:Name="MaximizeButton" Style="{StaticResource WindowButton}" Click="MaximizeButton_Click" ToolTip="最大化" AutomationProperties.Name="最大化或还原"><TextBlock x:Name="MaximizeGlyph" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="11.5"/></Button>
                         <Button x:Name="CloseWindowButton" Style="{StaticResource CloseWindowButton}" Click="CloseButton_Click" ToolTip="关闭" AutomationProperties.Name="关闭"><TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></Button>
@@ -80,14 +77,14 @@
             </Border>
             <Grid x:Name="BodyGrid" Grid.Row="1">
                 <Grid.ColumnDefinitions><ColumnDefinition x:Name="SidebarColumn" Width="268"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <Border Background="#F9FCFF" BorderBrush="#E1ECF5" BorderThickness="0,0,1,0">
+                <Border Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
                     <Grid x:Name="SidebarLayout" Margin="18,13,18,13">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                         <StackPanel>
                             <Grid x:Name="SearchHeadingRow" Margin="2,0,2,9">
-                                <TextBlock Text="快速查词" Foreground="#496880" FontWeight="SemiBold" FontSize="12"/>
-                                <Border HorizontalAlignment="Right" Background="#EDF6FD" CornerRadius="5" Padding="5,1.5">
-                                    <TextBlock x:Name="SearchShortcutHint" Text="Ctrl+L" Foreground="#7A98B0" FontFamily="Segoe UI" FontSize="10" FontWeight="Medium"/>
+                                <TextBlock Text="快速查词" Foreground="{DynamicResource MutedBrush}" FontWeight="SemiBold" FontSize="12"/>
+                                <Border HorizontalAlignment="Right" Background="{DynamicResource PillBgBrush}" CornerRadius="5" Padding="5,1.5">
+                                    <TextBlock x:Name="SearchShortcutHint" Text="Ctrl+L" Foreground="{DynamicResource MutedBrush}" FontFamily="Segoe UI" FontSize="10" FontWeight="Medium"/>
                                 </Border>
                             </Grid>
                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="42"/></Grid.ColumnDefinitions>
@@ -101,9 +98,9 @@
                                         <Setter Property="Padding" Value="3,7"/>
                                         <Setter Property="FontSize" Value="11.5"/>
                                         <Setter Property="FontWeight" Value="Medium"/>
-                                        <Setter Property="Foreground" Value="#146F9E"/>
-                                        <Setter Property="Background" Value="#EFF8FF"/>
-                                        <Setter Property="BorderBrush" Value="#D6EBF9"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentDeepBrush}"/>
+                                        <Setter Property="Background" Value="{DynamicResource PillBgBrush}"/>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource PillBorderBrush}"/>
                                     </Style>
                                 </Grid.Resources>
                                 <Button x:Name="TranslationModeButton" Content="段落翻译" Click="TranslationModeButton_Click" ToolTip="段落翻译（Ctrl+T）"/>
@@ -159,23 +156,17 @@
                                 <TextBlock x:Name="HistoryEmptyText" Grid.Row="1" Text="查过的单词会出现在这里" FontSize="11.5" Foreground="#92A8BA" Margin="10,12" IsHitTestVisible="False"/>
                             </Grid>
                         </Grid>
-                        <Border x:Name="CloudNotepadCard" Grid.Row="2" BorderBrush="#CFE5F6" BorderThickness="1" CornerRadius="12" Padding="13,12,13,12" Margin="0,12,0,0">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#F3FAFF" Offset="0"/>
-                                    <GradientStop Color="#E8F5FE" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
+                        <Border x:Name="CloudNotepadCard" Grid.Row="2" Background="{DynamicResource CardSoftBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="13,12,13,12" Margin="0,12,0,0">
                             <StackPanel>
                                 <Grid Margin="0,0,0,9">
-                                    <TextBlock Text="我的云词本" Foreground="#28587A" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                                    <TextBlock Text="我的云词本" Foreground="{DynamicResource AccentDeepBrush}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
                                     <Button x:Name="RefreshNotepadsButton" Click="RefreshNotepadsButton_Click" Style="{StaticResource TitleButton}" Width="26" Height="26" HorizontalAlignment="Right" Margin="0,-3,-2,-3" ToolTip="刷新云词本" AutomationProperties.Name="刷新云词本"><TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></Button>
                                 </Grid>
                                 <ComboBox x:Name="NotepadCombo" DisplayMemberPath="Title" SelectionChanged="NotepadCombo_SelectionChanged" Height="34" FontSize="12.5" ToolTip="一键添加的目标云词本"/>
-                                <TextBlock x:Name="CloudDetailText" Text="选择词本，一键收藏" FontSize="10.5" LineHeight="16" Foreground="#6D8CA4" TextWrapping="Wrap" Margin="1,7,0,0"/>
+                                <TextBlock x:Name="CloudDetailText" Text="选择词本，一键收藏" FontSize="10.5" LineHeight="16" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="1,7,0,0"/>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,9,0,0">
-                                    <Button x:Name="EditNotepadButton" Click="EditNotepadButton_Click" Content="查看 / 编辑" FontSize="11.5" Padding="10,5" Background="White" BorderBrush="#CCE3F4" Margin="0,0,7,0"/>
-                                    <Button x:Name="CreateNotepadButton" Click="CreateNotepadButton_Click" Content="新建" FontSize="11.5" Padding="10,5" Background="White" BorderBrush="#CCE3F4"/>
+                                    <Button x:Name="EditNotepadButton" Click="EditNotepadButton_Click" Content="查看 / 编辑" FontSize="11.5" Padding="10,5" Margin="0,0,7,0"/>
+                                    <Button x:Name="CreateNotepadButton" Click="CreateNotepadButton_Click" Content="新建" FontSize="11.5" Padding="10,5"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -184,30 +175,45 @@
                 <Grid x:Name="MainContentGrid" Grid.Column="1" Margin="26,20,26,16">
                     <Grid.RowDefinitions><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <ScrollViewer x:Name="ResultScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,6,0" ScrollChanged="ResultScroll_ScrollChanged">
-                        <Border x:Name="WordCard" Background="White" BorderBrush="#D8E8F5" BorderThickness="1" CornerRadius="16" Padding="28,24,28,26" Margin="0,0,0,8">
+                        <Border x:Name="WordCard" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="16" Padding="28,24,28,26" Margin="0,0,0,8">
                             <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="5" Opacity="0.065" Color="#0E3B5C"/></Border.Effect>
                             <StackPanel x:Name="ResultDocument">
                                 <StackPanel x:Name="DefinitionSection">
                                     <Grid>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                        <TextBlock x:Name="WordText" Text="查词" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="40" FontWeight="Bold" Foreground="#0B2234" TextWrapping="Wrap" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="WordText" Text="查词" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="40" FontWeight="Bold" Foreground="{DynamicResource InkStrongBrush}" TextWrapping="Wrap" Margin="0,0,16,0" VerticalAlignment="Center"/>
                                         <StackPanel x:Name="WordActions" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                             <Button x:Name="AddButton" Content="＋ 加入云词本" Style="{StaticResource AccentButton}" Click="AddButton_Click" Padding="16,10" FontSize="12.5" ToolTip="加入选中的云词本（Ctrl+Enter）"/>
-                                            <Button x:Name="AddTodayButton" Content="＋ 今日新学" Click="AddTodayButton_Click" Margin="8,0,0,0" Padding="14,10" FontSize="12.5" FontWeight="SemiBold" Background="#ECF7FF" BorderBrush="#C8E5F8" Foreground="#0A7FB3" AutomationProperties.Name="添加到今日新学单词"/>
+                                            <Button x:Name="AddTodayButton" Content="＋ 今日新学" Click="AddTodayButton_Click" Margin="8,0,0,0" Padding="14,10" FontSize="12.5" FontWeight="SemiBold" Background="{DynamicResource PillBgBrush}" BorderBrush="{DynamicResource PillBorderBrush}" Foreground="{DynamicResource AccentDeepBrush}" AutomationProperties.Name="添加到今日新学单词"/>
                                         </StackPanel>
                                     </Grid>
                                     <WrapPanel x:Name="WordTools" Margin="0,10,0,8">
-                                        <TextBlock x:Name="PhoneticText" Text="你的桌面英汉词典" FontFamily="Segoe UI" FontSize="15.5" Foreground="#69859B" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="260" Margin="0,0,8,6"/>
+                                        <TextBlock x:Name="PhoneticText" Text="你的桌面英汉词典" FontFamily="Segoe UI" FontSize="15.5" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="260" Margin="0,0,8,6"/>
                                         <Button x:Name="SpeakBritishButton" Style="{StaticResource PillButton}" Click="SpeakButton_Click" IsEnabled="False" FontSize="11.5" Margin="0,0,6,6" Padding="10,5" VerticalAlignment="Center" ToolTip="播放英音" AutomationProperties.Name="英式发音"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE767;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,0,5,0"/><TextBlock Text="英音" VerticalAlignment="Center"/></StackPanel></Button>
                                         <Button x:Name="SpeakAmericanButton" Style="{StaticResource PillButton}" Click="SpeakButton_Click" IsEnabled="False" FontSize="11.5" Margin="0,0,6,6" Padding="10,5" VerticalAlignment="Center" ToolTip="播放美音" AutomationProperties.Name="美式发音"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE767;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,0,5,0"/><TextBlock Text="美音" VerticalAlignment="Center"/></StackPanel></Button>
                                         <Button x:Name="HaiciButton" Style="{StaticResource PillButton}" Content="海词词典" Click="HaiciButton_Click" Margin="0,0,0,6" Padding="10,5" VerticalAlignment="Center" FontSize="11.5" ToolTip="在软件内打开海词词典"/>
                                     </WrapPanel>
                                     <WrapPanel x:Name="TagsPanel" Margin="0,2,0,4"/>
-                                    <TextBlock x:Name="WordMetaText" Foreground="#8CA5B9" FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                                    <Border Background="#EAF1F7" Height="1" Margin="0,20,0,20"/>
+                                    <TextBlock x:Name="WordMetaText" Foreground="{DynamicResource SubtleBrush}" FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                    <Border x:Name="SpellingSuggestionBanner" Background="{DynamicResource CardSoftBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12,9" Margin="0,12,0,0" Visibility="Collapsed">
+                                        <StackPanel>
+                                            <TextBlock Text="离线词库未找到精确匹配，你是不是要查：" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AccentDeepBrush}" Margin="0,0,0,6"/>
+                                            <WrapPanel x:Name="SpellingSuggestionPanel"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border x:Name="RepeatedWordBanner" Background="{DynamicResource WarnBgBrush}" BorderBrush="{DynamicResource WarnBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="13,9" Margin="0,12,0,0" Visibility="Collapsed">
+                                        <DockPanel>
+                                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                                                <Button x:Name="RepeatedAddPadButton" Content="＋ 加入云词本" Click="AddButton_Click" FontSize="11.5" Padding="10,4" Margin="8,0,0,0"/>
+                                                <Button x:Name="RepeatedAddTodayButton" Content="＋ 今日新学" Click="AddTodayButton_Click" FontSize="11.5" Padding="10,4" Margin="6,0,0,0"/>
+                                            </StackPanel>
+                                            <TextBlock x:Name="RepeatedWordText" Foreground="{DynamicResource WarnFgBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                        </DockPanel>
+                                    </Border>
+                                    <Border Background="{DynamicResource RuleBrush}" Height="1" Margin="0,20,0,20"/>
                                     <TextBlock Text="中文释义" Style="{StaticResource SectionLabel}"/>
-                                    <TextBlock x:Name="DefinitionText" Text="在左侧输入英文或中文查词。" FontSize="16.5" LineHeight="30" Foreground="#142E43" TextWrapping="Wrap"/>
-                                    <Border x:Name="ExchangeCard" Background="#F4FAFF" BorderBrush="#DFEEF9" BorderThickness="1" CornerRadius="10" Padding="12,9,12,5" Margin="0,18,0,0" Visibility="Collapsed">
+                                    <TextBlock x:Name="DefinitionText" Text="在左侧输入英文或中文查词。" FontSize="16.5" LineHeight="30" Foreground="{DynamicResource InkBrush}" TextWrapping="Wrap"/>
+                                    <Border x:Name="ExchangeCard" Background="{DynamicResource CardSoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12,9,12,5" Margin="0,18,0,0" Visibility="Collapsed">
                                         <WrapPanel x:Name="ExchangePanel"/>
                                     </Border>
                                     <StackPanel x:Name="RelatedSection" Margin="0,16,0,0">
@@ -223,35 +229,35 @@
                                         <Border Style="{StaticResource RelationDetails}" IsVisibleChanged="RelationDetails_IsVisibleChanged" DataContext="{Binding ElementName=PhrasesToggle}"><StackPanel><TextBlock Text="常用短语" Style="{StaticResource RelationGroupTitle}"/><StackPanel x:Name="PhrasesPanel"/></StackPanel></Border>
                                     </StackPanel>
                                 </StackPanel>
-                                <Border Background="#EAF1F7" Height="1" Margin="0,24,0,22"/>
+                                <Border Background="{DynamicResource RuleBrush}" Height="1" Margin="0,24,0,22"/>
                                 <StackPanel x:Name="NotesSection">
                                     <DockPanel Margin="0,0,0,8">
                                         <Button x:Name="EditNotesButton" Content="编辑助记" Style="{StaticResource PillButton}" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="EditNotesButton_Click" FontSize="11.5" Padding="11,5"/>
                                         <StackPanel Orientation="Horizontal">
-                                            <Border Background="#E1F4FF" BorderBrush="#C2E6FA" BorderThickness="1" CornerRadius="8" Width="28" Height="28" Margin="0,0,10,0">
-                                                <TextBlock Text="记" Foreground="#0A7FB3" FontSize="13" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <Border Background="{DynamicResource PillBgBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="8" Width="28" Height="28" Margin="0,0,10,0">
+                                                <TextBlock Text="记" Foreground="{DynamicResource AccentDeepBrush}" FontSize="13" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
-                                            <TextBlock Text="我的助记" FontSize="17" FontWeight="SemiBold" Foreground="#0E2B40" VerticalAlignment="Center"/>
+                                            <TextBlock Text="我的助记" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource InkStrongBrush}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </DockPanel>
-                                    <TextBlock x:Name="NotesHintText" Text="查词后可查看助记" FontSize="12" Foreground="#7592A8" TextWrapping="Wrap" LineHeight="22" Margin="0,0,0,6"/>
+                                    <TextBlock x:Name="NotesHintText" Text="查词后可查看助记" FontSize="12" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" LineHeight="22" Margin="0,0,0,6"/>
                                     <StackPanel x:Name="NotesPanel"/>
                                 </StackPanel>
-                                <Border Background="#EAF1F7" Height="1" Margin="0,24,0,22"/>
+                                <Border Background="{DynamicResource RuleBrush}" Height="1" Margin="0,24,0,22"/>
                                 <StackPanel x:Name="ExamplesSection">
                                     <Grid Margin="0,0,0,8">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Border Background="#E1F4FF" BorderBrush="#C2E6FA" BorderThickness="1" CornerRadius="8" Width="28" Height="28" Margin="0,0,10,0">
-                                                <TextBlock Text="例" Foreground="#0A7FB3" FontSize="13" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <Border Background="{DynamicResource PillBgBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="8" Width="28" Height="28" Margin="0,0,10,0">
+                                                <TextBlock Text="例" Foreground="{DynamicResource AccentDeepBrush}" FontSize="13" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
-                                            <TextBlock Text="真题例句" FontSize="17" FontWeight="SemiBold" Foreground="#0E2B40" VerticalAlignment="Center"/>
+                                            <TextBlock Text="真题例句" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource InkStrongBrush}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                         <ComboBox x:Name="ExamplePaperCombo" Grid.Column="1" Width="138" Height="34" DisplayMemberPath="Label" SelectionChanged="ExamplePaperCombo_SelectionChanged" AutomationProperties.Name="例句考试类型"/>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                        <TextBlock x:Name="ExamplesHintText" Text="查词后可查看真题例句" Foreground="#6F8CA3" FontSize="11.5" TextWrapping="Wrap" Margin="0,0,10,0"/>
-                                        <TextBlock Text="· 点击例句中的英文单词可快速查词" Foreground="#94ABC0" FontSize="11"/>
+                                        <TextBlock x:Name="ExamplesHintText" Text="查词后可查看真题例句" Foreground="{DynamicResource MutedBrush}" FontSize="11.5" TextWrapping="Wrap" Margin="0,0,10,0"/>
+                                        <TextBlock Text="· 点击例句中的英文单词可快速查词" Foreground="{DynamicResource SubtleBrush}" FontSize="11"/>
                                     </StackPanel>
                                     <StackPanel x:Name="ExamplesPanel"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
@@ -264,32 +270,39 @@
                     </ScrollViewer>
                     <Grid x:Name="TranslationView" Visibility="Collapsed">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                        <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="段落翻译" FontSize="22" FontWeight="Bold" Foreground="#0E2B40" VerticalAlignment="Center"/><ComboBox x:Name="TranslationDirectionCombo" Grid.Column="1" Width="116" Height="36" VerticalAlignment="Center" Margin="0,0,10,0" SelectedIndex="0"><ComboBoxItem Content="英译中" Tag="en|zh-CN"/><ComboBoxItem Content="中译英" Tag="zh-CN|en"/></ComboBox><Button x:Name="TranslateButton" Grid.Column="2" Content="翻译" Height="36" VerticalAlignment="Center" Style="{StaticResource AccentButton}" Click="TranslateButton_Click" Padding="20,6"/></Grid>
-                        <StackPanel Grid.Row="1" Margin="0,0,0,16"><TextBox x:Name="TranslationInput" AcceptsReturn="True" VerticalContentAlignment="Top" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="142" FontSize="15" MaxLength="5000" ToolTip="输入待翻译段落，最多 5000 个字符"/><TextBlock x:Name="TranslationHintText" Text="点击英文单词查看释义。" TextWrapping="Wrap" FontSize="11.5" Foreground="#7390A6" Margin="2,8,0,0"/></StackPanel>
+                        <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="段落翻译" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource InkStrongBrush}" VerticalAlignment="Center"/><ComboBox x:Name="TranslationDirectionCombo" Grid.Column="1" Width="116" Height="36" VerticalAlignment="Center" Margin="0,0,10,0" SelectedIndex="0"><ComboBoxItem Content="英译中" Tag="en|zh-CN"/><ComboBoxItem Content="中译英" Tag="zh-CN|en"/></ComboBox><Button x:Name="TranslateButton" Grid.Column="2" Content="翻译" Height="36" VerticalAlignment="Center" Style="{StaticResource AccentButton}" Click="TranslateButton_Click" Padding="20,6"/></Grid>
+                        <StackPanel Grid.Row="1" Margin="0,0,0,16"><TextBox x:Name="TranslationInput" AcceptsReturn="True" VerticalContentAlignment="Top" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="142" FontSize="15" MaxLength="5000" ToolTip="输入待翻译段落，最多 5000 个字符"/><TextBlock x:Name="TranslationHintText" Text="点击英文单词查看释义。" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource MutedBrush}" Margin="2,8,0,0"/></StackPanel>
                         <ScrollViewer x:Name="TranslationScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" ScrollChanged="TranslationScroll_ScrollChanged"><StackPanel>
-                            <Border Background="White" BorderBrush="#DCEAF6" BorderThickness="1" CornerRadius="13" Padding="20,18" Margin="0,0,6,14"><StackPanel><TextBlock Text="原文" Style="{StaticResource SectionLabel}"/><TextBlock x:Name="TranslationSourceText" Text="在上方输入或粘贴原文。" TextWrapping="Wrap" FontSize="15.5" LineHeight="28" Foreground="#18354A"/></StackPanel></Border>
-                            <Border BorderBrush="#C5E3F7" BorderThickness="1" CornerRadius="13" Padding="20,18" Margin="0,0,6,4">
-                                <Border.Background>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop Color="#EFF9FF" Offset="0"/>
-                                        <GradientStop Color="#FFFFFF" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </Border.Background>
-                                <StackPanel><TextBlock Text="译文" Style="{StaticResource SectionLabel}" Foreground="#0A7FB3"/><TextBlock x:Name="TranslationOutputText" TextWrapping="Wrap" FontSize="16" FontWeight="Medium" LineHeight="29" Foreground="#0E2B40"/></StackPanel>
+                            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="13" Padding="20,18" Margin="0,0,6,14"><StackPanel><TextBlock Text="原文" Style="{StaticResource SectionLabel}"/><TextBlock x:Name="TranslationSourceText" Text="在上方输入或粘贴原文。" TextWrapping="Wrap" FontSize="15.5" LineHeight="28" Foreground="{DynamicResource InkBrush}"/></StackPanel></Border>
+                            <Border Background="{DynamicResource CardSoftBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="13" Padding="20,18" Margin="0,0,6,14">
+                                <StackPanel><TextBlock Text="译文" Style="{StaticResource SectionLabel}" Foreground="{DynamicResource AccentDeepBrush}"/><TextBlock x:Name="TranslationOutputText" TextWrapping="Wrap" FontSize="16" FontWeight="Medium" LineHeight="29" Foreground="{DynamicResource InkStrongBrush}"/></StackPanel>
+                            </Border>
+                            <Border x:Name="TranslationExtractedCard" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="13" Padding="18,15" Margin="0,0,6,8" Visibility="Collapsed">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                                            <Button x:Name="SelectAllExtractedButton" Content="全选" Click="SelectAllExtractedButton_Click" FontSize="11.5" Padding="10,4" Margin="0,0,6,0"/>
+                                            <Button x:Name="BatchAddExtractedButton" Content="＋ 批量加入云词本" Style="{StaticResource AccentButton}" Click="BatchAddExtractedButton_Click" FontSize="11.5" Padding="12,5"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="TranslationExtractedTitle" Text="生词一键提取" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource InkStrongBrush}" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                    <WrapPanel x:Name="TranslationExtractedPanel"/>
+                                    <TextBlock x:Name="TranslationExtractedStatus" FontSize="11.5" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
                             </Border>
                         </StackPanel></ScrollViewer>
                     </Grid>
                     <Grid x:Name="ChineseSearchView" Visibility="Collapsed">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                        <TextBlock x:Name="ChineseQueryTitle" Text="用中文找单词" FontSize="23" FontWeight="Bold" Foreground="#0E2B40" Margin="0,0,0,8" TextWrapping="Wrap"/>
-                        <TextBlock x:Name="ChineseSearchHint" Grid.Row="1" Text="点击一个结果查看释义。" Foreground="#6E8BA1" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,15"/>
+                        <TextBlock x:Name="ChineseQueryTitle" Text="用中文找单词" FontSize="23" FontWeight="Bold" Foreground="{DynamicResource InkStrongBrush}" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="ChineseSearchHint" Grid.Row="1" Text="点击一个结果查看释义。" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,15"/>
                         <ScrollViewer x:Name="ChineseSearchScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" ScrollChanged="ChineseSearchScroll_ScrollChanged" Padding="0,0,6,0">
                             <StackPanel><StackPanel x:Name="ChineseResultsPanel"/><Button x:Name="MoreChineseResultsButton" Content="显示更多结果" Style="{StaticResource PillButton}" Click="MoreChineseResultsButton_Click" Visibility="Collapsed" Margin="0,8,0,12" Padding="22,8" HorizontalAlignment="Center"/></StackPanel>
                         </ScrollViewer>
                     </Grid>
                 </Grid>
             </Grid>
-            <Border Grid.Row="2" Background="#F9FCFF" BorderBrush="#E3EDF5" BorderThickness="0,1,0,0" CornerRadius="0,0,11,11"><Grid Margin="18,0,20,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><local:StatusLabel x:Name="StatusText" Text="正在准备词典…" FontSize="10.5" Foreground="#7A95AA" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,15,0"/><TextBlock x:Name="DictionaryCountText" Grid.Column="1" Text="内置词库" FontSize="10.5" Foreground="#8FA7BA" VerticalAlignment="Center"/></Grid></Border>
+            <Border Grid.Row="2" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,11,11"><Grid Margin="18,0,20,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><local:StatusLabel x:Name="StatusText" Text="正在准备词典…" FontSize="10.5" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,15,0"/><TextBlock x:Name="DictionaryCountText" Grid.Column="1" Text="内置词库" FontSize="10.5" Foreground="{DynamicResource SubtleBrush}" VerticalAlignment="Center"/></Grid></Border>
         </Grid>
     </Border>
 </Window>

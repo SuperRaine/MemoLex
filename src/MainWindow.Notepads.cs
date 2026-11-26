@@ -74,6 +74,7 @@ public partial class MainWindow
             AddButton.ToolTip=(_isMember?"从当前云词本移除这个单词":"加入当前云词本")+"（"+ShortcutLabel("toggleWord")+"）";
             if(_isMember&&Core.NotepadContent.Words(full.Content).Count==1)AddButton.ToolTip="这是词本中的最后一个单词，移除时会询问是否删除整个词本。";
             AddButton.IsEnabled=!_adding&&!_refreshing&&ValidWord(word);
+            UpdateRepeatedWordBanner();
         }
         catch(Exception error)
         {
@@ -93,7 +94,24 @@ public partial class MainWindow
             {
                 ApplyNotepadSnapshot(updated);
                 StatusText.Text="云词本修改已保存。";
-            },_dictionary,word=>LoadWordAsync(word),deleted:RemoveNotepadSnapshot,confirmDeletion:ConfirmNotepadDeletion,online:_onlineDictionary).ShowDialog();
+            },_dictionary,word=>LoadWordAsync(word),deleted:RemoveNotepadSnapshot,confirmDeletion:ConfirmNotepadDeletion,online:_onlineDictionary,
+                startFlashcards:(ownerDialog,words,persist)=>
+                {
+                    var scopeKey="notepad:"+full.Id;
+                    var saved=persist?FlashcardProgressStore.Load(_tokens.ProfileDirectory,scopeKey):null;
+                    var practice=Desktop.StubbornFlashcards.Build(ownerDialog,words,_dictionary,_onlineDictionary,
+                        word=>_mnemonics.Get(word,MnemonicAccountKey).FirstOrDefault()?.Text,
+                        savedProgress:saved,
+                        onProgressChanged:snapshot=>FlashcardProgressStore.Save(_tokens.ProfileDirectory,scopeKey,snapshot),
+                        onResetProgress:()=>FlashcardProgressStore.Remove(_tokens.ProfileDirectory,scopeKey),
+                        persistProgress:persist,
+                        title:$"{full.Title} · 卡片自测",
+                        speak:(w,accent)=>PlaySpeechAsync(w,accent),
+                        getMnemonics:w=>_mnemonics.Get(w,MnemonicAccountKey),
+                        mnemonicStore:_mnemonics,
+                        preferences:_preferences);
+                    practice.ShowDialog();
+                }).ShowDialog();
         }
         catch(Exception error){ShowError(error);}
         finally{_adding=false;SetCloudWriteBusy(false);await UpdateMembershipAsync();}

@@ -11,13 +11,14 @@ internal sealed class TrayIcon : IDisposable
     private bool _disposed;
     private bool _hintShown;
 
-    public TrayIcon(Action restore, Action settings, Action exit)
+    public TrayIcon(Action restore, Action settings, Action exit, Action? quickLookup = null)
     {
         using (var stream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/MemoLex;component/app.ico")).Stream)
         using (var embeddedIcon = new Drawing.Icon(stream, 32, 32))
             _icon = (Drawing.Icon)embeddedIcon.Clone();
         _menu = new Forms.ContextMenuStrip();
         _menu.Items.Add("打开墨墨搜词", null, (_, _) => restore());
+        if (quickLookup != null) _menu.Items.Add("悬浮快查条", null, (_, _) => quickLookup());
         _menu.Items.Add("设置", null, (_, _) => settings());
         _menu.Items.Add(new Forms.ToolStripSeparator());
         _menu.Items.Add("退出", null, (_, _) => exit());

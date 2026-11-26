@@ -256,15 +256,29 @@ def site_release_notes(body):
     return notes
 
 
-def prepare_site(site, node, version, share_url, release_body):
+def prepare_site(site, node, version, share_url, release_body, assets=None):
     metadata_path = site / "release.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
     previous = metadata["version"]
     archive = set(metadata.get("archiveVersions", []))
     if (2, 0, 0) <= version_key(previous) < version_key(version):
         archive.add(previous)
+    packages_meta = {}
+    if assets:
+        suffix_map = {
+            "Windows-x64-Setup.msi": "windows",
+            "Windows-x64.zip": "windows-zip",
+            "macOS-universal.dmg": "macos",
+        }
+        for name, (size, sha256) in assets.items():
+            for suffix, key in suffix_map.items():
+                if name.endswith(suffix):
+                    packages_meta[key] = {"name": name, "size": size, "sha256": sha256}
+                    break
     metadata.update(version=version, quarkUrl=share_url,
                     archiveVersions=sorted(archive, key=version_key, reverse=True))
+    if packages_meta:
+        metadata["packages"] = packages_meta
     write_json(metadata_path, metadata)
     notes_path = site / "release-notes.json"
     if notes_path.is_file():
@@ -332,7 +346,7 @@ def publish(args):
         quark.verify_share(share_url, version, assets)
         print(f"已核对夸克「{QUARK_FOLDER}/{QUARK_LATEST}/{version}」的三个软件包和公开链接。", flush=True)
 
-        prepare_site(site, args.node, version, share_url, release["body"])
+        prepare_site(site, args.node, version, share_url, release["body"], assets)
         current, current_assets = release_snapshot(args.gh, tag, names)
         if current_assets != assets or current["targetCommitish"] != release["targetCommitish"]:
             raise RuntimeError("同步期间 GitHub 附件或发布提交有变更，请重新运行。")

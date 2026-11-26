@@ -121,8 +121,11 @@ struct StubbornView: View {
                 StubbornFlashcardView(
                     core: model.core,
                     words: session.words,
+                    title: "顽固单词 · 卡片自测",
                     savedProgress: session.persists ? model.loadFlashcardProgress() : nil,
                     persistsProgress: session.persists,
+                    preferences: model.preferences,
+                    onSpeak: { model.speakWord($0, accent: $1) },
                     onSaveProgress: { model.saveFlashcardProgress($0) },
                     onClearProgress: { model.clearFlashcardProgress() }
                 ) { self.practiceSession = nil }
@@ -270,20 +273,52 @@ struct NotebookView: View {
     @State private var editing = false
     @State private var busy = false
     @State private var error = ""
+    @State private var practiceSession: (words: [String], persists: Bool)?
     private var visible: [J] { rows.filter {
         let word = $0["word"].text
         return filter.isEmpty || word.localizedCaseInsensitiveContains(filter) || $0["meaning"].text.localizedCaseInsensitiveContains(filter)
             || onlineMeanings[word, default: ""].localizedCaseInsensitiveContains(filter)
     } }
+    private var visibleWords: [String] {
+        var seen = Set<String>()
+        return visible.compactMap { row -> String? in
+            guard !row["isChapter"].flag else { return nil }
+            let w = row["word"].text
+            return seen.insert(w.lowercased()).inserted ? w : nil
+        }
+    }
     var body: some View {
         VStack(spacing: 0) {
             DialogHeader(title: "云词本") { model.sheet = nil }
+            if let session = practiceSession {
+                let scope = "notepad-" + original["id"].text
+                StubbornFlashcardView(
+                    core: model.core,
+                    words: session.words,
+                    title: "\(original["title"].text) · 卡片自测",
+                    savedProgress: session.persists ? model.loadFlashcardProgress(scope: scope) : nil,
+                    persistsProgress: session.persists,
+                    preferences: model.preferences,
+                    onSpeak: { model.speakWord($0, accent: $1) },
+                    onSaveProgress: { model.saveFlashcardProgress($0, scope: scope) },
+                    onClearProgress: { model.clearFlashcardProgress(scope: scope) }
+                ) { self.practiceSession = nil }
+                    .padding(23)
+            } else {
             VStack(alignment: .leading, spacing: 13) {
-                HStack { Text(original["title"].text).font(.system(size: 23, weight: .semibold)); Spacer(); Button("重新载入") { Task { await reload() } }.buttonStyle(MemoButtonStyle(compact: true)) }
+                HStack(spacing: 8) {
+                    Text(original["title"].text).font(.system(size: 23, weight: .semibold))
+                    Spacer()
+                    Button("卡片自测") {
+                        practiceSession = (words: visibleWords, persists: filter.trimmed.isEmpty)
+                    }.buttonStyle(MemoButtonStyle(accent: true, compact: true)).disabled(visibleWords.isEmpty)
+                    Button("重新载入") { Task { await reload() } }.buttonStyle(MemoButtonStyle(compact: true))
+                }
                 Picker("", selection: $tab) { Text("单词与释义").tag(0); Text("编辑词本").tag(1) }.pickerStyle(.segmented).labelsHidden()
                 if tab == 0 { wordsPage } else { infoPage }
                 Text(error).font(.system(size: 12)).foregroundStyle(.red)
             }.padding(23).disabled(busy)
+            }
         }.frame(width: 820, height: min(700, (NSScreen.main?.visibleFrame.height ?? 800) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).toggleStyle(.checkbox).noFocusRing()
             .task { original = model.selectedPad; applyOriginal(); await describe() }
     }

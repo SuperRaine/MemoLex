@@ -53,7 +53,7 @@ public partial class MainWindow
 
             for(var i=0;i<analysis.Breakdowns.Count;i++)
             {
-                var builder=BuildMnemonicParts(analysis.Breakdowns[i]);
+                var builder=BuildMnemonicParts(word,analysis.Breakdowns[i]);
                 if(i>0)builder.Margin=new Thickness(0,8,0,0);
                 stack.Children.Add(builder);
             }
@@ -64,13 +64,15 @@ public partial class MainWindow
                 text.FontFamily=FontFamily;
                 if(hasBreakdowns)
                 {
-                    text.Foreground=Brush("#2D5875");
-                    stack.Children.Add(new Border
+                    text.SetResourceReference(TextBlock.ForegroundProperty,"AccentDeepBrush");
+                    var remBorder=new Border
                     {
                         Margin=new Thickness(0,10,0,0),Padding=new Thickness(0,8,0,0),
-                        BorderBrush=Brush("#DFEEF9"),BorderThickness=new Thickness(0,1,0,0),
+                        BorderThickness=new Thickness(0,1,0,0),
                         Child=text
-                    });
+                    };
+                    remBorder.SetResourceReference(Border.BorderBrushProperty,"RuleBrush");
+                    stack.Children.Add(remBorder);
                 }
                 else
                 {
@@ -78,52 +80,145 @@ public partial class MainWindow
                     stack.Children.Add(text);
                 }
             }
-            NotesPanel.Children.Add(new Border
+            var cardBorder=new Border
             {
                 Child=stack,Padding=new Thickness(16,13,16,14),Margin=new Thickness(0,8,0,0),
-                Background=Brush("#F4FAFF"),BorderBrush=Brush("#DEEDF8"),
                 BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(12)
-            });
+            };
+            cardBorder.SetResourceReference(Border.BackgroundProperty,"CardSoftBrush");
+            cardBorder.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");
+            NotesPanel.Children.Add(cardBorder);
         }
         if(_displayedNotes.Length>0)Desktop.UiMotion.Reveal(NotesPanel,distance:4);
     }
-    private static FrameworkElement BuildMnemonicParts(MnemonicBreakdown breakdown)
+    private FrameworkElement BuildMnemonicParts(string currentWord,MnemonicBreakdown breakdown)
     {
         static DropShadowEffect LitShadow(double opacity)=>new()
         {
             BlurRadius=14,ShadowDepth=4,Direction=270,Opacity=opacity,Color=Color.FromRgb(18,134,196)
         };
         var chipStyle=Application.Current?.TryFindResource("MorphemeChipButton") as Style;
+        var pillStyle=Application.Current?.TryFindResource("PillButton") as Style;
+        var wrapper=new StackPanel();
         var builder=new MorphemeWrapPanel{HorizontalSpacing=7,VerticalSpacing=8,ExpandLastChild=true,LastChildMinWidth=190};
         var detail=new TextBlock
         {
-            Text=breakdown.Explanation,FontSize=12.5,LineHeight=19,Foreground=Brush("#1B5A7D"),
+            Text=breakdown.Explanation,FontSize=12.5,LineHeight=19,
             TextWrapping=TextWrapping.Wrap
         };
+        detail.SetResourceReference(TextBlock.ForegroundProperty,"AccentDeepBrush");
+
+        var cognatesRow=new WrapPanel{Margin=new Thickness(0,7,0,0),Visibility=Visibility.Collapsed};
+        var familyDrawer=new Border
+        {
+            Margin=new Thickness(0,8,0,0),Padding=new Thickness(12,10,12,8),
+            CornerRadius=new CornerRadius(10),BorderThickness=new Thickness(1),
+            Visibility=Visibility.Collapsed
+        };
+        familyDrawer.SetResourceReference(Border.BackgroundProperty,"SurfaceBrush");
+        familyDrawer.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");
+        var familyStack=new StackPanel();
+        var familyHeader=new TextBlock{FontSize=11.5,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,7)};
+        familyHeader.SetResourceReference(TextBlock.ForegroundProperty,"AccentDeepBrush");
+        var familyWrap=new WrapPanel();
+        familyStack.Children.Add(familyHeader);
+        familyStack.Children.Add(familyWrap);
+        familyDrawer.Child=familyStack;
+
         var buttons=new Dictionary<int,(Button Button,MnemonicPart Part)>();
         var selected=new HashSet<int>();
+        string? expandedFamilyKey=null;
+
+        void PopulateFamilyDrawer(MnemonicPart part)
+        {
+            var key=MnemonicParts.NormalizeFormKey(part.Form)+"|"+part.Meaning;
+            if(familyDrawer.Visibility==Visibility.Visible&&expandedFamilyKey==key)
+            {
+                familyDrawer.Visibility=Visibility.Collapsed;
+                expandedFamilyKey=null;
+                return;
+            }
+            var members=_mnemonics.FindMorphemeFamily(part.Form,part.Meaning,currentWord,w=>_dictionary.Lookup(w)?.DisplayMeaning,18);
+            familyWrap.Children.Clear();
+            if(members.Count==0)
+            {
+                familyDrawer.Visibility=Visibility.Collapsed;
+                expandedFamilyKey=null;
+                return;
+            }
+            expandedFamilyKey=key;
+            familyHeader.Text=$"「{part.Form}（{part.Meaning}）」同根词家族 · 共 {members.Count} 词（点击即可查词）";
+            foreach(var member in members)
+            {
+                var targetWord=member.Word;
+                var itemStack=new StackPanel{Orientation=Orientation.Vertical};
+                var wText=new TextBlock{Text=member.Word,FontSize=13,FontWeight=FontWeights.Bold};
+                wText.SetResourceReference(TextBlock.ForegroundProperty,"AccentDeepBrush");
+                var mText=new TextBlock{Text=member.Meaning,FontSize=11,MaxWidth=168,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,2,0,0)};
+                mText.SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");
+                itemStack.Children.Add(wText);
+                itemStack.Children.Add(mText);
+                var btn=new Button
+                {
+                    Content=itemStack,Padding=new Thickness(9,6,9,6),Margin=new Thickness(0,0,7,6),
+                    HorizontalContentAlignment=HorizontalAlignment.Left,ToolTip=$"{member.Word}\n{member.Meaning}"
+                };
+                btn.Click+=async(_, _)=>await LoadWordAsync(targetWord);
+                familyWrap.Children.Add(btn);
+            }
+            familyDrawer.Visibility=Visibility.Visible;
+            Desktop.UiMotion.Reveal(familyDrawer,distance:4);
+        }
 
         void RenderSelection(Button? clickedChip)
         {
             var allLit=selected.Count==0||selected.Count==buttons.Count;
+            cognatesRow.Children.Clear();
+            cognatesRow.Visibility=Visibility.Collapsed;
+            familyDrawer.Visibility=Visibility.Collapsed;
+            expandedFamilyKey=null;
+
             if(allLit)
             {
                 detail.Text=breakdown.Explanation;
             }
             else
             {
-                var chosen=selected.OrderBy(i=>i)
-                    .Where(buttons.ContainsKey)
-                    .Select(i=>buttons[i].Part.FocusExplanation??$"{buttons[i].Part.Form} · {buttons[i].Part.Meaning}");
-                detail.Text=string.Join("\n",chosen);
+                var chosenParts=selected.OrderBy(i=>i).Where(buttons.ContainsKey).Select(i=>buttons[i].Part).ToArray();
+                detail.Text=string.Join("\n",chosenParts.Select(p=>p.FocusExplanation??$"{p.Form} · {p.Meaning}"));
+
+                var examples=chosenParts.SelectMany(p=>p.Examples??[]).Distinct(StringComparer.OrdinalIgnoreCase).Take(6).ToArray();
+                if(examples.Length>0)
+                {
+                    var label=new TextBlock{Text="同根词：",FontSize=11,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,4,4)};
+                    label.SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");
+                    cognatesRow.Children.Add(label);
+                    foreach(var exWord in examples)
+                    {
+                        var target=exWord;
+                        var exBtn=new Button{Content=target,FontSize=11,Padding=new Thickness(8,2.5,8,2.5),Margin=new Thickness(0,0,5,4),ToolTip=$"点击查询「{target}」"};
+                        if(pillStyle!=null)exBtn.Style=pillStyle;
+                        exBtn.Click+=async(_,e)=>{e.Handled=true;await LoadWordAsync(target);};
+                        cognatesRow.Children.Add(exBtn);
+                    }
+                }
+                if(chosenParts.Length==1&&_mnemonics.FindMorphemeFamily(chosenParts[0].Form,chosenParts[0].Meaning,currentWord,null,1).Count>0)
+                {
+                    var primary=chosenParts[0];
+                    var familyBtn=new Button{Content="同根词家族 →",FontSize=11,FontWeight=FontWeights.SemiBold,Padding=new Thickness(9,2.5,9,2.5),Margin=new Thickness(2,0,0,4)};
+                    if(pillStyle!=null)familyBtn.Style=pillStyle;
+                    familyBtn.Click+=(_,e)=>{e.Handled=true;PopulateFamilyDrawer(primary);};
+                    cognatesRow.Children.Add(familyBtn);
+                }
+                if(cognatesRow.Children.Count>0)cognatesRow.Visibility=Visibility.Visible;
             }
 
             foreach(var (position,entry) in buttons)
             {
                 var lit=allLit||selected.Contains(position);
                 var emphasized=!allLit&&selected.Contains(position);
-                entry.Button.Background=lit?Brush(emphasized?"#E2F5FF":"#ECF8FF"):Brushes.White;
-                entry.Button.BorderBrush=Brush(emphasized?"#19ACF2":lit?"#38B8F6":"#C6E4F7");
+                entry.Button.SetResourceReference(Control.BackgroundProperty,lit?(emphasized?"SelectedBgBrush":"PillBgBrush"):"SurfaceBrush");
+                entry.Button.BorderBrush=Brush(emphasized?"#19ACF2":lit?"#38B8F6":(Desktop.ThemeManager.IsDark?"#345068":"#C6E4F7"));
                 entry.Button.Opacity=1.0;
                 entry.Button.Effect=lit?LitShadow(emphasized?0.22:0.15):null;
             }
@@ -158,25 +253,33 @@ public partial class MainWindow
             var part=breakdown.Parts[index];
             if(part.Meaning.Length==0)
             {
-                builder.Children.Add(new Border
+                var unlabeled=new Border
                 {
-                    Padding=new Thickness(11,7,11,7),
-                    Background=Brushes.White,BorderBrush=Brush("#C6E4F7"),BorderThickness=new Thickness(1.5),
+                    Padding=new Thickness(11,7,11,7),BorderThickness=new Thickness(1.5),
                     CornerRadius=new CornerRadius(10),VerticalAlignment=VerticalAlignment.Center,
-                    Child=new TextBlock{Text=part.Form,FontSize=14.5,FontWeight=FontWeights.Bold,Foreground=Brush("#4B728E")}
-                });
+                    Child=new TextBlock{Text=part.Form,FontSize=14.5,FontWeight=FontWeights.Bold}
+                };
+                unlabeled.SetResourceReference(Border.BackgroundProperty,"SurfaceBrush");
+                unlabeled.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");
+                ((TextBlock)unlabeled.Child).SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");
+                builder.Children.Add(unlabeled);
                 continue;
             }
             var choice=index;
             var body=new StackPanel{Orientation=Orientation.Vertical};
-            body.Children.Add(new TextBlock{Text=part.Form,FontSize=15,FontWeight=FontWeights.Bold,Foreground=Brush("#0B84BD")});
-            body.Children.Add(new TextBlock{Text=part.Meaning,FontSize=11.5,Foreground=Brush("#4B6980"),Margin=new Thickness(0,2,0,0),TextWrapping=TextWrapping.Wrap,MaxWidth=185});
+            var formTb=new TextBlock{Text=part.Form,FontSize=15,FontWeight=FontWeights.Bold};
+            formTb.SetResourceReference(TextBlock.ForegroundProperty,"AccentDeepBrush");
+            var meanTb=new TextBlock{Text=part.Meaning,FontSize=11.5,Margin=new Thickness(0,2,0,0),TextWrapping=TextWrapping.Wrap,MaxWidth=185};
+            meanTb.SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");
+            body.Children.Add(formTb);
+            body.Children.Add(meanTb);
             var chip=new Button
             {
                 Content=body,Style=chipStyle,
-                Background=Brush("#ECF8FF"),BorderBrush=Brush("#38B8F6"),BorderThickness=new Thickness(1.5),
+                BorderBrush=Brush("#38B8F6"),BorderThickness=new Thickness(1.5),
                 Effect=LitShadow(0.15),ToolTip=part.FocusExplanation??part.Meaning,VerticalAlignment=VerticalAlignment.Center
             };
+            chip.SetResourceReference(Control.BackgroundProperty,"PillBgBrush");
             AutomationProperties.SetName(chip,$"{part.Form}，点击查看或组合构词含义");
             buttons.Add(index,(chip,part));
             builder.Children.Add(chip);
@@ -186,20 +289,28 @@ public partial class MainWindow
         builder.Children.Add(new TextBlock{Text="→",FontSize=14.5,FontWeight=FontWeights.Bold,Foreground=Brush("#6CA9CC"),VerticalAlignment=VerticalAlignment.Center});
         var resultStack=new StackPanel{Orientation=Orientation.Vertical};
         if(breakdown.Word is {Length:>0} word)
-            resultStack.Children.Add(new TextBlock{Text=word,FontSize=14.5,FontWeight=FontWeights.Bold,Foreground=Brush("#0B2234"),Margin=new Thickness(0,0,0,2)});
+        {
+            var wordTb=new TextBlock{Text=word,FontSize=14.5,FontWeight=FontWeights.Bold,Margin=new Thickness(0,0,0,2)};
+            wordTb.SetResourceReference(TextBlock.ForegroundProperty,"InkStrongBrush");
+            resultStack.Children.Add(wordTb);
+        }
         resultStack.Children.Add(detail);
+        resultStack.Children.Add(cognatesRow);
         var resultCard=new Border
         {
             Padding=new Thickness(13,8,13,8),
-            CornerRadius=new CornerRadius(10),BorderThickness=new Thickness(1),BorderBrush=Brush("#BCE2F8"),
+            CornerRadius=new CornerRadius(10),BorderThickness=new Thickness(1),
             VerticalAlignment=VerticalAlignment.Center,Cursor=Cursors.Hand,
             ToolTip="点击还原完整构词解释",
-            Background=new LinearGradientBrush(Color.FromRgb(226,245,255),Color.FromRgb(238,249,255),new Point(0,0),new Point(1,1)),
             Child=resultStack
         };
-        resultCard.MouseLeftButtonUp+=(_,_)=>{if(selected.Count>0){selected.Clear();RenderSelection(null);}};
+        resultCard.SetResourceReference(Border.BackgroundProperty,"AccentWashBrush");
+        resultCard.SetResourceReference(Border.BorderBrushProperty,"PillBorderBrush");
+        resultCard.MouseLeftButtonUp+=(_,e)=>{if(e.OriginalSource is not Button&&selected.Count>0){selected.Clear();RenderSelection(null);}};
         builder.Children.Add(resultCard);
-        return builder;
+        wrapper.Children.Add(builder);
+        wrapper.Children.Add(familyDrawer);
+        return wrapper;
     }
 
     private sealed class MorphemeWrapPanel : Panel

@@ -1,5 +1,6 @@
 using MemoLex.Core;
 using MemoLex.Desktop;
+using MemoLex.Services;
 
 namespace MemoLex;
 public partial class MainWindow
@@ -20,7 +21,8 @@ public partial class MainWindow
             }
             return(entry,entry==null?Array.Empty<StoredMnemonic>():_mnemonics.Get(entry.word,MnemonicAccountKey));
         },()=>!_editingSettings&&!_screenTranslating&&IsEnabled,async word=>{RestoreWindow();await LoadWordAsync(word);},
-            HoverBookmarkStatus,SaveHoverWordAsync,word=>_=AutoAddHoverWordAsync(word));
+            HoverBookmarkStatus,SaveHoverWordAsync,word=>_=AutoAddHoverWordAsync(word),
+            speak: word => PlaySpeechAsync(word, EnglishAccent.American));
         _hover.Enabled=_preferences.HoverLookupEnabled;
     }
     private readonly HashSet<string> _hoverAdding=new(StringComparer.OrdinalIgnoreCase);

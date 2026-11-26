@@ -4,7 +4,7 @@ import Combine
 import Foundation
 import SwiftUI
 
-enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan; var id: String { rawValue } }
+enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan, dashboard; var id: String { rawValue } }
 struct Notice: Identifiable {
     let id = UUID()
     var title: String
@@ -29,6 +29,8 @@ enum EnglishAccent: String, CaseIterable {
     @Published var wordCount = 0
     @Published var search = ""
     @Published var suggestions: [String] = []
+    @Published var spellingSuggestions: [String] = []
+    @Published var extractedWords: [J] = []
     @Published var entry = J.null
     @Published private(set) var onlineDefinition = J.null
     @Published private(set) var definitionLoading = false
@@ -91,6 +93,7 @@ enum EnglishAccent: String, CaseIterable {
     @Published var canGoForward = false
     @Published var titlebar = TitlebarMetrics()
     var showWindow: (() -> Void)?
+    var showQuickLookup: (() -> Void)?
     var applySystemPreferences: (() -> Void)?
     var captureScreen: (() -> Void)?
     var openHaici: ((String) -> Void)?
@@ -199,7 +202,7 @@ enum EnglishAccent: String, CaseIterable {
                         : "共 \(chineseTotal) 个相关词。点击一行查看释义。"
                     status = "查词完成。"
                 } else {
-                    page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; todayStatus = loggedIn ? "Loading" : ""
+                    page = .word; word = query; entry = .null; notes = []; relations = .null; examples = []; spellingSuggestions = []; todayStatus = loggedIn ? "Loading" : ""
                     refreshMembership()
                     onlineDefinition = .null
                     definitionLoading = true
@@ -209,6 +212,7 @@ enum EnglishAccent: String, CaseIterable {
                     entry = result["entry"]
                     if account == accountVersion { notes = result["notes"].list }
                     suggestions = result["suggestions"].list.map(\.text)
+                    spellingSuggestions = entry == .null ? result["spellingSuggestions"].list.map(\.text) : []
                     definitionLoading = entry["translation"].text.trimmed.isEmpty
                     recordHistory(word); status = definitionLoading ? "正在查找释义…" : "查词完成。"
                     Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }
@@ -309,9 +313,20 @@ enum EnglishAccent: String, CaseIterable {
         } catch { if version == examplesVersion { examplesError = error.localizedDescription } }
         if version == examplesVersion { examplesLoading = false }
     }
+    var currentWordLookupCount: Int {
+        guard !word.isEmpty else { return 0 }
+        return history.first { $0.word.caseInsensitiveCompare(word) == .orderedSame }?.count ?? 0
+    }
+
     func speak(_ accent: EnglishAccent) {
         guard page == .word, !word.isEmpty else { return }
         playSpeech(word, accent: accent)
+    }
+
+    func speakWord(_ targetWord: String, accent: EnglishAccent = .american) {
+        let trimmed = targetWord.trimmed
+        guard !trimmed.isEmpty else { return }
+        playSpeech(trimmed, accent: accent, requireWordPage: false)
     }
 
     func speakExample(at index: Int) {
@@ -321,7 +336,7 @@ enum EnglishAccent: String, CaseIterable {
         playSpeech(text, accent: .american, exampleIndex: index)
     }
 
-    private func playSpeech(_ text: String, accent: EnglishAccent, exampleIndex: Int? = nil) {
+    private func playSpeech(_ text: String, accent: EnglishAccent, exampleIndex: Int? = nil, requireWordPage: Bool = true) {
         stopPronunciation()
         loadingExampleIndex = exampleIndex
         let isSentence = exampleIndex != nil
@@ -336,7 +351,7 @@ enum EnglishAccent: String, CaseIterable {
             guard !Task.isCancelled else { return }
             pronunciationTask = nil
             loadingExampleIndex = nil
-            guard page == .word, version == wordVersion else { return }
+            if requireWordPage { guard page == .word, version == wordVersion else { return } }
             if let encoded = result?["audio"].text, !encoded.isEmpty, let audio = Data(base64Encoded: encoded),
                let player = try? AVAudioPlayer(data: audio), player.play() {
                 pronunciationPlayer = player
@@ -345,6 +360,16 @@ enum EnglishAccent: String, CaseIterable {
                 status = "在线语音暂不可用，请稍后重试。"
             }
         }
+    }
+
+    func lookupMorphemeFamily(form: String, meaning: String, excludeWord: String) async -> [J] {
+        guard let result = try? await core.request("mnemonic.family", [
+            "form": .string(form),
+            "meaning": .string(meaning),
+            "excludeWord": .string(excludeWord),
+            "limit": .number(18)
+        ]) else { return [] }
+        return result.list
     }
 
     func stopPronunciation() {
@@ -366,7 +391,7 @@ enum EnglishAccent: String, CaseIterable {
         cancelTranslation()
         let version = translationVersion
         let input = translationInput, direction = translationDirection
-        translating = true; translationSource = input; translationOutput = ""; translationProvider = ""
+        translating = true; translationSource = input; translationOutput = ""; translationProvider = ""; extractedWords = []
         let request = Task { try await core.request("translate", ["text": .string(input), "direction": .string(direction)], timeout: 22) }
         translationTask = request
         do {
@@ -374,6 +399,10 @@ enum EnglishAccent: String, CaseIterable {
             guard version == translationVersion else { return }
             translationOutput = result["text"].text; translationProvider = result["provider"].text
             if navigation.indices.contains(navigationIndex), page == .translation { navigation[navigationIndex] = .init(page: .translation, query: "段落翻译", input: input, translated: translationOutput, direction: direction) }
+            let englishCorpus = direction == "zh-CN|en" ? translationOutput : input
+            if let extracted = try? await core.request("translation.extract", ["text": .string(englishCorpus), "limit": .number(24)]), version == translationVersion {
+                extractedWords = extracted.list
+            }
         } catch { if version == translationVersion { fail(error) } }
         if version == translationVersion { translating = false; translationTask = nil }
     }
@@ -795,6 +824,21 @@ enum EnglishAccent: String, CaseIterable {
         do { notebookRows = try await core.request("dictionary.batch", ["content": selectedPad["content"]]).list }
         catch { fail(error) }; notebookLoading = false
     }
+    func batchAddToNotepad(_ words: [String]) async throws -> Int {
+        guard loggedIn else { openAccountSettings(); throw CoreFailure(code: "auth", message: "请先登录墨墨账号。") }
+        let id = selectedPad["id"].text
+        guard !id.isEmpty, id == preferences.selectedNotepad else {
+            throw CoreFailure(code: "notepad", message: "请先在左侧选择一个云词本。")
+        }
+        let generation = accountVersion
+        let result = try await core.request("notepads.addWords", ["id": .string(id), "words": J.strings(words)])
+        guard generation == accountVersion else { return 0 }
+        if preferences.selectedNotepad == id, result["notepad"]["id"].text == id {
+            selectedPad = result["notepad"]
+            refreshMembership()
+        }
+        return result["added"].integer
+    }
     func saveNotebook(original: J, title: String, brief: String, content: String) async throws {
         let generation = accountVersion
         let result = try await core.request("notepads.update", ["original": original, "title": .string(title), "brief": .string(brief), "content": .string(content)])
@@ -856,18 +900,22 @@ enum EnglishAccent: String, CaseIterable {
     private func stubbornCacheName(_ accountID: String) -> String? {
         UUID(uuidString: accountID).map { "stubborn-\($0.uuidString).json" }
     }
-    private func flashcardProgressName(_ accountID: String) -> String {
+    private func flashcardProgressName(_ accountID: String, scope: String? = nil) -> String {
+        if let scope, !scope.isEmpty {
+            let safe = scope.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+            return "flashcards-scope-\(safe.isEmpty ? "default" : safe).json"
+        }
         if let uuid = UUID(uuidString: accountID) { return "flashcards-\(uuid.uuidString).json" }
         return "flashcards-default.json"
     }
-    func loadFlashcardProgress() -> FlashcardProgressSnapshot? {
-        load(flashcardProgressName(activeAccountID), as: FlashcardProgressSnapshot.self)
+    func loadFlashcardProgress(scope: String? = nil) -> FlashcardProgressSnapshot? {
+        load(flashcardProgressName(activeAccountID, scope: scope), as: FlashcardProgressSnapshot.self)
     }
-    func saveFlashcardProgress(_ snapshot: FlashcardProgressSnapshot) {
-        save(snapshot, flashcardProgressName(activeAccountID))
+    func saveFlashcardProgress(_ snapshot: FlashcardProgressSnapshot, scope: String? = nil) {
+        save(snapshot, flashcardProgressName(activeAccountID, scope: scope))
     }
-    func clearFlashcardProgress() {
-        try? FileManager.default.removeItem(at: AppPaths.profile.appendingPathComponent(flashcardProgressName(activeAccountID)))
+    func clearFlashcardProgress(scope: String? = nil) {
+        try? FileManager.default.removeItem(at: AppPaths.profile.appendingPathComponent(flashcardProgressName(activeAccountID, scope: scope)))
     }
     private func installStubborn(_ snapshot: StubbornSnapshot) {
         let current = stubbornCurrent

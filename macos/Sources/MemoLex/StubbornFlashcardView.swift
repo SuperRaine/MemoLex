@@ -3,7 +3,10 @@ import SwiftUI
 struct StubbornFlashcardView: View {
     let core: CoreBridge
     let freshWords: [String]
+    let title: String
     let persistsProgress: Bool
+    let preferences: Preferences?
+    let onSpeak: ((String, EnglishAccent) -> Void)?
     let onSaveProgress: (FlashcardProgressSnapshot) -> Void
     let onClearProgress: () -> Void
     let close: () -> Void
@@ -16,24 +19,38 @@ struct StubbornFlashcardView: View {
     @State private var swipeOpacity: Double = 1
     @State private var flipTask: Task<Void, Never>?
     @State private var lookup: (word: String, data: J)?
+    @State private var spellingMode = false
+    @State private var typedSpelling = ""
+    @State private var spellingFeedback = ""
+    @State private var spellingCorrect = false
+    @State private var spellingClue = ""
+    @State private var autoSpeak: String
+    @FocusState private var spellingFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         core: CoreBridge,
         words: [String],
+        title: String = "卡片自测",
         savedProgress: FlashcardProgressSnapshot? = nil,
         persistsProgress: Bool = true,
+        preferences: Preferences? = nil,
+        onSpeak: ((String, EnglishAccent) -> Void)? = nil,
         onSaveProgress: @escaping (FlashcardProgressSnapshot) -> Void = { _ in },
         onClearProgress: @escaping () -> Void = {},
         close: @escaping () -> Void
     ) {
         self.core = core
         self.freshWords = words
+        self.title = title
         self.persistsProgress = persistsProgress
+        self.preferences = preferences
+        self.onSpeak = onSpeak
         self.onSaveProgress = onSaveProgress
         self.onClearProgress = onClearProgress
         self.close = close
         _practice = State(initialValue: FlashcardPractice(words: words, saved: persistsProgress ? savedProgress : nil))
+        _autoSpeak = State(initialValue: preferences?.flashcardAutoSpeak ?? "off")
     }
 
     private var groupProgress: CGFloat {
@@ -46,12 +63,12 @@ struct StubbornFlashcardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("卡片自测").font(.system(size: 24, weight: .semibold))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.system(size: 22, weight: .semibold)).lineLimit(1)
                     Text("第 \(practice.groupNumber) / \(practice.groupCount) 组 · 剩余 \(practice.queue.count) / \(practice.groupWordCount) 词 · 已掌握 \(practice.masteredCount) / \(practice.totalWordCount)")
-                        .foregroundStyle(Palette.muted)
+                        .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 }
                 Spacer()
                 HStack(spacing: 8) {
@@ -60,6 +77,37 @@ struct StubbornFlashcardView: View {
                         .disabled(!canReset || flipping || swiping)
                         .help("清除本地保存的自测进度，从第 1 组重新开始")
                     Button("返回列表", action: close).buttonStyle(MemoButtonStyle(compact: true))
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button("翻卡模式") {
+                    spellingMode = false; revealed = false; resetSpellingInput()
+                }.buttonStyle(MemoButtonStyle(accent: !spellingMode, compact: true))
+                Button("拼写默写") {
+                    spellingMode = true; revealed = false; resetSpellingInput(); spellingFocused = true
+                }.buttonStyle(MemoButtonStyle(accent: spellingMode, compact: true))
+
+                Spacer()
+
+                if let onSpeak {
+                    Text("自动朗读").font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                    MemoPicker(title: "自动朗读", selection: $autoSpeak, options: [
+                        ("off", "关闭"), ("en-GB", "英音"), ("en-US", "美音")
+                    ], height: 28).frame(width: 82)
+                        .onChange(of: autoSpeak) { value in
+                            preferences?.flashcardAutoSpeak = value
+                            preferences?.save()
+                        }
+                    Button {
+                        if let current = practice.current {
+                            onSpeak(current, autoSpeak == "en-GB" ? .british : .american)
+                        }
+                    } label: {
+                        Label("朗读", systemImage: "speaker.wave.2")
+                    }
+                    .buttonStyle(PillButtonStyle())
+                    .disabled(practice.current == nil)
                 }
             }
 
@@ -92,24 +140,38 @@ struct StubbornFlashcardView: View {
                             .offset(y: 6)
                     }
 
-                    Button(action: flip) {
-                        let angle = revealed ? 180.0 : 0
-                        ZStack {
-                            face(word: word, data: data, back: false)
-                                .modifier(FlashcardFaceTurn(angle: angle, back: false))
-                                .accessibilityHidden(revealed)
-                            face(word: word, data: data, back: true)
-                                .modifier(FlashcardFaceTurn(angle: angle, back: true))
-                                .accessibilityHidden(!revealed)
+                    let angle = revealed ? 180.0 : 0
+                    ZStack {
+                        Group {
+                            if spellingMode {
+                                spellingFront(word: word, data: data)
+                            } else {
+                                Button(action: flip) {
+                                    face(word: word, data: data, back: false)
+                                }
+                                .buttonStyle(.plain)
+                                .noFocusRing()
+                            }
                         }
-                        .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .modifier(FlashcardFaceTurn(angle: angle, back: false))
+                        .accessibilityHidden(revealed)
+
+                        face(word: word, data: data, back: true)
+                            .modifier(FlashcardFaceTurn(angle: angle, back: true))
+                            .accessibilityHidden(!revealed)
                     }
-                    .buttonStyle(.plain)
+                    .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
                     .offset(x: swipeOffset)
                     .rotationEffect(.degrees(swipeAngle))
                     .opacity(swipeOpacity)
-                    .accessibilityLabel(revealed ? "隐藏释义" : "翻卡查看释义")
-                    .keyboardShortcut(.space, modifiers: [])
+
+                    if !spellingMode || revealed {
+                        Button("") { flip() }
+                            .keyboardShortcut(.space, modifiers: [])
+                            .opacity(0)
+                            .frame(width: 0, height: 0)
+                            .accessibilityHidden(true)
+                    }
                 }
 
                 ZStack {
@@ -128,7 +190,9 @@ struct StubbornFlashcardView: View {
                         .disabled(flipping || swiping)
                         .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                     } else {
-                        Text("先点击卡片翻面核对释义（空格键），再选择掌握程度")
+                        Text(spellingMode
+                             ? "根据释义输入英文拼写并按 Enter 核对，或点击「直接看答案」"
+                             : "先点击卡片翻面核对释义（空格键），再选择掌握程度")
                             .font(.callout)
                             .foregroundStyle(Palette.muted)
                             .padding(.horizontal, 14).padding(.vertical, 7)
@@ -158,12 +222,100 @@ struct StubbornFlashcardView: View {
                 ? "快捷键：空格翻卡 · 1 认识 · 2 模糊 · 3 忘记（自测进度自动保存到本地，可随时重置）"
                 : "快捷键：空格翻卡 · 1 认识 · 2 模糊 · 3 忘记（当前为筛选结果自测，不覆盖全部自测进度）")
                 .font(.footnote).foregroundStyle(Palette.muted)
-        }.task(id: practice.current) {
+        }
+        .noFocusRing()
+        .task(id: practice.current) {
+            resetSpellingInput()
             guard let word = practice.current else { return }
+            if let onSpeak, autoSpeak == "en-GB" || autoSpeak == "en-US" {
+                onSpeak(word, autoSpeak == "en-GB" ? .british : .american)
+            }
+            if spellingMode { spellingFocused = true }
             let result = try? await core.request("dictionary.lookup", ["word": .string(word)])
             guard !Task.isCancelled, practice.current == word else { return }
             lookup = (word, result ?? .null)
         }.onDisappear { flipTask?.cancel() }
+    }
+
+    private func spellingFront(word: String, data: J?) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 15, style: .continuous)
+        let phonetic = data?["entry"]["phonetic"].text ?? ""
+        let localMeaning = data?["entry"]["translation"].text.decodedLines ?? ""
+        return VStack(spacing: 12) {
+            Text("第 \(practice.groupNumber) 组 · 拼写默写")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(Palette.deep)
+                .padding(.horizontal, 11).padding(.vertical, 4)
+                .background(Palette.paper.opacity(0.88), in: Capsule())
+                .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.8))
+
+            Text(localMeaning.isEmpty ? "请听发音并拼写该单词" : localMeaning)
+                .font(.system(size: 18, weight: .semibold))
+                .lineSpacing(4)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .padding(.horizontal, 12)
+
+            if !phonetic.isEmpty {
+                Text("/\(phonetic.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/")
+                    .font(.system(size: 14.5)).foregroundStyle(Palette.muted)
+            }
+
+            TextField("输入英文拼写…", text: $typedSpelling)
+                .textFieldStyle(.plain)
+                .font(.system(size: 19, weight: .medium))
+                .multilineTextAlignment(.center)
+                .focused($spellingFocused)
+                .onSubmit { submitSpelling(word) }
+                .padding(.horizontal, 14).frame(width: 320, height: 40)
+                .controlSurface()
+
+            if !spellingClue.isEmpty {
+                Text(spellingClue)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(Palette.deep)
+            }
+
+            HStack(spacing: 8) {
+                Button("核对拼写") { submitSpelling(word) }
+                    .buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                Button("提示首字母") {
+                    if word.count <= 2 {
+                        spellingClue = "\(word.prefix(1))…"
+                    } else {
+                        spellingClue = "\(word.prefix(1))\(String(repeating: "_", count: max(1, word.count - 2)))\(word.suffix(1))（\(word.count) 字母）"
+                    }
+                    spellingFocused = true
+                }.buttonStyle(MemoButtonStyle(compact: true))
+                Button("直接看答案") {
+                    spellingFeedback = ""
+                    flip()
+                }.buttonStyle(MemoButtonStyle(compact: true))
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(colors: [Palette.paper, Palette.wash], startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: shape
+        )
+        .overlay(shape.stroke(Palette.border, lineWidth: 0.9))
+        .shadow(color: Color(red: 0.06, green: 0.25, blue: 0.40).opacity(0.09), radius: 14, y: 5)
+    }
+
+    private func submitSpelling(_ word: String) {
+        let trimmed = typedSpelling.trimmed
+        if trimmed.isEmpty { flip(); return }
+        spellingCorrect = trimmed.caseInsensitiveCompare(word) == .orderedSame
+        spellingFeedback = spellingCorrect ? "✓ 拼写正确" : "✕ 你的拼写：\(trimmed)"
+        flip()
+    }
+
+    private func resetSpellingInput() {
+        typedSpelling = ""
+        spellingFeedback = ""
+        spellingCorrect = false
+        spellingClue = ""
     }
 
     private func face(word: String, data: J?, back: Bool) -> some View {
@@ -171,15 +323,23 @@ struct StubbornFlashcardView: View {
         let phonetic = data?["entry"]["phonetic"].text ?? ""
         return Group {
             if back {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 11) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(word).font(.system(size: 28, weight: .bold))
                         if !phonetic.isEmpty {
                             Text("/\(phonetic.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/")
                                 .font(.system(size: 14.5)).foregroundStyle(Palette.muted)
                         }
+                        if !spellingFeedback.isEmpty {
+                            Text(spellingFeedback)
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundStyle(spellingCorrect ? Color(red: 0.06, green: 0.54, blue: 0.36) : Color(red: 0.78, green: 0.16, blue: 0.26))
+                                .padding(.horizontal, 8).padding(.vertical, 2.5)
+                                .background((spellingCorrect ? Color(red: 0.08, green: 0.72, blue: 0.48) : Color(red: 0.96, green: 0.25, blue: 0.37)).opacity(0.14), in: Capsule())
+                        }
                         Spacer(minLength: 6)
-                        Text("点击翻回")
+                        Button("点击翻回", action: flip)
+                            .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(Palette.deep)
                             .padding(.horizontal, 9).padding(.vertical, 3)
@@ -193,20 +353,30 @@ struct StubbornFlashcardView: View {
                             WordListMeaning(core: core, word: word, local: data?["entry"]["translation"].text, concealed: !revealed, fontSize: 16.5) { _ in }
                                 .lineSpacing(4)
                                 .id(word)
-                            if let note = data?["notes"].list.first?["text"].text, !note.isEmpty {
-                                HStack(alignment: .top, spacing: 9) {
-                                    Text("记")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(Palette.deep)
-                                        .frame(width: 22, height: 22)
-                                        .background(Palette.accent.opacity(0.2), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                    Text(note).font(.system(size: 14.5)).lineSpacing(4).foregroundStyle(Palette.ink.opacity(0.9)).fixedSize(horizontal: false, vertical: true)
+                            if let firstNote = data?["notes"].list.first {
+                                let breakdowns = firstNote["breakdowns"].list
+                                if !breakdowns.isEmpty {
+                                    MnemonicPartsView(breakdowns: [breakdowns[0]])
+                                        .padding(10)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Palette.paper.opacity(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.border.opacity(0.85)))
+                                        .padding(.top, 4)
+                                } else if !firstNote["text"].text.isEmpty {
+                                    HStack(alignment: .top, spacing: 9) {
+                                        Text("记")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundStyle(Palette.deep)
+                                            .frame(width: 22, height: 22)
+                                            .background(Palette.accent.opacity(0.2), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                        Text(firstNote["text"].text).font(.system(size: 14.5)).lineSpacing(4).foregroundStyle(Palette.ink.opacity(0.9)).fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    .padding(11)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Palette.paper.opacity(0.9), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.border.opacity(0.85)))
+                                    .padding(.top, 4)
                                 }
-                                .padding(11)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Palette.paper.opacity(0.9), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.border.opacity(0.85)))
-                                .padding(.top, 4)
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -296,6 +466,7 @@ struct StubbornFlashcardView: View {
         flipTask?.cancel()
         practice.reset(words: freshWords)
         revealed = false
+        resetSpellingInput()
         swipeOffset = 0
         swipeAngle = 0
         swipeOpacity = 1

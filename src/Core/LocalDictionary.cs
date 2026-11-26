@@ -165,6 +165,97 @@ public sealed class LocalDictionary : IDisposable
     internal string SourceWord(int id)=>_sourceWords[id];
     internal string IndexPath=>Path.Combine(_directory,"dictionary.index.tsv");
     internal DictionaryEntry? LookupBySourceId(int id)=>id>=0&&id<_sourceWords.Count?Lookup(_sourceWords[id]):null;
+    public int FrequencyRank(string word)=>_frequencyRanks.GetValueOrDefault(word.Trim(),int.MaxValue);
+    public IReadOnlyList<string> SuggestSpellingCorrections(string query, int limit = 5)
+    {
+        query = query.Trim().ToLowerInvariant();
+        if (limit <= 0 || query.Length is < 3 or > 30 || _keys.Length == 0) return Array.Empty<string>();
+        foreach (var ch in query)
+            if (ch is not ((>= 'a' and <= 'z') or '-' or '\'')) return Array.Empty<string>();
+
+        var maxDist = query.Length <= 4 ? 1 : 2;
+        var q0 = query[0];
+        var q1 = query[1];
+        var scored = new List<(string Word, int Distance, int Rank)>(64);
+
+        foreach (var candidate in _keys)
+        {
+            var lenDiff = candidate.Length - query.Length;
+            if (lenDiff < -maxDist || lenDiff > maxDist || candidate.Length < 2) continue;
+            var c0 = char.ToLowerInvariant(candidate[0]);
+            var c1 = char.ToLowerInvariant(candidate[1]);
+            if (c0 != q0 && c0 != q1 && c1 != q0) continue;
+
+            var validChars = true;
+            for (var i = 0; i < candidate.Length; i++)
+            {
+                var ch = candidate[i];
+                if (!((ch is >= 'a' and <= 'z') || (ch is >= 'A' and <= 'Z') || ch is '-' or '\''))
+                {
+                    validChars = false;
+                    break;
+                }
+            }
+            if (!validChars) continue;
+
+            var distance = BoundedDamerauLevenshtein(query, candidate, maxDist);
+            if (distance > 0 && distance <= maxDist)
+            {
+                scored.Add((candidate, distance, _frequencyRanks.GetValueOrDefault(candidate, int.MaxValue)));
+            }
+        }
+
+        if (scored.Count == 0) return Array.Empty<string>();
+        return scored
+            .OrderBy(item => item.Distance)
+            .ThenBy(item => item.Rank == int.MaxValue ? 1 : 0)
+            .ThenBy(item => item.Rank)
+            .ThenBy(item => Math.Abs(item.Word.Length - query.Length))
+            .ThenBy(item => item.Word, StringComparer.OrdinalIgnoreCase)
+            .Select(item => item.Word)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(limit)
+            .ToArray();
+    }
+
+    private static int BoundedDamerauLevenshtein(string source, string target, int maxDistance)
+    {
+        var n = source.Length;
+        var m = target.Length;
+        if (Math.Abs(n - m) > maxDistance) return maxDistance + 1;
+        var width = m + 1;
+        Span<int> prevPrev = stackalloc int[width];
+        Span<int> prev = stackalloc int[width];
+        Span<int> curr = stackalloc int[width];
+
+        for (var j = 0; j <= m; j++) prev[j] = j;
+
+        for (var i = 1; i <= n; i++)
+        {
+            curr[0] = i;
+            var rowMin = curr[0];
+            var si = source[i - 1];
+            var siPrev = i > 1 ? source[i - 2] : '\0';
+
+            for (var j = 1; j <= m; j++)
+            {
+                var tj = char.ToLowerInvariant(target[j - 1]);
+                var cost = si == tj ? 0 : 1;
+                var value = Math.Min(Math.Min(prev[j] + 1, curr[j - 1] + 1), prev[j - 1] + cost);
+
+                if (i > 1 && j > 1 && si == char.ToLowerInvariant(target[j - 2]) && siPrev == tj)
+                    value = Math.Min(value, prevPrev[j - 2] + 1);
+
+                curr[j] = value;
+                if (value < rowMin) rowMin = value;
+            }
+            if (rowMin > maxDistance) return maxDistance + 1;
+
+            prev.CopyTo(prevPrev);
+            curr.CopyTo(prev);
+        }
+        return prev[m];
+    }
     public IReadOnlyList<string> Suggest(string prefix, int count = 20)
     {
         prefix = prefix.Trim();

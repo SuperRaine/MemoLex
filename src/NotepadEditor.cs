@@ -11,7 +11,7 @@ namespace MemoLex;
 
 internal static class NotepadEditor
 {
-    internal static Window Build(Window owner,CloudNotepad original,MaiMemoClient api,Action<CloudNotepad> saved,LocalDictionary? dictionary=null,Func<string,Task>? lookup=null,Action<string>? deleted=null,Func<Window,CloudNotepad,int,bool>? confirmDeletion=null,OnlineDictionaryClient? online=null)
+    internal static Window Build(Window owner,CloudNotepad original,MaiMemoClient api,Action<CloudNotepad> saved,LocalDictionary? dictionary=null,Func<string,Task>? lookup=null,Action<string>? deleted=null,Func<Window,CloudNotepad,int,bool>? confirmDeletion=null,OnlineDictionaryClient? online=null,Action<Window,IReadOnlyList<string>,bool>? startFlashcards=null)
     {
         var dialog=InputDialog.Shell(owner,"我的云词本",out _);
         dialog.Width=800;dialog.Height=730;dialog.MinWidth=620;dialog.MinHeight=520;
@@ -23,7 +23,13 @@ internal static class NotepadEditor
         var browse=new Grid {Margin=new Thickness(10,10,10,4)};
         foreach(var height in new[]{GridLength.Auto,GridLength.Auto,GridLength.Auto,GridLength.Auto,new GridLength(1,GridUnitType.Star),GridLength.Auto})browse.RowDefinitions.Add(new RowDefinition {Height=height});
         void Add(UIElement item,int row){Grid.SetRow(item,row);browse.Children.Add(item);}
-        var titleDisplay=new TextBlock {Text=original.Title,FontSize=16,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,10),TextTrimming=TextTrimming.CharacterEllipsis};Add(titleDisplay,0);
+        var headerBar=new DockPanel {Margin=new Thickness(0,0,0,10)};
+        var flashcardBtn=new Button {Content="卡片自测",Style=(Style)Application.Current.FindResource("AccentButton"),FontSize=12,Padding=new Thickness(13,6,13,6),Visibility=startFlashcards!=null?Visibility.Visible:Visibility.Collapsed,IsEnabled=false};
+        DockPanel.SetDock(flashcardBtn,Dock.Right);
+        headerBar.Children.Add(flashcardBtn);
+        var titleDisplay=new TextBlock {Text=original.Title,FontSize=16,FontWeight=FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center,TextTrimming=TextTrimming.CharacterEllipsis};
+        headerBar.Children.Add(titleDisplay);
+        Add(headerBar,0);
         var fields=new StackPanel();
         fields.Children.Add(new TextBlock {Text="云词本信息",FontSize=18,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(11,34,52)),Margin=new Thickness(0,0,0,14)});
         fields.Children.Add(InputDialog.Text("词本名称"));
@@ -102,6 +108,7 @@ internal static class NotepadEditor
             delete.IsEnabled=!busy&&selectedCount>0;clear.IsEnabled=!busy&&list.SelectedItems.Count>0;save.IsEnabled=undo.IsEnabled=!busy&&Dirty();
             delete.Content=selectedCount>0&&selectedCount==totalWords?"删除云词本…":"删除选中";
             entryAction.IsEnabled=!busy;
+            flashcardBtn.IsEnabled=!busy&&shown>0;
         }
         void Filter()
         {
@@ -164,6 +171,13 @@ internal static class NotepadEditor
         void SelectAll(){changing=true;try{list.SelectedItems.Clear();foreach(var row in list.Items.Cast<WordListRow>().Where(row=>!row.IsChapter))list.SelectedItems.Add(row);}finally{changing=false;}UpdateState();}
         selectAll.Click+=(_,_)=>SelectAll();clear.Click+=(_,_)=>{list.SelectedItems.Clear();UpdateState();};
         delete.Click+=async(_,_)=>await Remove(SelectedWords());
+        flashcardBtn.Click+=(_,_)=>
+        {
+            if(startFlashcards==null)return;
+            var visibleWords=list.Items.Cast<WordListRow>().Where(row=>!row.IsChapter).Select(row=>row.Word).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            if(visibleWords.Length==0)return;
+            startFlashcards(dialog,visibleWords,string.IsNullOrWhiteSpace(search.Text));
+        };
         list.PreviewKeyDown+=async(_,e)=>
         {
             if(e.Key==Key.Delete&&(Keyboard.Modifiers&(ModifierKeys.Alt|ModifierKeys.Windows))==ModifierKeys.None){e.Handled=true;await Remove(SelectedWords());}

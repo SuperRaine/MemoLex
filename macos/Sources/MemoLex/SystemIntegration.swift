@@ -281,6 +281,7 @@ private struct ShortcutRecorder: NSViewRepresentable {
     }
     private func invoke(_ id: UInt32) {
         if id == 3, model.sheet == nil { screenshot.start(); return }
+        if id == 1, model.sheet == nil, model.preferences.useQuickLookupBar { model.showQuickLookup?(); return }
         model.showWindow?()
         guard model.sheet == nil else { return }
         if id == 1 { model.focusSearch?() }

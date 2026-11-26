@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private Vocabulary? _vocabulary;
     private HwndSource? _source;
     private TrayIcon? _tray;
+    private QuickLookupBar? _quickLookupBar;
     private MemoLex.Desktop.UpdateManager? _updates;
     private bool _exitRequested;
     private readonly bool _allowCloud;
@@ -59,7 +60,9 @@ public partial class MainWindow : Window
         _onlineDictionary = new OnlineDictionaryClient(_translation);
         _chinese=chinese??new ChineseReverseSearch(_dictionary);
         _mnemonics=mnemonics??new MnemonicStore();
+        ThemeManager.Apply(_preferences.ThemeMode);
         InitializeComponent();
+        UpdateThemeToggleIcon();
         RestoreStubbornWords();
         Activated+=(_,_)=>{if(_ready)_=RefreshStubbornWordsAsync();};
         RoundedWindow.Attach(this);
@@ -83,6 +86,7 @@ public partial class MainWindow : Window
         };
         SourceInitialized += (_, _) =>
         {
+            ThemeManager.ApplyWindowFrame(this);
             InstallHotkey();
             if (!desktopIntegration) return;
             RefreshDoubleCopy();
@@ -99,6 +103,7 @@ public partial class MainWindow : Window
             _hover?.Dispose();_accountTimer?.Stop();_accountWatcher?.Dispose();_updates?.Dispose();
             _studyCts?.Cancel();
             _stubbornCts?.Cancel();_stubbornDialog?.Close();
+            _quickLookupBar?.Close();
             _studyLoadCts?.Cancel();_accountCts.Cancel();_api.AuthenticationResult-=OnApiAuthenticationResult;
             _studyDayTimer?.Stop();
             _lookupCts?.Cancel();
@@ -146,7 +151,7 @@ public partial class MainWindow : Window
         if (_tray != null) return true;
         try
         {
-            _tray = new TrayIcon(RestoreWindow, () => { RestoreWindow(); EditSettings("常规"); }, ExitApplication);
+            _tray = new TrayIcon(RestoreWindow, () => { RestoreWindow(); EditSettings("常规"); }, ExitApplication, OpenQuickLookupBar);
             return true;
         }
         catch { return false; }
@@ -264,6 +269,7 @@ public partial class MainWindow : Window
             ? $"BNC 词频排名 {frequency:N0}"
             : null;
         RenderTags(entry);
+        RenderSpellingSuggestions(word, entry == null);
         ResultScroll.ScrollToTop();
         UiMotion.Reveal(DefinitionSection);
         ResetExampleView();
@@ -273,6 +279,7 @@ public partial class MainWindow : Window
             _preferences.Save();
             UpdateHistory();
         }
+        UpdateRepeatedWordBanner();
         _navigating = false;
         if (addNavigationEntry) _navigation.Navigate(CaptureView());
         UpdateNavigationButtons();
@@ -441,16 +448,19 @@ public partial class MainWindow : Window
             card.Children.Add(BuildExampleTranslation("原题译文："+sentence.ContextTranslation,sentence.ContextEnglish,sourceWord,matches,sentence.MatchedTranslations));
         var cardBorder = new Border
         {
-            Child = card, Background = Brush("#F9FCFF"), BorderBrush = Brush("#DAEAF7"), BorderThickness = new Thickness(1),
+            Child = card, BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(12), Padding = new Thickness(18, 15, 18, 16), Margin = new Thickness(0, 0, 0, 11)
         };
+        cardBorder.SetResourceReference(Border.BackgroundProperty, "CardAltBrush");
+        cardBorder.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         ExamplesPanel.Children.Add(cardBorder);
         UiMotion.Reveal(cardBorder, distance: 5);
     }
     private static readonly IReadOnlySet<string> EmptyMatches = new HashSet<string>();
     private TextBlock BuildSentenceText(string text, IReadOnlySet<string> matches, string sourceWord, double fontSize = 16)
     {
-        var block = new TextBlock { TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), FontSize = fontSize, LineHeight = 27, Foreground = Brush("#142E43") };
+        var block = new TextBlock { TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), FontSize = fontSize, LineHeight = 27 };
+        block.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         FillWordLinks(block, text, matches, sourceWord);
         return block;
     }
@@ -458,6 +468,7 @@ public partial class MainWindow : Window
     {
         if(clear)block.Inlines.Clear();
         var parts = ExampleText.Tokenize(text);
+        var dark = ThemeManager.IsDark;
         for (var index = 0; index < parts.Count; index++)
         {
             var part = parts[index];
@@ -467,7 +478,7 @@ public partial class MainWindow : Window
             {
                 block.Inlines.Add(new Run(part.Text + ".")
                 {
-                    Foreground = Brush("#0B84BD"),
+                    Foreground = Brush(dark ? "#5EC8FA" : "#0B84BD"),
                     FontWeight = FontWeights.Bold,
                     FontStyle = FontStyles.Italic
                 });
@@ -479,8 +490,8 @@ public partial class MainWindow : Window
             if (part.LookupWord == null) { block.Inlines.Add(new Run(part.Text)); continue; }
             var word = part.LookupWord;
             var highlighted = matches.Contains(word);
-            var link = new Hyperlink(new Run(part.Text)) { Foreground = Brush(highlighted ? "#085680" : "#183952"), TextDecorations = null,
-                Background=highlighted?Brush("#D2EFFE"):Brushes.Transparent,
+            var link = new Hyperlink(new Run(part.Text)) { Foreground = Brush(highlighted ? (dark ? "#8BD9FF" : "#085680") : (dark ? "#E6F1F8" : "#183952")), TextDecorations = null,
+                Background=highlighted?Brush(dark ? "#1B4A68" : "#D2EFFE"):Brushes.Transparent,
                 FontWeight = highlighted ? FontWeights.SemiBold : FontWeights.Normal, ToolTip = "查询 " + word, Cursor = Cursors.Hand };
             link.ContextMenu=HaiciWordMenu(word);
             link.MouseEnter += (_, _) => link.TextDecorations = TextDecorations.Underline;
@@ -500,10 +511,12 @@ public partial class MainWindow : Window
             if((word.EndsWith("'s",StringComparison.OrdinalIgnoreCase)||word.EndsWith("’s",StringComparison.OrdinalIgnoreCase))&&_dictionary.Lookup(word[..^2])?.translation is {Length:>0} possessiveBase)values.Add(possessiveBase);
             return values.Count==0?null:string.Join('\n',values);
         }
+        var dark = ThemeManager.IsDark;
         var terms=TextHighlights.TranslationTerms(english,text,sourceWord,matches,Meaning,explicitTerms,aligned);
-        var block=new TextBlock { TextWrapping=TextWrapping.Wrap,FontSize=13.5,LineHeight=23,Foreground=Brush("#4D6D85"),Margin=new Thickness(0,9,0,0) };
+        var block=new TextBlock { TextWrapping=TextWrapping.Wrap,FontSize=13.5,LineHeight=23,Margin=new Thickness(0,9,0,0) };
+        block.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         foreach(var part in TextHighlights.Split(text,terms))
-            if(part.Highlighted)block.Inlines.Add(new Run(part.Text){Background=Brush("#D2EFFE"),Foreground=Brush("#085680"),FontWeight=FontWeights.SemiBold});
+            if(part.Highlighted)block.Inlines.Add(new Run(part.Text){Background=Brush(dark ? "#1B4A68" : "#D2EFFE"),Foreground=Brush(dark ? "#8BD9FF" : "#085680"),FontWeight=FontWeights.SemiBold});
             else FillWordLinks(block,part.Text,matches,sourceWord,clear:false);
         return block;
     }
@@ -816,8 +829,104 @@ public partial class MainWindow : Window
     }
     private void ApplySettingsUI()
     {
+        ThemeManager.Apply(_preferences.ThemeMode);
+        UpdateThemeToggleIcon();
         UpdateShortcutHints();
         UpdateExamCountdown();
+    }
+    private void UpdateThemeToggleIcon()
+    {
+        if (ThemeToggleGlyph == null) return;
+        ThemeToggleGlyph.Text = ThemeManager.IsDark ? "\uE706" : "\uE708";
+        ThemeToggleButton.ToolTip = ThemeManager.IsDark ? "当前：深色模式（点击切换浅色）" : "当前：浅色模式（点击切换深色）";
+    }
+    private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        _preferences.ThemeMode = ThemeManager.IsDark ? "light" : "dark";
+        _preferences.Save();
+        ThemeManager.Apply(_preferences.ThemeMode);
+        UpdateThemeToggleIcon();
+        if (ValidWord(_word)) RenderNotes(_word, _displayedNotes);
+    }
+    private void QuickLookupButton_Click(object sender, RoutedEventArgs e) => OpenQuickLookupBar();
+    private void OpenQuickLookupBar()
+    {
+        if (!_ready) return;
+        _quickLookupBar ??= new QuickLookupBar(
+            _dictionary,
+            _mnemonics,
+            (w, accent) => PlaySpeechAsync(w, accent),
+            async w =>
+            {
+                var target = HoverBookmarkStatus(w);
+                if (!target.Available) return target.Title;
+                if (target.Saved) return $"「{w}」已在「{target.Title}」中";
+                return await SaveHoverWordAsync(w, target) ?? $"已加入「{target.Title}」";
+            },
+            w => { RestoreWindow(); _ = LoadWordAsync(w); },
+            () => MnemonicAccountKey);
+        _quickLookupBar.Popup();
+    }
+    private void DashboardButton_Click(object sender, RoutedEventArgs e)
+    {
+        var accountId = (_tokens.ActiveAccount ?? _tokens.ExpiredAccount)?.Id ?? "default";
+        var progress = FlashcardProgressStore.Load(_tokens.ProfileDirectory, accountId);
+        var dialog = LearningDashboardDialog.Build(this, _preferences, progress, _stubbornWords?.Total ?? 0, w => _ = LoadWordAsync(w));
+        dialog.ShowDialog();
+    }
+    private void RenderSpellingSuggestions(string query, bool notFound)
+    {
+        SpellingSuggestionPanel.Children.Clear();
+        if (!notFound)
+        {
+            SpellingSuggestionBanner.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var suggestions = _dictionary.SuggestSpellingCorrections(query, 5);
+        if (suggestions.Count == 0)
+        {
+            SpellingSuggestionBanner.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var pillStyle = TryFindResource("PillButton") as Style;
+        foreach (var item in suggestions)
+        {
+            var candidate = item;
+            var btn = new Button
+            {
+                Content = candidate,
+                FontSize = 12,
+                Padding = new Thickness(11, 4, 11, 4),
+                Margin = new Thickness(0, 0, 7, 4),
+                ToolTip = $"点击查询「{candidate}」"
+            };
+            if (pillStyle != null) btn.Style = pillStyle;
+            btn.Click += async (_, _) => await LoadWordAsync(candidate);
+            SpellingSuggestionPanel.Children.Add(btn);
+        }
+        SpellingSuggestionBanner.Visibility = Visibility.Visible;
+        UiMotion.Reveal(SpellingSuggestionBanner, distance: 4);
+    }
+    private void UpdateRepeatedWordBanner()
+    {
+        if (RepeatedWordBanner == null) return;
+        if (_viewTarget != ViewTarget.Word || !ValidWord(_word))
+        {
+            RepeatedWordBanner.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var entry = _preferences.SearchHistory.FirstOrDefault(h => h.Word.Equals(_word, StringComparison.OrdinalIgnoreCase));
+        var count = entry?.LookupCount ?? 0;
+        var alreadyInPad = _membershipWord.Equals(_word, StringComparison.OrdinalIgnoreCase) && _isMember;
+        if (count >= 3 && !alreadyInPad)
+        {
+            RepeatedWordText.Text = $"「{_word}」你已查询 {count} 次，疑似隐形顽固词，建议收藏到云词本巩固记忆。";
+            RepeatedWordBanner.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            RepeatedWordBanner.Visibility = Visibility.Collapsed;
+        }
     }
     private void SetCloudWriteBusy(bool busy)
     {
@@ -871,6 +980,7 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(new Action(async () =>
             {
                 if(command=="screenshot"){await StartScreenshotTranslationAsync();return;}
+                if(command=="search"&&_preferences.UseQuickLookupBar){OpenQuickLookupBar();return;}
                 RestoreWindow();
                 if(OwnedWindows.Cast<Window>().LastOrDefault(window=>window.IsVisible) is { } dialog)
                 {

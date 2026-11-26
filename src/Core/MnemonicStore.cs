@@ -6,6 +6,7 @@ using System.Text.Json;
 namespace MemoLex.Core;
 
 public sealed record StoredMnemonic(string Id,string NoteType,string Text,string? CloudId=null,string Origin="local",string? AccountKey=null);
+public sealed record MorphemeFamilyMember(string Word,string Meaning);
 
 public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null)
 {
@@ -47,6 +48,51 @@ public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null
         }
         if(matched.Count>0||!isAffix)return matched;
         return fallback;
+    }
+    public IReadOnlyList<MorphemeFamilyMember> FindMorphemeFamily(string form,string meaning,string excludeWord,Func<string,string?>? lookupMeaning=null,int maxCount=18)
+    {
+        var key=MnemonicParts.NormalizeFormKey(form);
+        if(key.Length<2||maxCount<=0)return [];
+        Dictionary<string,(string Word,string Meaning)[]> index;
+        lock(_gate)
+        {
+            index=_morphemeIndex??=BuildMorphemeIndex(_bundled);
+        }
+        if(!index.TryGetValue(key,out var entries))return [];
+        var targetChars=MeaningCharacters(meaning);
+        var isAffix=key.StartsWith('-')||key.EndsWith('-');
+        var matched=new List<(string Word,string MorphemeMeaning)>(maxCount);
+        var fallback=new List<(string Word,string MorphemeMeaning)>(maxCount);
+        foreach(var (candidate,candidateMeaning) in entries)
+        {
+            if(candidate.Equals(excludeWord,StringComparison.OrdinalIgnoreCase))continue;
+            var sharesMeaning=targetChars.Count>0&&SharesMeaning(targetChars,candidateMeaning);
+            if(sharesMeaning)
+            {
+                matched.Add((candidate,candidateMeaning));
+                if(matched.Count>=maxCount)break;
+            }
+            else if(isAffix&&fallback.Count<maxCount)
+            {
+                fallback.Add((candidate,candidateMeaning));
+            }
+        }
+        var chosen=matched.Count>0||!isAffix?matched:fallback;
+        var results=new List<MorphemeFamilyMember>(chosen.Count);
+        foreach(var (candidate,morphemeMeaning) in chosen)
+        {
+            var rawMeaning=lookupMeaning?.Invoke(candidate);
+            var gloss=CompactMeaning(rawMeaning);
+            if(gloss.Length==0)gloss=morphemeMeaning;
+            results.Add(new(candidate,gloss));
+        }
+        return results;
+    }
+    private static string CompactMeaning(string? meaning)
+    {
+        if(string.IsNullOrWhiteSpace(meaning))return "";
+        var firstLine=meaning.Replace("\r\n","\n").Replace('\r','\n').Split('\n',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries).FirstOrDefault()??"";
+        return firstLine.Length<=48?firstLine:firstLine[..48]+"…";
     }
     private static HashSet<char> MeaningCharacters(string text)
     {

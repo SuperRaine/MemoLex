@@ -72,6 +72,7 @@ struct MainView: View {
             case .mnemonic: MnemonicView(model: model)
             case .notepad: NotebookView(model: model)
             case .todayPlan: TodayStudyView(model: model)
+            case .dashboard: LearningDashboardView(model: model)
             }
         }
         .onAppear { model.focusSearch = { searchFocused = true } }
@@ -308,6 +309,8 @@ private struct MainTitlebar: View {
                 }
             }.buttonStyle(PillButtonStyle()).fixedSize(horizontal: true, vertical: false).layoutPriority(2)
                 .help(model.titleAccount + " · " + model.accountStatus)
+            titleButton("bolt.fill", label: "悬浮快查条") { model.showQuickLookup?() }
+            titleButton("chart.bar", label: "学习统计看板") { model.sheet = .dashboard }
             titleButton("gearshape", label: "设置") { model.sheet = .settings }
             HStack(spacing: 7) {
                 OwlImage().frame(width: 28, height: 28).accessibilityHidden(true)
@@ -440,6 +443,42 @@ private struct WordPage: View {
                     }.buttonStyle(PillButtonStyle()).padding(.top, 8).padding(.bottom, 14)
                     wordTags
                     definitionSource.font(.caption).padding(.top, 8)
+                    if model.entry == .null && !model.spellingSuggestions.isEmpty {
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("离线词库未找到精确匹配，你是不是要查：")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Palette.deep)
+                            MorphemeFlowLayout(spacing: 6, lineSpacing: 6, expandLast: false) {
+                                ForEach(model.spellingSuggestions, id: \.self) { candidate in
+                                    Button(candidate) { model.lookup(candidate) }
+                                        .buttonStyle(PillButtonStyle())
+                                }
+                            }
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Palette.wash.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.accent.opacity(0.28), lineWidth: 0.8))
+                        .padding(.top, 12)
+                    }
+                    if !model.word.isEmpty && model.currentWordLookupCount >= 3 && !model.membership {
+                        HStack(spacing: 10) {
+                            Text("「\(model.word)」你已查询 \(model.currentWordLookupCount) 次，疑似隐形顽固词，建议收藏到云词本巩固记忆。")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color(red: 0.65, green: 0.34, blue: 0.03))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 8)
+                            Button("＋ 加入云词本") { Task { await model.toggleMembership() } }
+                                .buttonStyle(MemoButtonStyle(compact: true))
+                            Button("＋ 今日新学") { model.addToday() }
+                                .buttonStyle(MemoButtonStyle(compact: true))
+                        }
+                        .padding(.horizontal, 13).padding(.vertical, 9)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.13), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35), lineWidth: 0.85))
+                        .padding(.top, 12)
+                    }
                     rule
                     Text("中文释义").sectionLabel().padding(.bottom, 8)
                     LinkedText(text: definitionText, size: 17, highlightPartOfSpeech: !model.word.isEmpty)
@@ -476,7 +515,13 @@ private struct WordPage: View {
                                     .background(Palette.accent.opacity(0.18), in: Capsule())
                             }
                             if hasBreakdowns {
-                                MnemonicPartsView(breakdowns: breakdowns)
+                                MnemonicPartsView(
+                                    breakdowns: breakdowns,
+                                    lookupWord: { model.lookup($0) },
+                                    loadFamily: { form, meaning in
+                                        await model.lookupMorphemeFamily(form: form, meaning: meaning, excludeWord: model.word)
+                                    }
+                                )
                                     .id("\(model.word)\n\(note["text"].text)")
                             }
                             if !remainingText.trimmed.isEmpty {
@@ -795,6 +840,14 @@ private struct ChinesePage: View {
 private struct TranslationPage: View {
     @ObservedObject var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var selectedWords: Set<String> = []
+    @State private var batchBusy = false
+    @State private var batchStatus = ""
+
+    private var extractedKey: String {
+        model.extractedWords.map { $0["word"].text }.joined(separator: ",")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 9) {
@@ -831,8 +884,93 @@ private struct TranslationPage: View {
                     .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).strokeBorder(Palette.accent.opacity(0.32), lineWidth: 0.85))
                     .shadow(color: Color(red: 0.06, green: 0.24, blue: 0.36).opacity(0.06), radius: 14, y: 4)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.17), value: model.translationOutput.isEmpty)
+
+                    if !model.extractedWords.isEmpty {
+                        Card {
+                            VStack(alignment: .leading, spacing: 11) {
+                                HStack(spacing: 8) {
+                                    Text("生词一键提取 · 识别到 \(model.extractedWords.count) 个重点词（已选 \(selectedWords.count)）")
+                                        .font(.system(size: 13.5, weight: .semibold))
+                                    Spacer()
+                                    Button(selectedWords.count == model.extractedWords.count ? "取消全选" : "全选") {
+                                        if selectedWords.count == model.extractedWords.count {
+                                            selectedWords.removeAll()
+                                        } else {
+                                            selectedWords = Set(model.extractedWords.map { $0["word"].text })
+                                        }
+                                    }.buttonStyle(MemoButtonStyle(compact: true))
+                                    Button(batchBusy ? "加入中…" : "＋ 批量加入云词本") {
+                                        Task { await batchAdd() }
+                                    }
+                                    .buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                                    .disabled(batchBusy || selectedWords.isEmpty)
+                                }
+                                MorphemeFlowLayout(spacing: 7, lineSpacing: 7, expandLast: false) {
+                                    ForEach(Array(model.extractedWords.enumerated()), id: \.offset) { _, item in
+                                        let w = item["word"].text
+                                        let tag = item["tags"].list.first?.text ?? ""
+                                        let ipa = item["phonetic"].text
+                                        let meaning = item["meaning"].text
+                                        let chosen = selectedWords.contains(w)
+                                        Button {
+                                            if chosen { selectedWords.remove(w) }
+                                            else { selectedWords.insert(w) }
+                                        } label: {
+                                            HStack(spacing: 5) {
+                                                Text(chosen ? "✓" : "＋")
+                                                    .font(.system(size: 11, weight: .bold))
+                                                    .foregroundStyle(chosen ? Palette.deep : Palette.muted)
+                                                Text(w)
+                                                    .font(.system(size: 12.5, weight: .semibold))
+                                                    .foregroundStyle(chosen ? Palette.ink : Palette.muted)
+                                                if !tag.isEmpty {
+                                                    Text(tag)
+                                                        .font(.system(size: 10, weight: .semibold))
+                                                        .foregroundStyle(Palette.deep)
+                                                }
+                                            }
+                                            .padding(.horizontal, 10).padding(.vertical, 5)
+                                            .background(chosen ? Palette.wash : Palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(chosen ? Palette.accent : Palette.border, lineWidth: 1))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .noFocusRing()
+                                        .help("\(w)\(ipa.isEmpty ? "" : " /\(ipa)/")\n\(meaning)")
+                                        .contextMenu {
+                                            Button("查看「\(w)」释义") { model.lookup(w) }
+                                        }
+                                    }
+                                }
+                                if !batchStatus.isEmpty {
+                                    Text(batchStatus).font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                                }
+                            }
+                        }
+                    }
                 }
             }
+        }
+        .onChange(of: extractedKey) { _ in
+            selectedWords = Set(model.extractedWords.map { $0["word"].text })
+            batchStatus = ""
+        }
+    }
+
+    private func batchAdd() async {
+        let words = model.extractedWords.map { $0["word"].text }.filter { selectedWords.contains($0) }
+        guard !words.isEmpty else { return }
+        batchBusy = true
+        batchStatus = "正在批量加入云词本…"
+        defer { batchBusy = false }
+        do {
+            let added = try await model.batchAddToNotepad(words)
+            if added == 0 {
+                batchStatus = "所选 \(words.count) 个单词均已在当前云词本中。"
+            } else {
+                batchStatus = "✓ 已将 \(added) 个新词批量加入「\(model.selectedNotepadTitle)」"
+            }
+        } catch {
+            batchStatus = error.localizedDescription
         }
     }
 }

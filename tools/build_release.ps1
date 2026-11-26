@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$DataDirectory,
     [string]$WebViewDirectory,
     [string]$DotnetCommand='dotnet',
@@ -25,7 +25,7 @@ if($DeepLKeyFile) {
     if(-not (Test-Path -LiteralPath $keyPath -PathType Leaf)){throw 'The DeepL key file is missing.'}
     $translationArguments+="-p:MemoLexDeepLKeyFile=$keyPath"
 }
-& $DotnetCommand publish (Join-Path $repo 'src/MemoLex.csproj') -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=8.0.34 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $runtime @translationArguments
+& $DotnetCommand publish (Join-Path $repo 'src/MemoLex.csproj') -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=8.0.34 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $runtime @translationArguments
 if($LASTEXITCODE -ne 0){throw 'Application build failed'}
 $targetData=Join-Path $runtime 'data';New-Item -ItemType Directory -Path $targetData -Force | Out-Null
 Copy-Item -Path (Join-Path $data '*') -Destination $targetData -Recurse -Force
