@@ -18,12 +18,15 @@ struct StubbornFlashcardView: View {
     @State private var swipeAngle: Double = 0
     @State private var swipeOpacity: Double = 1
     @State private var flipTask: Task<Void, Never>?
+    @State private var autoFlipTask: Task<Void, Never>?
     @State private var lookup: (word: String, data: J)?
     @State private var spellingMode = false
     @State private var typedSpelling = ""
     @State private var spellingFeedback = ""
     @State private var spellingCorrect = false
     @State private var spellingClue = ""
+    @State private var spellingClueTone = "info"
+    @State private var spellingHintLevel = 0
     @State private var autoSpeak: String
     @FocusState private var spellingFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -191,7 +194,7 @@ struct StubbornFlashcardView: View {
                         .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                     } else {
                         Text(spellingMode
-                             ? "根据释义输入英文拼写并按 Enter 核对，或点击「直接看答案」"
+                             ? "根据释义输入拼写，拼对自动翻面；没拼完点「核对拼写」获取提示"
                              : "先点击卡片翻面核对释义（空格键），再选择掌握程度")
                             .font(.callout)
                             .foregroundStyle(Palette.muted)
@@ -231,7 +234,10 @@ struct StubbornFlashcardView: View {
             let result = try? await core.request("dictionary.lookup", ["word": .string(word)])
             guard !Task.isCancelled, practice.current == word else { return }
             lookup = (word, result ?? .null)
-        }.onDisappear { flipTask?.cancel() }
+        }.onDisappear {
+            flipTask?.cancel()
+            autoFlipTask?.cancel()
+        }
     }
 
     private func spellingFront(word: String, data: J?) -> some View {
@@ -264,27 +270,39 @@ struct StubbornFlashcardView: View {
                 .multilineTextAlignment(.center)
                 .focused($spellingFocused)
                 .onSubmit { submitSpelling(word) }
+                .onChange(of: typedSpelling) { newValue in
+                    handleSpellingChanged(newValue, word: word)
+                }
                 .padding(.horizontal, 14).frame(width: 330, height: 44)
                 .controlSurface()
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(spellingBorderColor, lineWidth: spellingBorderColor == .clear ? 0 : 1.4)
+                )
 
             if !spellingClue.isEmpty {
                 Text(spellingClue)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(Palette.deep)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(spellingClueForeground)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .background(spellingClueBackground, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(spellingClueBorder, lineWidth: 0.9))
             }
 
             HStack(spacing: 8) {
                 Button("核对拼写") { submitSpelling(word) }
                     .buttonStyle(MemoButtonStyle(accent: true, compact: true))
-                Button("提示首字母") {
-                    if word.count <= 2 {
-                        spellingClue = "\(word.prefix(1))…"
-                    } else {
-                        spellingClue = "\(word.prefix(1))\(String(repeating: "_", count: max(1, word.count - 2)))\(word.suffix(1))（\(word.count) 字母）"
-                    }
+                Button("提示字母") {
+                    let maxReveal = max(1, word.count - 1)
+                    spellingHintLevel = min(maxReveal, spellingHintLevel + 1)
+                    let mask = maskSpellingWord(word, revealCount: spellingHintLevel)
+                    spellingClue = "提示：\(mask)（共 \(word.count) 字母）"
+                    spellingClueTone = "info"
                     spellingFocused = true
                 }.buttonStyle(MemoButtonStyle(compact: true))
                 Button("直接看答案") {
+                    autoFlipTask?.cancel()
                     spellingFeedback = ""
                     flip()
                 }.buttonStyle(MemoButtonStyle(compact: true))
@@ -300,19 +318,137 @@ struct StubbornFlashcardView: View {
         .shadow(color: Color(red: 0.06, green: 0.25, blue: 0.40).opacity(0.09), radius: 14, y: 5)
     }
 
+    private var spellingBorderColor: Color {
+        if spellingClue.isEmpty { return .clear }
+        switch spellingClueTone {
+        case "success": return Color(red: 0.06, green: 0.72, blue: 0.51)
+        case "warn": return Color(red: 0.96, green: 0.62, blue: 0.04)
+        default: return .clear
+        }
+    }
+
+    private var spellingClueForeground: Color {
+        switch spellingClueTone {
+        case "success": return Color(red: 0.06, green: 0.54, blue: 0.36)
+        case "warn": return Color(red: 0.71, green: 0.34, blue: 0.04)
+        default: return Palette.deep
+        }
+    }
+
+    private var spellingClueBackground: Color {
+        switch spellingClueTone {
+        case "success": return Color(red: 0.08, green: 0.72, blue: 0.48).opacity(0.14)
+        case "warn": return Color(red: 0.98, green: 0.62, blue: 0.09).opacity(0.14)
+        default: return Palette.paper.opacity(0.9)
+        }
+    }
+
+    private var spellingClueBorder: Color {
+        switch spellingClueTone {
+        case "success": return Color(red: 0.08, green: 0.72, blue: 0.48).opacity(0.35)
+        case "warn": return Color(red: 0.95, green: 0.62, blue: 0.14).opacity(0.42)
+        default: return Palette.border.opacity(0.9)
+        }
+    }
+
+    private func handleSpellingChanged(_ value: String, word: String) {
+        autoFlipTask?.cancel()
+        guard spellingMode, !revealed, !flipping, !swiping else { return }
+        let trimmed = value.trimmed
+        if trimmed.caseInsensitiveCompare(word) == .orderedSame {
+            spellingCorrect = true
+            spellingFeedback = "✓ 拼写正确"
+            spellingClue = "✓ 拼写正确，自动翻面…"
+            spellingClueTone = "success"
+            autoFlipTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 140_000_000)
+                guard !Task.isCancelled, spellingMode, !revealed, !flipping, !swiping,
+                      practice.current == word,
+                      typedSpelling.trimmed.caseInsensitiveCompare(word) == .orderedSame else { return }
+                flip()
+            }
+        } else if spellingClueTone == "warn" || spellingClueTone == "success" {
+            spellingClueTone = "info"
+        }
+    }
+
     private func submitSpelling(_ word: String) {
+        autoFlipTask?.cancel()
         let trimmed = typedSpelling.trimmed
-        if trimmed.isEmpty { flip(); return }
-        spellingCorrect = trimmed.caseInsensitiveCompare(word) == .orderedSame
-        spellingFeedback = spellingCorrect ? "✓ 拼写正确" : "✕ 你的拼写：\(trimmed)"
-        flip()
+        if trimmed.caseInsensitiveCompare(word) == .orderedSame {
+            spellingCorrect = true
+            spellingFeedback = "✓ 拼写正确"
+            flip()
+            return
+        }
+
+        let (message, isProgress) = buildSpellingHint(word: word, typed: trimmed)
+        spellingClue = message
+        spellingClueTone = isProgress ? "info" : "warn"
+        spellingFocused = true
+    }
+
+    private func maskSpellingWord(_ word: String, revealCount: Int) -> String {
+        let chars = Array(word)
+        guard !chars.isEmpty else { return "" }
+        let limit = min(max(1, revealCount), max(1, chars.count - 1))
+        return String(chars.enumerated().map { idx, ch in
+            (idx < limit || !ch.isLetter) ? ch : "_"
+        })
+    }
+
+    private func commonPrefixLength(_ target: String, _ typed: String) -> Int {
+        let a = Array(target.lowercased())
+        let b = Array(typed.lowercased())
+        let limit = min(a.count, b.count)
+        var matched = 0
+        while matched < limit && a[matched] == b[matched] {
+            matched += 1
+        }
+        return matched
+    }
+
+    private func buildSpellingHint(word: String, typed: String) -> (String, Bool) {
+        let maxReveal = max(1, word.count - 1)
+        if typed.isEmpty {
+            spellingHintLevel = min(maxReveal, spellingHintLevel + 1)
+            return ("还没输入哦 · 提示：\(maskSpellingWord(word, revealCount: spellingHintLevel))（共 \(word.count) 字母），先试着想想", true)
+        }
+
+        let matched = commonPrefixLength(word, typed)
+        if typed.count < word.count && matched == typed.count {
+            let remaining = word.count - typed.count
+            if remaining == 1 {
+                return ("前 \(matched) 位全对！只差最后 1 个字母（共 \(word.count) 字母），再想想～", true)
+            }
+            spellingHintLevel = min(maxReveal, max(spellingHintLevel + 1, matched + 1))
+            return ("前 \(matched) 位全对，还差 \(remaining) 个字母 · 提示：\(maskSpellingWord(word, revealCount: spellingHintLevel))", true)
+        }
+
+        if typed.count > word.count && matched == word.count {
+            return ("前面 \(word.count) 位已经拼对啦，末尾多输入了 \(typed.count - word.count) 个字母，删掉再试试", false)
+        }
+
+        if matched > 0 {
+            if matched >= word.count - 1 {
+                return ("前 \(matched) 位都对啦，只差最后 1 位有误（共 \(word.count) 字母），再想想～", false)
+            }
+            spellingHintLevel = min(maxReveal, max(spellingHintLevel + 1, matched + 1))
+            return ("前 \(matched) 位正确，第 \(matched + 1) 位有误 · 提示：\(maskSpellingWord(word, revealCount: spellingHintLevel))（共 \(word.count) 字母）", false)
+        }
+
+        spellingHintLevel = min(maxReveal, max(1, spellingHintLevel + 1))
+        return ("第 1 位有误 · 提示：\(maskSpellingWord(word, revealCount: spellingHintLevel))（共 \(word.count) 字母），再想想看", false)
     }
 
     private func resetSpellingInput() {
+        autoFlipTask?.cancel()
         typedSpelling = ""
         spellingFeedback = ""
         spellingCorrect = false
         spellingClue = ""
+        spellingClueTone = "info"
+        spellingHintLevel = 0
     }
 
     private func face(word: String, data: J?, back: Bool) -> some View {
@@ -411,26 +547,40 @@ struct StubbornFlashcardView: View {
     }
 
     private func flip() {
+        autoFlipTask?.cancel()
         guard !flipping, !swiping, let current = practice.current else { return }
         let willReveal = !revealed
+        if !willReveal {
+            resetSpellingInput()
+        }
         if willReveal, let onSpeak, autoSpeak == "en-GB" || autoSpeak == "en-US" {
             onSpeak(current, autoSpeak == "en-GB" ? .british : .american)
         }
-        if reduceMotion { revealed.toggle(); return }
+        if reduceMotion {
+            revealed.toggle()
+            if !willReveal && spellingMode { spellingFocused = true }
+            return
+        }
         flipping = true
         withAnimation(.easeInOut(duration: 0.32)) { revealed.toggle() }
         flipTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 340_000_000)
-            if !Task.isCancelled { flipping = false }
+            if !Task.isCancelled {
+                flipping = false
+                if !willReveal && spellingMode { spellingFocused = true }
+            }
         }
     }
 
     private func answer(_ value: FlashcardPractice.Answer) {
         guard revealed, !flipping, !swiping else { return }
+        autoFlipTask?.cancel()
         if reduceMotion {
             practice.answer(value)
             persistProgress()
             revealed = false
+            resetSpellingInput()
+            if spellingMode && practice.current != nil { spellingFocused = true }
             return
         }
         swiping = true
@@ -446,12 +596,14 @@ struct StubbornFlashcardView: View {
             practice.answer(value)
             persistProgress()
             revealed = false
+            resetSpellingInput()
             swipeOffset = 0
             swipeAngle = 0
             withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
                 swipeOpacity = 1
             }
             swiping = false
+            if spellingMode && practice.current != nil { spellingFocused = true }
         }
     }
 

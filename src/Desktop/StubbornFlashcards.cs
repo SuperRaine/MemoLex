@@ -269,7 +269,15 @@ internal static class StubbornFlashcards
         var spellingFeedback = "";
         var spellingCorrect = false;
         TextBox? activeSpellingBox = null;
+        System.Windows.Threading.DispatcherTimer? autoFlipTimer = null;
         DictionaryEntry? entry = null;
+
+        void CancelAutoFlip()
+        {
+            if (autoFlipTimer == null) return;
+            autoFlipTimer.Stop();
+            autoFlipTimer = null;
+        }
 
         void UpdateModeButtons()
         {
@@ -278,7 +286,7 @@ internal static class StubbornFlashcards
             flipModeBtn.Style = !spellingMode ? pill : normal;
             spellModeBtn.Style = spellingMode ? pill : normal;
             preFlipHintText.Text = spellingMode
-                ? "根据释义输入英文拼写并按 Enter 核对，或点击「查看答案」"
+                ? "根据释义输入拼写，拼对自动翻面；没拼完点「核对拼写」获取提示"
                 : "先点击卡片翻面核对释义（空格键），再选择掌握程度";
         }
         UpdateModeButtons();
@@ -540,40 +548,121 @@ internal static class StubbornFlashcards
             var hintLetter = new TextBlock
             {
                 Text = "",
-                FontSize = 13,
-                FontFamily = new FontFamily("Consolas, Segoe UI"),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 0, 0, 8),
-                Visibility = Visibility.Collapsed
+                FontSize = 12.5,
+                FontWeight = FontWeights.Medium,
+                FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap
             };
-            hintLetter.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
-            face.Children.Add(hintLetter);
+            var hintPill = new Border
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Padding = new Thickness(12, 5, 12, 5),
+                Margin = new Thickness(0, 0, 0, 10),
+                CornerRadius = new CornerRadius(9),
+                BorderThickness = new Thickness(1),
+                Visibility = Visibility.Collapsed,
+                Child = hintLetter
+            };
+            face.Children.Add(hintPill);
+
+            var hintLevel = 0;
+
+            void ShowSpellingHint(string message, string tone)
+            {
+                hintLetter.Text = message;
+                if (tone == "success")
+                {
+                    hintPill.Background = ThemeManager.Hex(ThemeManager.IsDark ? "#123528" : "#E6FAF1");
+                    hintPill.BorderBrush = ThemeManager.Hex(ThemeManager.IsDark ? "#1E6F50" : "#A7E8CC");
+                    hintLetter.Foreground = ThemeManager.Hex(ThemeManager.IsDark ? "#34D399" : "#0E7C55");
+                    inputBox.BorderBrush = ThemeManager.Hex("#10B981");
+                }
+                else if (tone == "warn")
+                {
+                    hintPill.Background = ThemeManager.Hex(ThemeManager.IsDark ? "#382714" : "#FFF7ED");
+                    hintPill.BorderBrush = ThemeManager.Hex(ThemeManager.IsDark ? "#784C1E" : "#FBD3A5");
+                    hintLetter.Foreground = ThemeManager.Hex(ThemeManager.IsDark ? "#FBBF24" : "#B45309");
+                    inputBox.BorderBrush = ThemeManager.Hex("#F59E0B");
+                }
+                else
+                {
+                    hintPill.SetResourceReference(Border.BackgroundProperty, "PillBgBrush");
+                    hintPill.SetResourceReference(Border.BorderBrushProperty, "PillBorderBrush");
+                    hintLetter.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+                    inputBox.ClearValue(Control.BorderBrushProperty);
+                }
+                hintPill.Visibility = Visibility.Visible;
+            }
 
             var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
             var checkBtn = new Button { Content = "核对拼写", Padding = new Thickness(16, 6, 16, 6), Margin = new Thickness(0, 0, 8, 0) };
             if (Application.Current.TryFindResource("AccentButton") is Style accentStyle) checkBtn.Style = accentStyle;
-            var clueBtn = new Button { Content = "提示首字母", Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 0) };
+            var clueBtn = new Button { Content = "提示字母", Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 0) };
             var revealBtn = new Button { Content = "直接看答案", Padding = new Thickness(12, 6, 12, 6) };
+
+            void CompleteSpellingAndFlip()
+            {
+                CancelAutoFlip();
+                if (revealed || flipping || swiping || !string.Equals(practice.Current, word, StringComparison.Ordinal)) return;
+                spellingCorrect = true;
+                spellingFeedback = "✓ 拼写正确";
+                Flip();
+            }
 
             void SubmitSpelling()
             {
+                CancelAutoFlip();
                 var typed = inputBox.Text.Trim();
-                if (typed.Length == 0) { Flip(); return; }
-                spellingCorrect = typed.Equals(word, StringComparison.OrdinalIgnoreCase);
-                spellingFeedback = spellingCorrect ? "✓ 拼写正确" : $"✕ 你的拼写：{typed}";
-                Flip();
+                if (typed.Equals(word, StringComparison.OrdinalIgnoreCase))
+                {
+                    CompleteSpellingAndFlip();
+                    return;
+                }
+
+                var (message, isProgress) = BuildSpellingHint(word, typed, ref hintLevel);
+                ShowSpellingHint(message, isProgress ? "info" : "warn");
+                inputBox.Focus();
+                inputBox.CaretIndex = inputBox.Text.Length;
             }
+
+            inputBox.TextChanged += (_, _) =>
+            {
+                CancelAutoFlip();
+                if (revealed || flipping || swiping) return;
+                var typed = inputBox.Text.Trim();
+                if (typed.Equals(word, StringComparison.OrdinalIgnoreCase))
+                {
+                    ShowSpellingHint("✓ 拼写正确，自动翻面…", "success");
+                    autoFlipTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(140) };
+                    autoFlipTimer.Tick += (_, _) =>
+                    {
+                        CancelAutoFlip();
+                        if (!dialog.IsVisible || revealed || flipping || swiping) return;
+                        if (!string.Equals(practice.Current, word, StringComparison.Ordinal)) return;
+                        if (inputBox.Text.Trim().Equals(word, StringComparison.OrdinalIgnoreCase))
+                            CompleteSpellingAndFlip();
+                    };
+                    autoFlipTimer.Start();
+                }
+                else
+                {
+                    inputBox.ClearValue(Control.BorderBrushProperty);
+                }
+            };
 
             checkBtn.Click += (_, e) => { e.Handled = true; SubmitSpelling(); };
             clueBtn.Click += (_, e) =>
             {
                 e.Handled = true;
-                var mask = word.Length <= 2 ? word[..1] + "…" : $"{word[0]}{new string('_', Math.Max(1, word.Length - 2))}{word[^1]}（{word.Length} 字母）";
-                hintLetter.Text = mask;
-                hintLetter.Visibility = Visibility.Visible;
+                var maxReveal = Math.Max(1, word.Length - 1);
+                hintLevel = Math.Min(maxReveal, hintLevel + 1);
+                var mask = MaskSpellingWord(word, hintLevel);
+                ShowSpellingHint($"提示：{mask}（共 {word.Length} 字母）", "info");
                 inputBox.Focus();
+                inputBox.CaretIndex = inputBox.Text.Length;
             };
-            revealBtn.Click += (_, e) => { e.Handled = true; spellingFeedback = ""; Flip(); };
+            revealBtn.Click += (_, e) => { e.Handled = true; CancelAutoFlip(); spellingFeedback = ""; Flip(); };
             inputBox.KeyDown += (_, e) =>
             {
                 if (e.Key == Key.Enter)
@@ -766,6 +855,7 @@ internal static class StubbornFlashcards
 
         void LoadCurrent(bool animateEntrance = false)
         {
+            CancelAutoFlip();
             revealed = false;
             spellingFeedback = "";
             spellingCorrect = false;
@@ -799,6 +889,7 @@ internal static class StubbornFlashcards
 
         void Flip()
         {
+            CancelAutoFlip();
             if (practice.Current == null || flipping || swiping) return;
             void SwitchFace(bool animate)
             {
@@ -870,6 +961,7 @@ internal static class StubbornFlashcards
         flipModeBtn.Click += (_, _) =>
         {
             if (!spellingMode) return;
+            CancelAutoFlip();
             spellingMode = false;
             revealed = false;
             spellingFeedback = "";
@@ -879,6 +971,7 @@ internal static class StubbornFlashcards
         spellModeBtn.Click += (_, _) =>
         {
             if (spellingMode) return;
+            CancelAutoFlip();
             spellingMode = true;
             revealed = false;
             spellingFeedback = "";
@@ -937,8 +1030,62 @@ internal static class StubbornFlashcards
                 if (!args.IsRepeat) Answer(choice);
             }
         };
+        dialog.Closed += (_, _) => CancelAutoFlip();
         dialog.Loaded += (_, _) => LoadCurrent(animateEntrance: true);
         return dialog;
+    }
+
+    internal static string MaskSpellingWord(string word, int revealCount)
+    {
+        if (string.IsNullOrEmpty(word)) return "";
+        var limit = Math.Clamp(revealCount, 1, Math.Max(1, word.Length - 1));
+        var chars = new char[word.Length];
+        for (var i = 0; i < word.Length; i++)
+            chars[i] = i < limit || !char.IsLetter(word[i]) ? word[i] : '_';
+        return new string(chars);
+    }
+
+    internal static int CommonPrefixLength(string target, string typed)
+    {
+        var max = Math.Min(target.Length, typed.Length);
+        var matched = 0;
+        while (matched < max && char.ToLowerInvariant(target[matched]) == char.ToLowerInvariant(typed[matched]))
+            matched++;
+        return matched;
+    }
+
+    internal static (string Message, bool IsProgress) BuildSpellingHint(string word, string typed, ref int hintLevel)
+    {
+        var maxReveal = Math.Max(1, word.Length - 1);
+        if (typed.Length == 0)
+        {
+            hintLevel = Math.Min(maxReveal, hintLevel + 1);
+            return ($"还没输入哦 · 提示：{MaskSpellingWord(word, hintLevel)}（共 {word.Length} 字母），先试着想想", true);
+        }
+
+        var matched = CommonPrefixLength(word, typed);
+        if (typed.Length < word.Length && matched == typed.Length)
+        {
+            var remaining = word.Length - typed.Length;
+            if (remaining == 1)
+                return ($"前 {matched} 位全对！只差最后 1 个字母（共 {word.Length} 字母），再想想～", true);
+            hintLevel = Math.Min(maxReveal, Math.Max(hintLevel + 1, matched + 1));
+            return ($"前 {matched} 位全对，还差 {remaining} 个字母 · 提示：{MaskSpellingWord(word, hintLevel)}", true);
+        }
+
+        if (typed.Length > word.Length && matched == word.Length)
+            return ($"前面 {word.Length} 位已经拼对啦，末尾多输入了 {typed.Length - word.Length} 个字母，删掉再试试", false);
+
+        if (matched > 0)
+        {
+            if (matched >= word.Length - 1)
+                return ($"前 {matched} 位都对啦，只差最后 1 位有误（共 {word.Length} 字母），再想想～", false);
+            hintLevel = Math.Min(maxReveal, Math.Max(hintLevel + 1, matched + 1));
+            return ($"前 {matched} 位正确，第 {matched + 1} 位有误 · 提示：{MaskSpellingWord(word, hintLevel)}（共 {word.Length} 字母）", false);
+        }
+
+        hintLevel = Math.Min(maxReveal, Math.Max(1, hintLevel + 1));
+        return ($"第 1 位有误 · 提示：{MaskSpellingWord(word, hintLevel)}（共 {word.Length} 字母），再想想看", false);
     }
 
     private sealed record AutoSpeakChoice(string Key, string Label);
