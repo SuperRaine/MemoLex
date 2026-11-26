@@ -9,6 +9,7 @@ namespace MemoLex;
 public partial class MainWindow
 {
     private bool? _compactLayout;
+    private bool? _narrowLayout;
     private bool? _shortLayout;
     private void UpdateResponsiveLayout(Size size)
     {
@@ -21,27 +22,37 @@ public partial class MainWindow
             CloudNotepadCard.Margin = new Thickness(0, shortWindow ? 6 : 12, 0, 0);
         }
 
-        var compact=size.Width<950;
-        if(_compactLayout!=compact)
+        var compact=size.Width<960;
+        var narrow=size.Width<900;
+        if(_compactLayout!=compact||_narrowLayout!=narrow)
         {
             _compactLayout=compact;
+            _narrowLayout=narrow;
             SidebarColumn.Width=new GridLength(compact?224:268);
             BrandColumn.Width=GridLength.Auto;
-            BrandGroup.Margin=new Thickness(0,0,compact?6:12,0);
+            BrandTitlePanel.Visibility=narrow?Visibility.Collapsed:Visibility.Visible;
+            BrandLogo.Margin=new Thickness(0,0,narrow?0:(compact?7:9),0);
+            BrandGroup.Margin=new Thickness(0,0,narrow?6:(compact?8:12),0);
             BrandLogo.Width=BrandLogo.Height=compact?28:34;BrandTitleText.FontSize=compact?14.5:16.5;
-            BackButton.Width=ForwardButton.Width=compact?28:32;
-            MinimizeWindowButton.Width=MaximizeButton.Width=CloseWindowButton.Width=compact?32:40;
-            SettingsButton.Width=PinButton.Width=compact?29:34;
-            SettingsButton.Margin=new Thickness(0,0,compact?1:3,0);
-            PinButton.Margin=new Thickness(0,0,compact?3:6,0);
-            WindowControlsSeparator.Margin=new Thickness(0,0,compact?3:6,0);
-            AccountButton.Margin=new Thickness(0,0,compact?3:5,0);
-            ExamCountdownBadge.Margin=new Thickness(0,0,compact?6:10,0);
-            HeaderCenterGrid.Margin=compact?new Thickness(6,0,6,0):new Thickness(10,0,10,0);
-            CloudStatusText.MaxWidth=compact?72:104;
-            AccountButton.MaxWidth=compact?118:152;
-            AccountButton.Padding=compact?new Thickness(8,6,8,6):new Thickness(11,6,11,6);
-            ExamCountdownText.MaxWidth=compact?115:200;
+            NavSeparator.Margin=new Thickness(0,0,narrow?6:(compact?8:12),0);
+            BackButton.Width=ForwardButton.Width=narrow?26:(compact?28:32);
+            MinimizeWindowButton.Width=MaximizeButton.Width=CloseWindowButton.Width=narrow?30:(compact?32:40);
+            var iconWidth=narrow?26:(compact?28:34);
+            var iconMargin=new Thickness(0,0,narrow?0:(compact?1:2),0);
+            QuickLookupButton.Width=DashboardButton.Width=ThemeToggleButton.Width=SettingsButton.Width=PinButton.Width=iconWidth;
+            QuickLookupButton.Margin=DashboardButton.Margin=ThemeToggleButton.Margin=iconMargin;
+            SettingsButton.Margin=new Thickness(0,0,narrow?0:(compact?1:3),0);
+            PinButton.Margin=new Thickness(0,0,narrow?2:(compact?3:6),0);
+            WindowControlsSeparator.Margin=new Thickness(0,0,narrow?2:(compact?3:6),0);
+            AccountButton.Margin=new Thickness(0,0,narrow?2:(compact?3:5),0);
+            ExamCountdownBadge.Margin=new Thickness(0,0,narrow?4:(compact?6:10),0);
+            ExamCountdownBadge.Padding=narrow?new Thickness(7,3,7,3):compact?new Thickness(8,4,8,4):new Thickness(10,4,10,4);
+            HeaderCenterGrid.Margin=narrow?new Thickness(6,0,6,0):compact?new Thickness(6,0,6,0):new Thickness(10,0,10,0);
+            CloudStatusText.MaxWidth=narrow?56:(compact?70:104);
+            AccountButton.MaxWidth=narrow?88:(compact?112:152);
+            AccountButton.Padding=narrow?new Thickness(7,5,7,5):compact?new Thickness(8,6,8,6):new Thickness(11,6,11,6);
+            ExamCountdownText.MaxWidth=narrow?84:(compact?115:200);
+            UpdateExamCountdown();
             MainContentGrid.Margin=compact?new Thickness(15,15,15,13):new Thickness(26,20,26,16);
             WordCard.Padding=compact?new Thickness(18):new Thickness(28,24,28,26);
             WordText.FontSize=compact?32:40;

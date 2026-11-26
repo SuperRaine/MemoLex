@@ -23,8 +23,10 @@ public partial class MainWindow
         }
         var days=Math.Max(0,(date.Date-(today??DateTime.Today).Date).Days);
         var name=string.IsNullOrWhiteSpace(_preferences.ExamName)?"考试":_preferences.ExamName.Trim();
-        ExamCountdownText.Text=$"距 {name} 还有{days.ToString(CultureInfo.InvariantCulture)}天";
-        ExamCountdownBadge.ToolTip=ExamCountdownText.Text;
+        var fullText=$"距 {name} 还有{days.ToString(CultureInfo.InvariantCulture)}天";
+        var shortName=name.Length>4?name[..4]+"…":name;
+        ExamCountdownText.Text=_narrowLayout==true?$"{shortName} {days.ToString(CultureInfo.InvariantCulture)}天":fullText;
+        ExamCountdownBadge.ToolTip=fullText;
         ExamCountdownBadge.Visibility=Visibility.Visible;
     }
 }
