@@ -4,6 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:core="clr-namespace:MemoLex.Core"
         xmlns:local="clr-namespace:MemoLex"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
         Title="墨墨搜词 · MemoLex" Width="1160" Height="800" MinWidth="760" MinHeight="520"
         WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterScreen"
         Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource InkBrush}"
@@ -12,7 +13,7 @@
         <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="7" GlassFrameThickness="0" CornerRadius="12" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
     <Window.Resources>
-        <DataTemplate DataType="{x:Type core:ChineseSearchResult}"><StackPanel><TextBlock Text="{Binding Word}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource AccentDeepBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding DisplayMatchedMeaning}" FontFamily="Microsoft YaHei UI" FontSize="10.5" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/></StackPanel></DataTemplate>
+        <DataTemplate DataType="{x:Type core:ChineseSearchResult}"><StackPanel><TextBlock Text="{Binding Word}" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14" LineHeight="22" Padding="0,0,0,2" FontWeight="SemiBold" Foreground="{DynamicResource AccentDeepBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding DisplayMatchedMeaning}" FontFamily="Microsoft YaHei UI" FontSize="10.5" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/></StackPanel></DataTemplate>
         <Style x:Key="StubbornWordButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
                 <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
@@ -111,7 +112,7 @@
                         <Grid Grid.Row="1" Margin="0,4,0,0">
                             <Grid.Resources>
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                                    <Setter Property="Padding" Value="10,6.5"/>
+                                    <Setter Property="Padding" Value="10,6"/>
                                     <Setter Property="Margin" Value="0,1"/>
                                 </Style>
                                 <Style TargetType="local:SidebarWordList" BasedOn="{StaticResource {x:Type ListBox}}">
@@ -127,7 +128,13 @@
                             <Grid>
                                 <Grid.RowDefinitions><RowDefinition Height="24"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                                 <TextBlock Text="单词建议" Style="{StaticResource SectionLabel}" Margin="2,3,0,2" VerticalAlignment="Center"/>
-                                <local:SidebarWordList x:Name="SuggestionList" Grid.Row="1" SelectionChanged="SuggestionList_SelectionChanged"/>
+                                <local:SidebarWordList x:Name="SuggestionList" Grid.Row="1" SelectionChanged="SuggestionList_SelectionChanged">
+                                    <ListBox.Resources>
+                                        <DataTemplate DataType="{x:Type sys:String}">
+                                            <TextBlock Text="{Binding}" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14" LineHeight="22" Padding="0,0,0,2" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </ListBox.Resources>
+                                </local:SidebarWordList>
                             </Grid>
                             <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                           ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" Cursor="SizeNS"
@@ -151,7 +158,7 @@
                                     <Button x:Name="HistoryButton" Content="全部记录" Click="HistoryButton_Click" HorizontalAlignment="Right" FontSize="10.5" FontWeight="Medium" Foreground="#0A7FB3" Padding="6,3" Background="Transparent" BorderThickness="0" ToolTip="查看查词历史（Ctrl+H）"/>
                                 </Grid>
                                 <local:SidebarWordList x:Name="HistoryList" Grid.Row="1" SelectionChanged="HistoryList_SelectionChanged">
-                                    <ListBox.ItemTemplate><DataTemplate><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding Word}" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayTime}"/><TextBlock Grid.Column="1" Text="&#xE72A;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="#A9C0D3" VerticalAlignment="Center" Margin="8,0,0,0"/></Grid></DataTemplate></ListBox.ItemTemplate>
+                                    <ListBox.ItemTemplate><DataTemplate><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding Word}" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14" LineHeight="22" Padding="0,0,0,2" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding DisplayTime}"/><TextBlock Grid.Column="1" Text="&#xE72A;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="#A9C0D3" VerticalAlignment="Center" Margin="8,0,0,0"/></Grid></DataTemplate></ListBox.ItemTemplate>
                                 </local:SidebarWordList>
                                 <TextBlock x:Name="HistoryEmptyText" Grid.Row="1" Text="查过的单词会出现在这里" FontSize="11.5" Foreground="#92A8BA" Margin="10,12" IsHitTestVisible="False"/>
                             </Grid>

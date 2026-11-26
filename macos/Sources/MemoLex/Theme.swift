@@ -384,6 +384,7 @@ struct LinkedText: View {
     var size: CGFloat = 15
     var color: Color = Palette.ink
     var highlightPartOfSpeech: Bool = false
+    var accentLinks: Bool = false
     private static let posRegex = try? NSRegularExpression(pattern: "(?m)^\\s*(?:n|v|vt|vi|adj|adv|prep|conj|pron|num|art|int|aux|abbr|pl|a|ad)\\.(?=\\s|$)")
     private var formatted: AttributedString {
         var value = AttributedString(text)
@@ -408,9 +409,19 @@ struct LinkedText: View {
                   let start = AttributedString.Index(range.lowerBound, within: value),
                   let end = AttributedString.Index(range.upperBound, within: value) else { continue }
             let token = String(text[range])
+            if accentLinks {
+                let beforeHyphen = range.lowerBound > text.startIndex && text[text.index(before: range.lowerBound)] == "-"
+                let afterHyphen = range.upperBound < text.endIndex && text[range.upperBound] == "-"
+                if beforeHyphen || afterHyphen {
+                    value[start..<end].font = .system(size: size, weight: .semibold)
+                    continue
+                }
+            }
             if let encoded = token.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed), let url = URL(string: "memolex://word/\(encoded)") { value[start..<end].link = url }
             if highlights.contains(where: { $0.caseInsensitiveCompare(token) == .orderedSame }) {
                 value[start..<end].backgroundColor = Palette.wash; value[start..<end].foregroundColor = Palette.deep; value[start..<end].font = .system(size: size, weight: .semibold)
+            } else if accentLinks {
+                value[start..<end].foregroundColor = Palette.deep; value[start..<end].font = .system(size: size, weight: .semibold)
             }
         }
         for term in chineseHighlights where !term.isEmpty {

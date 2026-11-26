@@ -457,14 +457,14 @@ public partial class MainWindow : Window
         UiMotion.Reveal(cardBorder, distance: 5);
     }
     private static readonly IReadOnlySet<string> EmptyMatches = new HashSet<string>();
-    private TextBlock BuildSentenceText(string text, IReadOnlySet<string> matches, string sourceWord, double fontSize = 16)
+    private TextBlock BuildSentenceText(string text, IReadOnlySet<string> matches, string sourceWord, double fontSize = 16, bool accentLinks = false)
     {
         var block = new TextBlock { TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), FontSize = fontSize, LineHeight = 27 };
         block.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
-        FillWordLinks(block, text, matches, sourceWord);
+        FillWordLinks(block, text, matches, sourceWord, accentLinks: accentLinks);
         return block;
     }
-    private void FillWordLinks(TextBlock block, string text, IReadOnlySet<string> matches, string sourceWord, bool skipPartOfSpeech = false, Func<string,Task>? navigate = null, bool clear = true)
+    private void FillWordLinks(TextBlock block, string text, IReadOnlySet<string> matches, string sourceWord, bool skipPartOfSpeech = false, Func<string,Task>? navigate = null, bool clear = true, bool accentLinks = false)
     {
         if(clear)block.Inlines.Clear();
         var parts = ExampleText.Tokenize(text);
@@ -489,10 +489,25 @@ public partial class MainWindow : Window
             }
             if (part.LookupWord == null) { block.Inlines.Add(new Run(part.Text)); continue; }
             var word = part.LookupWord;
+            if (accentLinks)
+            {
+                var touchesHyphen = (index > 0 && parts[index - 1].Text.EndsWith('-'))
+                    || (index + 1 < parts.Count && parts[index + 1].Text.StartsWith('-'));
+                if (touchesHyphen && _dictionary.Lookup(word) == null)
+                {
+                    block.Inlines.Add(new Run(part.Text) { FontWeight = FontWeights.SemiBold });
+                    continue;
+                }
+            }
             var highlighted = matches.Contains(word);
-            var link = new Hyperlink(new Run(part.Text)) { Foreground = Brush(highlighted ? (dark ? "#8BD9FF" : "#085680") : (dark ? "#E6F1F8" : "#183952")), TextDecorations = null,
+            var linkBrush = highlighted
+                ? Brush(dark ? "#8BD9FF" : "#085680")
+                : accentLinks
+                    ? Brush(dark ? "#5EC8FA" : "#0A7FB3")
+                    : Brush(dark ? "#E6F1F8" : "#183952");
+            var link = new Hyperlink(new Run(part.Text)) { Foreground = linkBrush, TextDecorations = null,
                 Background=highlighted?Brush(dark ? "#1B4A68" : "#D2EFFE"):Brushes.Transparent,
-                FontWeight = highlighted ? FontWeights.SemiBold : FontWeights.Normal, ToolTip = "查询 " + word, Cursor = Cursors.Hand };
+                FontWeight = (highlighted || accentLinks) ? FontWeights.SemiBold : FontWeights.Normal, ToolTip = "查询 " + word, Cursor = Cursors.Hand };
             link.ContextMenu=HaiciWordMenu(word);
             link.MouseEnter += (_, _) => link.TextDecorations = TextDecorations.Underline;
             link.MouseLeave += (_, _) => link.TextDecorations = null;

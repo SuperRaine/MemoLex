@@ -528,7 +528,7 @@ private struct WordPage: View {
                                 if hasBreakdowns {
                                     Divider().overlay(Palette.border.opacity(0.75))
                                 }
-                                LinkedText(text: remainingText, size: hasBreakdowns ? 13.5 : 15, color: Palette.deep)
+                                LinkedText(text: remainingText, size: hasBreakdowns ? 13.5 : 15, color: Palette.ink, accentLinks: true)
                             }
                         }.padding(.horizontal, 16).padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading)
                             .background(Palette.wash.opacity(0.75), in: RoundedRectangle(cornerRadius: 12, style: .continuous))

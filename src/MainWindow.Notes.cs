@@ -60,11 +60,10 @@ public partial class MainWindow
 
             if(!string.IsNullOrWhiteSpace(analysis.RemainingText))
             {
-                var text=BuildSentenceText(analysis.RemainingText,EmptyMatches,word,hasBreakdowns?13.5:15);
+                var text=BuildSentenceText(analysis.RemainingText,EmptyMatches,word,hasBreakdowns?13.5:15,accentLinks:true);
                 text.FontFamily=FontFamily;
                 if(hasBreakdowns)
                 {
-                    text.SetResourceReference(TextBlock.ForegroundProperty,"AccentDeepBrush");
                     var remBorder=new Border
                     {
                         Margin=new Thickness(0,10,0,0),Padding=new Thickness(0,8,0,0),
