@@ -630,6 +630,7 @@ enum EnglishAccent: String, CaseIterable {
         accounts.removeAll { $0.id == id }
         save(accounts, "accounts.json")
         if let name = stubbornCacheName(id) { try? FileManager.default.removeItem(at: AppPaths.profile.appendingPathComponent(name)) }
+        try? FileManager.default.removeItem(at: AppPaths.profile.appendingPathComponent(flashcardProgressName(id)))
         if activeAccountID == id { await logout() }
     }
     private func clearCloudState(keepStubborn: Bool = false) {
@@ -854,6 +855,19 @@ enum EnglishAccent: String, CaseIterable {
     }
     private func stubbornCacheName(_ accountID: String) -> String? {
         UUID(uuidString: accountID).map { "stubborn-\($0.uuidString).json" }
+    }
+    private func flashcardProgressName(_ accountID: String) -> String {
+        if let uuid = UUID(uuidString: accountID) { return "flashcards-\(uuid.uuidString).json" }
+        return "flashcards-default.json"
+    }
+    func loadFlashcardProgress() -> FlashcardProgressSnapshot? {
+        load(flashcardProgressName(activeAccountID), as: FlashcardProgressSnapshot.self)
+    }
+    func saveFlashcardProgress(_ snapshot: FlashcardProgressSnapshot) {
+        save(snapshot, flashcardProgressName(activeAccountID))
+    }
+    func clearFlashcardProgress() {
+        try? FileManager.default.removeItem(at: AppPaths.profile.appendingPathComponent(flashcardProgressName(activeAccountID)))
     }
     private func installStubborn(_ snapshot: StubbornSnapshot) {
         let current = stubbornCurrent

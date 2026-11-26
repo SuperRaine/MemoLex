@@ -12,10 +12,87 @@ public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null
     private readonly string _userPath=userPath??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MemoLex","mnemonics.user.json");
     private readonly string _bundledPath=bundledPath??Path.Combine(ApplicationPaths.RuntimeDirectory,"data","mnemonics.json");
     private Dictionary<string,StoredMnemonic[]> _bundled=new(StringComparer.OrdinalIgnoreCase),_saved=new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string,(string Word,string Meaning)[]>? _morphemeIndex;
     private readonly object _gate=new();
     private bool _loaded,_writeBlocked;
     public string? LoadWarning {get;private set;}
     public int BundledCount=>_bundled.Count;
+    public IReadOnlyList<string> FindMorphemeExamples(string form,string meaning,string excludeWord,int maxCount=3)
+    {
+        var key=MnemonicParts.NormalizeFormKey(form);
+        if(key.Length<2)return [];
+        Dictionary<string,(string Word,string Meaning)[]> index;
+        lock(_gate)
+        {
+            index=_morphemeIndex??=BuildMorphemeIndex(_bundled);
+        }
+        if(!index.TryGetValue(key,out var entries))return [];
+        var targetChars=MeaningCharacters(meaning);
+        var isAffix=key.StartsWith('-')||key.EndsWith('-');
+        var matched=new List<string>(maxCount);
+        var fallback=new List<string>(maxCount);
+        foreach(var (candidate,candidateMeaning) in entries)
+        {
+            if(candidate.Equals(excludeWord,StringComparison.OrdinalIgnoreCase))continue;
+            var sharesMeaning=targetChars.Count>0&&SharesMeaning(targetChars,candidateMeaning);
+            if(sharesMeaning)
+            {
+                matched.Add(candidate);
+                if(matched.Count>=maxCount)return matched;
+            }
+            else if(isAffix&&fallback.Count<maxCount)
+            {
+                fallback.Add(candidate);
+            }
+        }
+        if(matched.Count>0||!isAffix)return matched;
+        return fallback;
+    }
+    private static HashSet<char> MeaningCharacters(string text)
+    {
+        var chars=new HashSet<char>();
+        foreach(var ch in text)
+        {
+            if(ch is >= '\u4e00' and <= '\u9fff' && ch is not ('的' or '表' or '示' or '词' or '根' or '缀' or '尾' or '后' or '前' or '名' or '动' or '形' or '副' or '容' or '状' or '态' or '性' or '质' or '行' or '为' or '过' or '程' or '结' or '果' or '使' or '人' or '物' or '者' or '地' or '之' or '或' or '与' or '和' or '某'))
+                chars.Add(ch);
+        }
+        return chars;
+    }
+    private static bool SharesMeaning(HashSet<char> targetChars,string candidateMeaning)
+    {
+        foreach(var ch in candidateMeaning)
+            if(targetChars.Contains(ch))return true;
+        return false;
+    }
+    private static Dictionary<string,(string Word,string Meaning)[]> BuildMorphemeIndex(Dictionary<string,StoredMnemonic[]> bundled)
+    {
+        var buckets=new Dictionary<string,List<(string Word,string Meaning)>>(StringComparer.OrdinalIgnoreCase);
+        foreach(var (word,notes) in bundled)
+        {
+            if(string.IsNullOrWhiteSpace(word)||word.Contains(' ')||word.Length>18)continue;
+            foreach(var note in notes)
+            {
+                if(MnemonicTypes.Normalize(note.NoteType) is not ("词根词缀" or "派生"))continue;
+                var breakdowns=MnemonicParts.Parse(word,note.NoteType,note.Text);
+                foreach(var breakdown in breakdowns)
+                {
+                    foreach(var part in breakdown.Parts)
+                    {
+                        if(part.Meaning.Length==0)continue;
+                        var key=MnemonicParts.NormalizeFormKey(part.Form);
+                        if(key.Length<2)continue;
+                        if(!buckets.TryGetValue(key,out var list))buckets[key]=list=[];
+                        if(list.Count<60&&!list.Any(item=>item.Word.Equals(word,StringComparison.OrdinalIgnoreCase)))
+                            list.Add((word,part.Meaning));
+                    }
+                }
+            }
+        }
+        return buckets.ToDictionary(
+            pair=>pair.Key,
+            pair=>pair.Value.OrderBy(item=>item.Word.Length).ThenBy(item=>item.Word,StringComparer.OrdinalIgnoreCase).ToArray(),
+            StringComparer.OrdinalIgnoreCase);
+    }
     public Task LoadAsync()=>Task.Run(()=>
     {
         lock(_gate)

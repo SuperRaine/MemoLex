@@ -17,16 +17,36 @@ namespace MemoLex.Desktop;
 internal static class StubbornFlashcards
 {
     internal static Window Build(Window owner, IEnumerable<string> words, LocalDictionary dictionary,
-        OnlineDictionaryClient? online, Func<string, string?> mnemonic)
+        OnlineDictionaryClient? online, Func<string, string?> mnemonic,
+        FlashcardProgressSnapshot? savedProgress = null,
+        Action<FlashcardProgressSnapshot>? onProgressChanged = null,
+        Action? onResetProgress = null,
+        bool persistProgress = true)
     {
-        var practice = new FlashcardPractice(words);
+        var freshWords = words.ToArray();
+        var practice = new FlashcardPractice(freshWords, persistProgress ? savedProgress : null);
         var dialog = InputDialog.Shell(owner, "顽固单词 · 卡片自测", out var body);
         dialog.Width = 580;
+
+        var headerRow = new DockPanel { LastChildFill = true };
+        var resetButton = new Button
+        {
+            Content = "重置进度",
+            Padding = new Thickness(10, 4, 10, 4),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "清除本地保存的自测进度，从第 1 组重新开始"
+        };
+        DockPanel.SetDock(resetButton, Dock.Right);
+        headerRow.Children.Add(resetButton);
 
         var progress = InputDialog.Text("");
         progress.FontWeight = FontWeights.SemiBold;
         progress.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0x6A, 0x82));
-        body.Children.Add(progress);
+        progress.VerticalAlignment = VerticalAlignment.Center;
+        progress.Margin = new Thickness(0, 0, 10, 0);
+        headerRow.Children.Add(progress);
+        body.Children.Add(headerRow);
 
         var progressTrack = new Border
         {
@@ -160,9 +180,25 @@ internal static class StubbornFlashcards
         actionSlot.Children.Add(flipCard);
         body.Children.Add(actionSlot);
 
-        var next = new Button { HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.FindResource("AccentButton") };
-        body.Children.Add(next);
-        var hint = InputDialog.Text("快捷键：空格翻卡 · 1 认识 · 2 模糊 · 3 忘记（练习结果仅记录在本组自测中）");
+        var completionRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Visibility = Visibility.Collapsed
+        };
+        var restart = new Button
+        {
+            Content = "重新开始",
+            Margin = new Thickness(0, 0, 8, 0),
+            Visibility = Visibility.Collapsed
+        };
+        var next = new Button { Style = (Style)Application.Current.FindResource("AccentButton") };
+        completionRow.Children.Add(restart);
+        completionRow.Children.Add(next);
+        body.Children.Add(completionRow);
+        var hint = InputDialog.Text(persistProgress
+            ? "快捷键：空格翻卡 · 1 认识 · 2 模糊 · 3 忘记（自测进度自动保存到本地，可随时重置）"
+            : "快捷键：空格翻卡 · 1 认识 · 2 模糊 · 3 忘记（当前为筛选结果自测，不覆盖全部自测进度）");
         hint.FontSize = 11;
         hint.Margin = new Thickness(0, 10, 0, 0);
         body.Children.Add(hint);
@@ -174,11 +210,18 @@ internal static class StubbornFlashcards
         dialog.RegisterName("FlashcardForgotten", forgotten);
         dialog.RegisterName("FlashcardFlipButton", flipCard);
         dialog.RegisterName("FlashcardNextGroup", next);
+        dialog.RegisterName("FlashcardReset", resetButton);
 
         var revealed = false;
         var flipping = false;
         var swiping = false;
         DictionaryEntry? entry = null;
+
+        void Persist()
+        {
+            if (persistProgress)
+                onProgressChanged?.Invoke(practice.ExportSnapshot());
+        }
 
         void UpdateProgressBar()
         {
@@ -192,7 +235,8 @@ internal static class StubbornFlashcards
         void Render(bool animateActions = false)
         {
             var word = practice.Current;
-            progress.Text = $"第 {practice.GroupNumber} / {practice.GroupCount} 组 · 剩余 {practice.Remaining} / {practice.GroupWordCount} 词";
+            progress.Text = $"第 {practice.GroupNumber} / {practice.GroupCount} 组 · 剩余 {practice.Remaining} / {practice.GroupWordCount} 词 · 已掌握 {practice.MasteredCount} / {practice.TotalWordCount}";
+            resetButton.IsEnabled = practice.HasProgress || (word == null && !practice.HasNextGroup);
             UpdateProgressBar();
 
             var showRating = word != null && revealed;
@@ -205,7 +249,8 @@ internal static class StubbornFlashcards
 
             foreach (var button in new[] { known, vague, forgotten }) button.IsEnabled = showRating;
             flipCard.Content = revealed ? "翻回单词" : "翻转卡片";
-            next.Visibility = word == null ? Visibility.Visible : Visibility.Collapsed;
+            completionRow.Visibility = word == null ? Visibility.Visible : Visibility.Collapsed;
+            restart.Visibility = word == null && !practice.HasNextGroup ? Visibility.Visible : Visibility.Collapsed;
             next.Content = practice.HasNextGroup ? "下一组" : "完成";
             card.IsHitTestVisible = card.Focusable = word != null;
             AutomationProperties.SetName(card, word == null ? "本组已完成" : revealed ? $"{word}，点击隐藏释义" : $"{word}，点击查看释义");
@@ -374,8 +419,20 @@ internal static class StubbornFlashcards
                 swiping = false;
                 if (!dialog.IsVisible) return;
                 practice.Answer(answer);
+                Persist();
                 LoadCurrent(animateEntrance: true);
             });
+        }
+
+        void ResetProgress(bool requireConfirm)
+        {
+            if (flipping || swiping) return;
+            if (requireConfirm && !InputDialog.Confirm(dialog, "重置自测进度",
+                "将清除本地保存的自测进度，并从第 1 组重新开始。", "重置"))
+                return;
+            practice.Reset(freshWords);
+            if (persistProgress) onResetProgress?.Invoke();
+            LoadCurrent(animateEntrance: true);
         }
 
         card.Click += (_, _) => Flip();
@@ -383,7 +440,17 @@ internal static class StubbornFlashcards
         known.Click += (_, _) => Answer(FlashcardAnswer.Known);
         vague.Click += (_, _) => Answer(FlashcardAnswer.Vague);
         forgotten.Click += (_, _) => Answer(FlashcardAnswer.Forgotten);
-        next.Click += (_, _) => { if (practice.StartNextGroup()) LoadCurrent(animateEntrance: true); else dialog.Close(); };
+        resetButton.Click += (_, _) => ResetProgress(requireConfirm: true);
+        restart.Click += (_, _) => ResetProgress(requireConfirm: false);
+        next.Click += (_, _) =>
+        {
+            if (practice.StartNextGroup())
+            {
+                Persist();
+                LoadCurrent(animateEntrance: true);
+            }
+            else dialog.Close();
+        };
         dialog.PreviewKeyDown += (_, args) =>
         {
             if (args.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None && (card.IsKeyboardFocusWithin || !revealed))

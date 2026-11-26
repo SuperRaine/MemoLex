@@ -78,7 +78,7 @@ struct StubbornView: View {
     @State private var meanings: [String: String] = [:]
     @State private var onlineMeanings: [String: String] = [:]
     @State private var revealed: Set<String> = []
-    @State private var practiceWords: [String]?
+    @State private var practiceSession: (words: [String], persists: Bool)?
     private var visible: [J] { model.stubbornOrder.filter { value in
         let word = value["spelling"].text
         return filter.trimmed.isEmpty || word.localizedCaseInsensitiveContains(filter)
@@ -88,8 +88,15 @@ struct StubbornView: View {
     var body: some View {
         VStack(spacing: 0) {
             DialogHeader(title: "顽固单词") { model.sheet = nil }
-            if let practiceWords {
-                StubbornFlashcardView(core: model.core, words: practiceWords) { self.practiceWords = nil }
+            if let session = practiceSession {
+                StubbornFlashcardView(
+                    core: model.core,
+                    words: session.words,
+                    savedProgress: session.persists ? model.loadFlashcardProgress() : nil,
+                    persistsProgress: session.persists,
+                    onSaveProgress: { model.saveFlashcardProgress($0) },
+                    onClearProgress: { model.clearFlashcardProgress() }
+                ) { self.practiceSession = nil }
                     .padding(23)
             } else {
             VStack(alignment: .leading, spacing: 13) {
@@ -100,7 +107,9 @@ struct StubbornView: View {
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("卡片自测") { practiceWords = visible.map(\.spellingText) }
+                    Button("卡片自测") {
+                        practiceSession = (words: visible.map(\.spellingText), persists: filter.trimmed.isEmpty)
+                    }
                         .buttonStyle(MemoButtonStyle(compact: true)).disabled(visible.isEmpty)
                     Button(model.stubbornLoading ? "刷新中…" : model.loggedIn ? "刷新" : "账号设置") {
                         if model.loggedIn { Task { await model.refreshStubborn(force: true) } }
@@ -142,7 +151,7 @@ struct StubbornView: View {
             }.padding(23)
             }
         }.frame(width: 730, height: min(650, (NSScreen.main?.visibleFrame.height ?? 760) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep)
-            .onChange(of: model.activeAccountID) { _ in practiceWords = nil }
+            .onChange(of: model.activeAccountID) { _ in practiceSession = nil }
             .task { await model.refreshStubborn() }
             .task(id: model.stubbornWords.map { $0["spelling"].text }.joined(separator: "\n")) {
                 if let rows = try? await model.core.request("dictionary.batch", ["content": .string(model.stubbornWords.map { $0["spelling"].text }.joined(separator: "\n"))]), !Task.isCancelled {

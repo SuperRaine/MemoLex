@@ -200,8 +200,15 @@ public partial class MainWindow
         practiceButton.Click+=(_,_) =>
         {
             if(list.ItemsSource is not WordListRow[] {Length:>0} rows)return;
+            var accountId=(_tokens.ActiveAccount??_tokens.ExpiredAccount)?.Id??"default";
+            var persist=string.IsNullOrWhiteSpace(filter.Text);
+            var saved=persist?FlashcardProgressStore.Load(_tokens.ProfileDirectory,accountId):null;
             var practice=Desktop.StubbornFlashcards.Build(dialog,rows.Select(row=>row.Word),_dictionary,_onlineDictionary,
-                word=>_mnemonics.Get(word,MnemonicAccountKey).FirstOrDefault()?.Text);
+                word=>_mnemonics.Get(word,MnemonicAccountKey).FirstOrDefault()?.Text,
+                savedProgress:saved,
+                onProgressChanged:snapshot=>FlashcardProgressStore.Save(_tokens.ProfileDirectory,accountId,snapshot),
+                onResetProgress:()=>FlashcardProgressStore.Remove(_tokens.ProfileDirectory,accountId),
+                persistProgress:persist);
             practice.ShowDialog();
         };
         sort.SelectionChanged+=(_,_)=>

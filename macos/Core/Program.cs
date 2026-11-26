@@ -234,10 +234,16 @@ internal sealed class CoreService : IDisposable
         }
     }
     private object DisplayNotes(string word, string? accountKey) =>
-        _notes.Get(word, accountKey).Select(note => new
+        _notes.Get(word, accountKey).Select(note =>
         {
-            note.Id, note.NoteType, note.Text, note.CloudId, note.Origin, note.AccountKey,
-            Breakdowns = MnemonicParts.Parse(word, note.NoteType, note.Text)
+            var analysis = MnemonicParts.Analyze(word, note.NoteType, note.Text,
+                (form, meaning, current) => _notes.FindMorphemeExamples(form, meaning, current));
+            return new
+            {
+                note.Id, note.NoteType, note.Text, note.CloudId, note.Origin, note.AccountKey,
+                Breakdowns = analysis.Breakdowns,
+                RemainingText = analysis.RemainingText
+            };
         }).ToArray();
 
     private async Task<Vocabulary> RequireWord(string word, CancellationToken cancellation) => await _api.ResolveWordAsync(word, cancellation) ?? throw new MaiMemoException("墨墨暂未收录这个单词。");

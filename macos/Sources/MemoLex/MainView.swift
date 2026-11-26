@@ -413,13 +413,37 @@ private struct WordPage: View {
                     HStack { HStack(spacing: 10) { Text("记").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28).background(Palette.wash, in: RoundedRectangle(cornerRadius: 7)); Text("我的助记").font(.system(size: 17, weight: .semibold)) }; Spacer(); Button("编辑助记") { model.sheet = .mnemonic }.buttonStyle(MemoButtonStyle(compact: true)).disabled(model.word.isEmpty) }
                     Text(noteSummary).font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.vertical, 10)
                     ForEach(Array(model.notes.enumerated()), id: \.offset) { _, note in
-                        VStack(alignment: .leading, spacing: 9) {
-                            Text(note["noteType"].text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.deep)
-                            MnemonicPartsView(breakdowns: note["breakdowns"].list)
-                                .id("\(model.word)\n\(note["text"].text)")
-                            LinkedText(text: note["text"].text, size: 15, color: Palette.deep)
-                        }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Palette.wash, in: RoundedRectangle(cornerRadius: 10)).padding(.bottom, 8)
+                        let breakdowns = note["breakdowns"].list
+                        let hasBreakdowns = !breakdowns.isEmpty
+                        let remainingText = hasBreakdowns ? note["remainingText"].text : note["text"].text
+                        let originText = note["origin"].text == "cloud" ? "云端助记" : "本地助记"
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .center, spacing: 8) {
+                                Text(hasBreakdowns ? "点击词根拆解 · \(originText)" : originText)
+                                    .font(.system(size: 11.5, weight: .semibold))
+                                    .foregroundStyle(Palette.muted)
+                                Spacer()
+                                Text(note["noteType"].text)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Palette.deep)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 2.5)
+                                    .background(Palette.accent.opacity(0.18), in: Capsule())
+                            }
+                            if hasBreakdowns {
+                                MnemonicPartsView(breakdowns: breakdowns)
+                                    .id("\(model.word)\n\(note["text"].text)")
+                            }
+                            if !remainingText.trimmed.isEmpty {
+                                if hasBreakdowns {
+                                    Divider().overlay(Palette.border.opacity(0.75))
+                                }
+                                LinkedText(text: remainingText, size: hasBreakdowns ? 13.5 : 15, color: Palette.deep)
+                            }
+                        }.padding(.horizontal, 16).padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Palette.wash.opacity(0.75), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
+                            .padding(.bottom, 8)
                     }
                     rule
                     HStack {

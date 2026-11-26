@@ -2,6 +2,10 @@ import SwiftUI
 
 struct StubbornFlashcardView: View {
     let core: CoreBridge
+    let freshWords: [String]
+    let persistsProgress: Bool
+    let onSaveProgress: (FlashcardProgressSnapshot) -> Void
+    let onClearProgress: () -> Void
     let close: () -> Void
     @State private var practice: FlashcardPractice
     @State private var revealed = false
@@ -14,10 +18,22 @@ struct StubbornFlashcardView: View {
     @State private var lookup: (word: String, data: J)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(core: CoreBridge, words: [String], close: @escaping () -> Void) {
+    init(
+        core: CoreBridge,
+        words: [String],
+        savedProgress: FlashcardProgressSnapshot? = nil,
+        persistsProgress: Bool = true,
+        onSaveProgress: @escaping (FlashcardProgressSnapshot) -> Void = { _ in },
+        onClearProgress: @escaping () -> Void = {},
+        close: @escaping () -> Void
+    ) {
         self.core = core
+        self.freshWords = words
+        self.persistsProgress = persistsProgress
+        self.onSaveProgress = onSaveProgress
+        self.onClearProgress = onClearProgress
         self.close = close
-        _practice = State(initialValue: FlashcardPractice(words: words))
+        _practice = State(initialValue: FlashcardPractice(words: words, saved: persistsProgress ? savedProgress : nil))
     }
 
     private var groupProgress: CGFloat {
@@ -25,16 +41,26 @@ struct StubbornFlashcardView: View {
         return CGFloat(max(0, total - practice.queue.count)) / CGFloat(total)
     }
 
+    private var canReset: Bool {
+        practice.hasProgress || (practice.current == nil && !practice.hasNextGroup)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("卡片自测").font(.system(size: 24, weight: .semibold))
-                    Text("第 \(practice.groupNumber) / \(practice.groupCount) 组 · 剩余 \(practice.queue.count) / \(practice.groupWordCount) 词")
+                    Text("第 \(practice.groupNumber) / \(practice.groupCount) 组 · 剩余 \(practice.queue.count) / \(practice.groupWordCount) 词 · 已掌握 \(practice.masteredCount) / \(practice.totalWordCount)")
                         .foregroundStyle(Palette.muted)
                 }
                 Spacer()
-                Button("返回列表", action: close).buttonStyle(MemoButtonStyle(compact: true))
+                HStack(spacing: 8) {
+                    Button("重置进度") { resetProgress(confirmRequired: true) }
+                        .buttonStyle(MemoButtonStyle(compact: true))
+                        .disabled(!canReset || flipping || swiping)
+                        .help("清除本地保存的自测进度，从第 1 组重新开始")
+                    Button("返回列表", action: close).buttonStyle(MemoButtonStyle(compact: true))
+                }
             }
 
             GeometryReader { geo in
@@ -116,12 +142,21 @@ struct StubbornFlashcardView: View {
                 VStack(spacing: 13) {
                     Image(systemName: "checkmark.circle.fill").font(.system(size: 36)).foregroundStyle(Palette.deep)
                     Text(practice.hasNextGroup ? "本组已完成" : "全部练习完成").font(.title2.weight(.semibold))
-                    Button(practice.hasNextGroup ? "下一组" : "完成") {
-                        if !practice.startNextGroup() { close() }
-                    }.buttonStyle(MemoButtonStyle(accent: true))
+                    HStack(spacing: 10) {
+                        if !practice.hasNextGroup {
+                            Button("重新开始") { resetProgress(confirmRequired: false) }
+                                .buttonStyle(MemoButtonStyle())
+                        }
+                        Button(practice.hasNextGroup ? "下一组" : "完成") {
+                            if practice.startNextGroup() { persistProgress() }
+                            else { close() }
+                        }.buttonStyle(MemoButtonStyle(accent: true))
+                    }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            Text("快捷键：空格翻卡 · 1 认识 · 2 模糊 · 3 忘记（练习结果仅记录在本组自测中）")
+            Text(persistsProgress
+                ? "快捷键：空格翻卡 · 1 认识 · 2 模糊 · 3 忘记（自测进度自动保存到本地，可随时重置）"
+                : "快捷键：空格翻卡 · 1 认识 · 2 模糊 · 3 忘记（当前为筛选结果自测，不覆盖全部自测进度）")
                 .font(.footnote).foregroundStyle(Palette.muted)
         }.task(id: practice.current) {
             guard let word = practice.current else { return }
@@ -190,6 +225,7 @@ struct StubbornFlashcardView: View {
         guard revealed, !flipping, !swiping else { return }
         if reduceMotion {
             practice.answer(value)
+            persistProgress()
             revealed = false
             return
         }
@@ -204,6 +240,7 @@ struct StubbornFlashcardView: View {
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
             practice.answer(value)
+            persistProgress()
             revealed = false
             swipeOffset = 0
             swipeAngle = 0
@@ -212,6 +249,24 @@ struct StubbornFlashcardView: View {
             }
             swiping = false
         }
+    }
+
+    private func persistProgress() {
+        if persistsProgress { onSaveProgress(practice.snapshot()) }
+    }
+
+    @MainActor private func resetProgress(confirmRequired: Bool) {
+        guard !flipping, !swiping else { return }
+        if confirmRequired, !confirm("重置自测进度？", "将清除本地保存的自测进度，并从第 1 组重新开始。", action: "重置") {
+            return
+        }
+        flipTask?.cancel()
+        practice.reset(words: freshWords)
+        revealed = false
+        swipeOffset = 0
+        swipeAngle = 0
+        swipeOpacity = 1
+        if persistsProgress { onClearProgress() }
     }
 }
 

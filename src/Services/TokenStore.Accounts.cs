@@ -174,6 +174,7 @@ public sealed partial class TokenStore
     {
         lock(_accountGate){var d=ReadAccounts();d.Accounts.RemoveAll(a=>a.Id==id);if(d.ActiveId==id)d.ActiveId=null;if(d.ExpiredId==id)d.ExpiredId=null;WriteAccounts(d);}
         StubbornWordCache.Remove(ProfileDirectory, id);
+        FlashcardProgressStore.Remove(ProfileDirectory, id);
     }
     public void RenameAccount(string id,string name)
     {

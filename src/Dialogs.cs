@@ -23,6 +23,22 @@ internal static class InputDialog
         dialog.Loaded += (_, _) => { input.Focus(); input.SelectAll(); };
         return dialog.ShowDialog() == true ? input.Text.Trim() : null;
     }
+    public static bool Confirm(Window owner, string title, string message, string confirmLabel, string cancelLabel = "取消")
+    {
+        var dialog = Shell(owner, title, out var panel);
+        dialog.Width = 420;
+        panel.Children.Add(Text(message));
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
+        var cancel = new Button { Content = cancelLabel, Padding = new Thickness(15, 7, 15, 7), Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
+        var ok = new Button { Content = confirmLabel, Padding = new Thickness(16, 7, 16, 7), Style = (Style)Application.Current.FindResource("AccentButton"), IsDefault = true };
+        cancel.Click += (_, _) => dialog.DialogResult = false;
+        ok.Click += (_, _) => dialog.DialogResult = true;
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(ok);
+        panel.Children.Add(buttons);
+        dialog.Loaded += (_, _) => cancel.Focus();
+        return dialog.ShowDialog() == true;
+    }
     internal static Window Shell(Window owner, string title, out StackPanel panel)
     {
         panel = new StackPanel { Margin = new Thickness(26) };
