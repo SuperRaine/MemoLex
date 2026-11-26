@@ -46,6 +46,7 @@ private struct MemoButtonChrome: View {
             .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.78), value: configuration.isPressed)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hovered)
             .onHover { hovered = $0 }
+            .noFocusRing()
     }
 }
 
@@ -83,6 +84,7 @@ private struct PillButtonChrome: View {
             .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.8), value: configuration.isPressed)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovered)
             .onHover { hovered = $0 }
+            .noFocusRing()
     }
 }
 
@@ -139,6 +141,7 @@ private struct LookupButtonChrome: View {
             .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.78), value: configuration.isPressed)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hovered)
             .onHover { hovered = $0 }
+            .noFocusRing()
     }
 }
 
@@ -166,6 +169,7 @@ struct MemoPicker<Value: Hashable>: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .noFocusRing()
         .onHover { hovered = $0 }
         .accessibilityLabel(title).accessibilityValue(selectedLabel).help(selectedLabel)
         .dropdownOptions(expanded: $expanded, selection: selection, options: options) { selection = $0 }
@@ -276,6 +280,7 @@ private struct DropdownOptions<Value: Hashable>: ViewModifier {
                 }, dismiss: { expanded = false })
                 .frame(width: max(width, minimumWidth))
                 .background(Palette.paper)
+                .noFocusRing()
             }
     }
 }
@@ -315,6 +320,7 @@ private struct SidebarRowChrome: View {
         .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.85), value: selected)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovered)
         .onHover { hovered = $0 }
+        .noFocusRing()
     }
 }
 
@@ -353,6 +359,7 @@ private struct NativeCloseButton: NSViewRepresentable {
         button.action = #selector(Coordinator.close)
         button.isHidden = false
         button.toolTip = title
+        button.focusRingType = .none
         button.setAccessibilityLabel(title)
         return button
     }
@@ -432,10 +439,14 @@ extension View {
             .overlay(shape.strokeBorder(active || hovered ? Palette.accent : Palette.border, lineWidth: active ? 1.15 : 1)
                 .allowsHitTesting(false))
     }
+    @ViewBuilder func noFocusRing() -> some View {
+        if #available(macOS 14.0, *) { self.focusEffectDisabled() }
+        else { self }
+    }
     func controlSurface() -> some View {
         background(Palette.control, in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.border, lineWidth: 0.65).allowsHitTesting(false))
     }
-    func inputFrame(height: CGFloat = 34) -> some View { textFieldStyle(.plain).padding(.horizontal, 10).frame(height: height).controlSurface() }
+    func inputFrame(height: CGFloat = 34) -> some View { textFieldStyle(.plain).padding(.horizontal, 10).frame(height: height).controlSurface().noFocusRing() }
     func sectionLabel() -> some View { self.font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.muted) }
 }

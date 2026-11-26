@@ -161,8 +161,14 @@ struct LoginView: View {
                 BrowserHost(browser: login.browser, hidden: !login.showsLoginForm)
                 if !login.showsLoginForm { Text(login.status.statusMessage).foregroundStyle(.secondary) }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            HStack { Spacer(); if login.busy { ProgressView().controlSize(.small) }; Button("重新打开") { login.retry() }.disabled(login.busy); Button("取消") { model.showLogin = false }.keyboardShortcut(.cancelAction) }.padding(15)
-        }.frame(width: min(740, (NSScreen.main?.visibleFrame.width ?? 900) - 60), height: min(760, (NSScreen.main?.visibleFrame.height ?? 860) - 65)).background(Palette.canvas).onDisappear { login.stop() }
+            Divider().overlay(Palette.border)
+            HStack(spacing: 8) {
+                Spacer()
+                if login.busy { ProgressView().controlSize(.small) }
+                Button("重新打开") { login.retry() }.buttonStyle(MemoButtonStyle(compact: true)).disabled(login.busy)
+                Button("取消") { model.showLogin = false }.buttonStyle(MemoButtonStyle(compact: true)).keyboardShortcut(.cancelAction)
+            }.padding(14).background(Palette.chrome)
+        }.frame(width: min(740, (NSScreen.main?.visibleFrame.width ?? 900) - 60), height: min(760, (NSScreen.main?.visibleFrame.height ?? 860) - 65)).background(Palette.canvas).noFocusRing().onDisappear { login.stop() }
     }
 }
 
@@ -191,9 +197,16 @@ struct HaiciView: View {
     @ObservedObject var browser: HaiciBrowser
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) { Button("←") { browser.browser.goBack() }.disabled(!browser.canGoBack); Button("→") { browser.browser.goForward() }.disabled(!browser.canGoForward); Button("刷新") { browser.browser.reload() }; Text(browser.url.absoluteString).lineLimit(1).truncationMode(.middle).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading); Button("用默认浏览器打开") { if HaiciBrowser.allowed(browser.url) { NSWorkspace.shared.open(browser.url) } } }.buttonStyle(MemoButtonStyle(compact: true)).padding(12)
+            HStack(spacing: 8) {
+                Button("←") { browser.browser.goBack() }.buttonStyle(MemoButtonStyle(compact: true)).disabled(!browser.canGoBack)
+                Button("→") { browser.browser.goForward() }.buttonStyle(MemoButtonStyle(compact: true)).disabled(!browser.canGoForward)
+                Button("刷新") { browser.browser.reload() }.buttonStyle(MemoButtonStyle(compact: true))
+                Text(browser.url.absoluteString).lineLimit(1).truncationMode(.middle).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading)
+                Button("用默认浏览器打开") { if HaiciBrowser.allowed(browser.url) { NSWorkspace.shared.open(browser.url) } }.buttonStyle(PillButtonStyle())
+            }.padding(12).background(Palette.chrome)
+            Divider().overlay(Palette.border)
             BrowserHost(browser: browser.browser)
             Text(browser.status.statusMessage).font(.system(size: 11)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading).padding(12)
-        }.background(Palette.paper)
+        }.background(Palette.paper).noFocusRing()
     }
 }

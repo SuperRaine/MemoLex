@@ -172,6 +172,7 @@ private struct MorphemeChipCard: View {
             .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.78), value: lit)
         }
         .buttonStyle(.plain)
+        .noFocusRing()
         .onHover { hovered = $0 }
         .accessibilityLabel("\(form)，点击查看构词含义")
         .accessibilityAddTraits(active ? .isSelected : [])

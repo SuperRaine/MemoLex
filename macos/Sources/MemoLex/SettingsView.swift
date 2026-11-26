@@ -52,6 +52,7 @@ struct SettingsView: View {
             }.frame(maxHeight: .infinity)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.canvas).foregroundStyle(Palette.ink).tint(Palette.accent).toggleStyle(.checkbox)
+            .noFocusRing()
             .onChange(of: model.settingsPage) { _ in status = "" }
             .onExitCommand { model.sheet = nil }
             .overlayPreferenceValue(TourTargets.self) { anchors in TourOverlay(model: model, anchors: anchors, context: "settings") }
@@ -66,7 +67,7 @@ struct SettingsView: View {
                     Button("软件主页") { open(AppPaths.homepage) }
                     Button("夸克下载") { open(AppPaths.quarkDownload) }
                     Button("GitHub") { open(AppPaths.repository) }
-                }.buttonStyle(MemoButtonStyle(compact: true)).fixedSize()
+                }.buttonStyle(PillButtonStyle()).fixedSize()
                     .tourTarget("download-links")
             }
         }
@@ -258,7 +259,7 @@ private struct FeedbackSettings: View {
             contact("反馈邮箱", value: "1623255609@qq.com") { Button("写邮件") { open("mailto:1623255609@qq.com?subject=MemoLex%20\(AppPaths.version)%20macOS%20反馈") }; Button("复制邮箱") { copy("1623255609@qq.com") } }
             contact("QQ 交流群", value: "1132371819") { Button("复制群号") { copy("1132371819") } }
             contact("GitHub", value: "SuperRaine / MemoLex") { Button("问题反馈") { open(AppPaths.repository + "/issues/new?template=bug_report.yml") }; Button("功能建议") { open(AppPaths.repository + "/issues/new?template=feature_request.yml") } }
-        }.buttonStyle(MemoButtonStyle(compact: true))
+        }.buttonStyle(PillButtonStyle())
     }
     private func contact<Buttons: View>(_ title: String, value: String, @ViewBuilder buttons: () -> Buttons) -> some View { SettingsCard(title: title) { HStack { Text(value).foregroundStyle(Palette.deep).textSelection(.enabled); Spacer(); buttons() } } }
     private func copy(_ value: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string); status = "已复制。" }
@@ -268,13 +269,22 @@ private struct FeedbackSettings: View {
 private struct AboutSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。").font(.system(size: 12)).foregroundStyle(Palette.muted).padding(10).frame(maxWidth: .infinity, alignment: .leading).background(Palette.wash, in: RoundedRectangle(cornerRadius: 8))
+            Text("本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。").font(.system(size: 12)).foregroundStyle(Palette.muted).padding(11).frame(maxWidth: .infinity, alignment: .leading).background(Palette.wash, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             Text("如果觉得好用，欢迎为开发者发电，支持后续维护。").font(.system(size: 12)).foregroundStyle(Palette.muted)
-            HStack(spacing: 18) { payment("微信支付", asset: "sponsor-wechat.jpg", rect: CGRect(x: 354, y: 438, width: 568, height: 568)); payment("支付宝", asset: "sponsor-alipay.jpg", rect: CGRect(x: 216, y: 643, width: 742, height: 742)) }.frame(height: 300)
+            HStack(spacing: 16) { payment("微信支付", asset: "sponsor-wechat.jpg", rect: CGRect(x: 354, y: 438, width: 568, height: 568)); payment("支付宝", asset: "sponsor-alipay.jpg", rect: CGRect(x: 216, y: 643, width: 742, height: 742)) }.frame(height: 300)
         }
     }
     private func payment(_ title: String, asset: String, rect: CGRect) -> some View {
-        VStack(spacing: 10) { Text(title).font(.system(size: 14, weight: .semibold)); if let image = paymentImage(asset, rect: rect) { Image(nsImage: image).resizable().interpolation(.none).scaledToFit().padding(12).background(.white) } }.padding(12).frame(maxWidth: .infinity).overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.border))
+        VStack(spacing: 10) {
+            Text(title).font(.system(size: 14, weight: .semibold))
+            if let image = paymentImage(asset, rect: rect) {
+                Image(nsImage: image).resizable().interpolation(.none).scaledToFit().padding(12).background(.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+        .padding(14).frame(maxWidth: .infinity)
+        .background(Palette.paper, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
+        .shadow(color: Color(red: 0.06, green: 0.24, blue: 0.36).opacity(0.05), radius: 10, y: 3)
     }
     private func paymentImage(_ asset: String, rect: CGRect) -> NSImage? {
         guard let image = NSImage(contentsOf: AppPaths.resources.appendingPathComponent(asset)), let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil), let crop = cg.cropping(to: rect) else { return nil }

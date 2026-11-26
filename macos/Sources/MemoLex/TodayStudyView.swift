@@ -79,7 +79,7 @@ struct TodayStudyView: View {
             }.padding(.horizontal, 16).padding(.vertical, 12)
         }
         .frame(width: 730, height: min(760, (NSScreen.main?.visibleFrame.height ?? 805) - 45))
-        .background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep)
+        .background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep).noFocusRing()
         .onChange(of: conceal) { _ in revealed.removeAll() }
         .onChange(of: candidateSearch) { _ in selected.formIntersection(visibleCandidateIDs) }
         .interactiveDismissDisabled(writing)
@@ -236,7 +236,14 @@ struct TodayStudyView: View {
                 } else { meaning }
             }.frame(maxWidth: .infinity, alignment: .leading)
             if let kind {
-                Text(kind).font(.system(size: 12)).foregroundStyle(Palette.muted).frame(width: 66, alignment: .leading)
+                let isNew = kind.contains("新")
+                Text(kind)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(isNew ? Palette.deep : Palette.muted)
+                    .padding(.horizontal, 8).padding(.vertical, 2.5)
+                    .background(isNew ? Palette.wash : Palette.canvas, in: Capsule())
+                    .overlay(Capsule().strokeBorder(isNew ? Palette.accent.opacity(0.28) : Palette.border, lineWidth: 0.75))
+                    .frame(width: 68, alignment: .leading)
             }
         }.frame(minHeight: kind == nil ? 27 : 31).contentShape(Rectangle())
     }

@@ -54,16 +54,14 @@ internal static class InputDialog
         bar.ColumnDefinitions.Add(new ColumnDefinition());
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        var logoBadge = new Border
+        var logo = new Image
         {
-            Width = 28, Height = 28, CornerRadius = new CornerRadius(8), Margin = new Thickness(0,0,9,0),
-            Background = new SolidColorBrush(Color.FromRgb(237,247,255)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(210,232,248)),
-            BorderThickness = new Thickness(1), Padding = new Thickness(2),
-            Child = new Image { Source = new BitmapImage(new Uri("pack://application:,,,/MemoLex;component/Assets/owl-logo.png")), Stretch = Stretch.Uniform }
+            Width = 24, Height = 24, Margin = new Thickness(0,0,8,0),
+            Source = new BitmapImage(new Uri("pack://application:,,,/MemoLex;component/Assets/owl-logo.png")),
+            Stretch = Stretch.Uniform
         };
-        RenderOptions.SetBitmapScalingMode(logoBadge.Child, BitmapScalingMode.HighQuality);
-        brand.Children.Add(logoBadge);
+        RenderOptions.SetBitmapScalingMode(logo, BitmapScalingMode.HighQuality);
+        brand.Children.Add(logo);
         brand.Children.Add(new TextBlock { Text = title, FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(26,58,82)), VerticalAlignment = VerticalAlignment.Center });
         bar.Children.Add(brand);
         var close = new Button { Content = "\uE8BB", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 11.5, Style = (Style)Application.Current.FindResource("CloseWindowButton"), ToolTip = "关闭" };

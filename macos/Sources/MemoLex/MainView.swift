@@ -59,6 +59,7 @@ struct MainView: View {
         .ignoresSafeArea(.container, edges: .top)
         .tint(Palette.accent)
         .toggleStyle(.checkbox)
+        .noFocusRing()
         .environment(\.openURL, OpenURLAction { url in
             if url.scheme == "memolex", let query = url.path.removingPercentEncoding { model.lookup(String(query.dropFirst())); return .handled }
             return .systemAction
@@ -98,17 +99,21 @@ struct MainView: View {
                             .background(Palette.wash, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                     }
                 }
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("输入英文或中文", text: $model.search).textFieldStyle(.plain)
-                        .help("输入英文查释义，或用中文找单词")
-                        .focused($searchFocused).onSubmit { model.lookup(model.search) }
-                        .onChange(of: model.search) { _ in model.suggest() }
-                    Button { model.lookup(model.search) } label: { Image(systemName: "return") }
-                        .buttonStyle(.borderless).help("查词").accessibilityLabel("查词")
-                }.padding(.horizontal, 10).frame(height: 36)
-                    .controlSurface()
-                    .tourTarget("search")
+                HStack(spacing: 6) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "magnifyingglass").font(.system(size: 12.5)).foregroundStyle(Palette.muted)
+                        TextField("输入英文或中文", text: $model.search).textFieldStyle(.plain)
+                            .help("输入英文查释义，或用中文找单词")
+                            .focused($searchFocused).onSubmit { model.lookup(model.search) }
+                            .onChange(of: model.search) { _ in model.suggest() }
+                    }.padding(.horizontal, 10).frame(height: 36).controlSurface()
+                    Button { model.lookup(model.search) } label: {
+                        Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .semibold))
+                    }
+                    .buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                    .frame(width: 36, height: 36)
+                    .help("查词").accessibilityLabel("查词")
+                }.tourTarget("search")
                 HStack(spacing: 7) {
                     Button("段落翻译") { model.enterTranslation() }
                     Button("截图翻译") { model.captureScreen?() }.tourTarget("screenshot")
@@ -305,14 +310,7 @@ private struct MainTitlebar: View {
                 .help(model.titleAccount + " · " + model.accountStatus)
             titleButton("gearshape", label: "设置") { model.sheet = .settings }
             HStack(spacing: 7) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Palette.wash)
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.accent.opacity(0.32), lineWidth: 0.9))
-                    OwlImage().padding(3)
-                }
-                .frame(width: 28, height: 28)
-                .accessibilityHidden(true)
+                OwlImage().frame(width: 28, height: 28).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("墨墨搜词").font(.system(size: compact ? 12 : 13.5, weight: .bold))
                     Text("MemoLex").font(.system(size: 9, weight: .medium)).foregroundStyle(Palette.muted)
@@ -448,7 +446,16 @@ private struct WordPage: View {
                     if !model.entry["exchange"].text.isEmpty { ExchangeView(exchange: model.entry["exchange"].text, word: model.word).padding(.top, 20) }
                     RelationsView(model: model).padding(.top, 16)
                     rule
-                    HStack { HStack(spacing: 10) { Text("记").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28).background(Palette.wash, in: RoundedRectangle(cornerRadius: 7)); Text("我的助记").font(.system(size: 17, weight: .semibold)) }; Spacer(); Button("编辑助记") { model.sheet = .mnemonic }.buttonStyle(MemoButtonStyle(compact: true)).disabled(model.word.isEmpty) }
+                    HStack {
+                        HStack(spacing: 10) {
+                            Text("记").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28)
+                                .background(Palette.wash, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
+                            Text("我的助记").font(.system(size: 17, weight: .semibold))
+                        }
+                        Spacer()
+                        Button("编辑助记") { model.sheet = .mnemonic }.buttonStyle(PillButtonStyle()).disabled(model.word.isEmpty)
+                    }
                     Text(noteSummary).font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.vertical, 10)
                     ForEach(Array(model.notes.enumerated()), id: \.offset) { _, note in
                         let breakdowns = note["breakdowns"].list
@@ -486,7 +493,9 @@ private struct WordPage: View {
                     rule
                     HStack {
                         HStack(spacing: 10) {
-                            Text("例").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28).background(Palette.wash, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            Text("例").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28)
+                                .background(Palette.wash, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
                             Text("真题例句").font(.system(size: 17, weight: .semibold))
                         }
                         Spacer()
@@ -526,30 +535,35 @@ private struct WordPage: View {
             if attribution.isEmpty { label } else { label.help(attribution) }
         }
     }
-    private var wordTags: some View {
+    @ViewBuilder private var wordTags: some View {
         let tags = model.entry["tag"].text.split(separator: " ").map(String.init)
-        var labels = tags.map { Self.tagNames[$0] ?? $0.uppercased() }
-        if model.entry["oxford"].text == "1" { labels.append("核心词汇") }
-        if let stars = Int(model.entry["collins"].text), stars > 0 { labels.append(String(repeating: "★", count: min(stars, 5))) }
-        return MorphemeFlowLayout(spacing: 6, lineSpacing: 6, expandLast: false) {
-            ForEach(labels, id: \.self) { label in
-                let isCore = label == "核心词汇"
-                let isStar = label.hasPrefix("★")
-                let fg: Color = isCore ? Color(red: 0.06, green: 0.54, blue: 0.36)
-                    : isStar ? Color(red: 0.72, green: 0.43, blue: 0.04)
-                    : Palette.deep
-                let bg: Color = isCore ? Color(red: 0.08, green: 0.72, blue: 0.48).opacity(0.14)
-                    : isStar ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.15)
-                    : Palette.wash
-                let stroke: Color = isCore ? Color(red: 0.08, green: 0.72, blue: 0.48).opacity(0.32)
-                    : isStar ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35)
-                    : Palette.accent.opacity(0.26)
-                Text(label)
-                    .font(.system(size: 11, weight: .semibold))
-                    .padding(.horizontal, 9).padding(.vertical, 3.5)
-                    .background(bg, in: Capsule())
-                    .overlay(Capsule().strokeBorder(stroke, lineWidth: 0.75))
-                    .foregroundStyle(fg)
+        let labels: [String] = {
+            var list = tags.map { Self.tagNames[$0] ?? $0.uppercased() }
+            if model.entry["oxford"].text == "1" { list.append("核心词汇") }
+            if let stars = Int(model.entry["collins"].text), stars > 0 { list.append(String(repeating: "★", count: min(stars, 5))) }
+            return list
+        }()
+        if !labels.isEmpty {
+            MorphemeFlowLayout(spacing: 6, lineSpacing: 6, expandLast: false) {
+                ForEach(labels, id: \.self) { label in
+                    let isCore = label == "核心词汇"
+                    let isStar = label.hasPrefix("★")
+                    let fg: Color = isCore ? Color(red: 0.06, green: 0.54, blue: 0.36)
+                        : isStar ? Color(red: 0.72, green: 0.43, blue: 0.04)
+                        : Palette.deep
+                    let bg: Color = isCore ? Color(red: 0.08, green: 0.72, blue: 0.48).opacity(0.14)
+                        : isStar ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.15)
+                        : Palette.wash
+                    let stroke: Color = isCore ? Color(red: 0.08, green: 0.72, blue: 0.48).opacity(0.32)
+                        : isStar ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35)
+                        : Palette.accent.opacity(0.26)
+                    Text(label)
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 9).padding(.vertical, 3.5)
+                        .background(bg, in: Capsule())
+                        .overlay(Capsule().strokeBorder(stroke, lineWidth: 0.75))
+                        .foregroundStyle(fg)
+                }
             }
         }
     }
@@ -675,17 +689,18 @@ private struct RelationsView: View {
         }
     }
     private func relationButton(_ key: String, _ title: String) -> some View {
-        Button {
+        let expanded = model.expandedRelations.contains(key)
+        return Button {
             withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86)) {
-                if model.expandedRelations.contains(key) { model.expandedRelations.remove(key) }
+                if expanded { model.expandedRelations.remove(key) }
                 else { model.expandedRelations.insert(key) }
             }
         } label: {
             HStack(spacing: 6) {
                 Text("\(title) · \(model.relations[key].list.count)")
-                DropdownChevron(expanded: model.expandedRelations.contains(key))
+                DropdownChevron(expanded: expanded)
             }
-        }.buttonStyle(MemoButtonStyle(compact: true)).fixedSize()
+        }.buttonStyle(PillButtonStyle()).fixedSize()
     }
 }
 extension J { var wordText: String { self["word"].text } }
@@ -741,11 +756,24 @@ private struct ChinesePage: View {
             ScrollView {
                 LazyVStack(spacing: 5) {
                     ForEach(model.chineseResults, id: \.wordText) { row in
+                        let kind = row["kind"].text
+                        let isExact = kind == "完全匹配"
                         Button { model.lookup(row["word"].text) } label: {
-                            HStack(alignment: .top, spacing: 15) {
-                                Text(row["word"].text).font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(Palette.deep).frame(width: 138, alignment: .leading)
-                                Text(row["displayMeaning"].text).font(.system(size: 12))
+                            HStack(alignment: .top, spacing: 14) {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(row["word"].text).font(.system(size: 15, weight: .bold))
+                                        .foregroundStyle(Palette.deep)
+                                    if !kind.isEmpty {
+                                        Text(kind)
+                                            .font(.system(size: 10.5, weight: .semibold))
+                                            .foregroundStyle(isExact ? Palette.deep : Palette.muted)
+                                            .padding(.horizontal, 7).padding(.vertical, 2)
+                                            .background(isExact ? Palette.wash : Palette.canvas, in: Capsule())
+                                            .overlay(Capsule().strokeBorder(isExact ? Palette.accent.opacity(0.28) : Palette.border, lineWidth: 0.75))
+                                    }
+                                }.frame(width: 146, alignment: .leading)
+                                Text(row["displayMeaning"].text).font(.system(size: 12.5))
+                                    .foregroundStyle(Palette.ink)
                                     .lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .padding(.horizontal, 15).padding(.vertical, 11)

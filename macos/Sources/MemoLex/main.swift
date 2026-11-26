@@ -287,7 +287,7 @@ private final class MemoLexWindow: NSWindow {
         } }
     }
 }
-private struct UpdatePromptOptions: View { @ObservedObject var preferences: Preferences; var body: some View { Toggle("以后发现新版时自动下载", isOn: $preferences.automaticDownloads).toggleStyle(.switch).controlSize(.small) } }
+private struct UpdatePromptOptions: View { @ObservedObject var preferences: Preferences; var body: some View { Toggle("以后发现新版时自动下载", isOn: $preferences.automaticDownloads).toggleStyle(.switch).controlSize(.small).noFocusRing() } }
 
 MainActor.assumeIsolated {
     let application = NSApplication.shared

@@ -11,9 +11,7 @@
       <Border Background="#F9FCFF" BorderBrush="#E2EDF6" BorderThickness="0,0,0,1" CornerRadius="11,11,0,0">
         <Grid Margin="14,0,6,0">
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <Border Width="28" Height="28" CornerRadius="8" Background="#EDF7FF" BorderBrush="#D2E8F8" BorderThickness="1" Padding="2" Margin="0,0,9,0">
-              <Image Source="Assets/owl-logo.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
-            </Border>
+            <Image Source="Assets/owl-logo.png" Width="24" Height="24" Margin="0,0,8,0" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
             <TextBlock Text="查词历史" FontSize="13.5" FontWeight="SemiBold" Foreground="#1A3A52" VerticalAlignment="Center"/>
           </StackPanel>
           <Button HorizontalAlignment="Right" Style="{StaticResource CloseWindowButton}" Click="CloseHistoryButton_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="关闭">

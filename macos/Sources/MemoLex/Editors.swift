@@ -11,8 +11,21 @@ struct HistoryView: View {
             DialogHeader(title: "查词历史") { model.sheet = nil }
             VStack(alignment: .leading, spacing: 14) {
                 HStack { Text("查词历史").font(.system(size: 23, weight: .semibold)); Spacer(); Text("\(model.history.count) 条记录").foregroundStyle(Palette.muted) }
-                TextField("筛选单词", text: $filter).inputFrame()
-                HStack { Button("全选当前结果") { selected = Set(records.map(\.id)) }; Button("删除选中") { model.removeHistory(selected); selected = [] }.disabled(selected.isEmpty); Spacer(); Button("清空记录") { if confirm("清空查词历史？", "此操作仅删除本机的查词记录。", action: "清空") { model.clearHistory(); selected = [] } } }.buttonStyle(MemoButtonStyle(compact: true))
+                VStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").font(.system(size: 12.5)).foregroundStyle(Palette.muted)
+                        TextField("筛选单词", text: $filter).textFieldStyle(.plain)
+                    }.padding(.horizontal, 10).frame(height: 34).controlSurface()
+                    HStack {
+                        Button("全选当前结果") { selected = Set(records.map(\.id)) }
+                        Button("删除选中") { model.removeHistory(selected); selected = [] }.disabled(selected.isEmpty)
+                        Spacer()
+                        Button("清空记录") { if confirm("清空查词历史？", "此操作仅删除本机的查词记录。", action: "清空") { model.clearHistory(); selected = [] } }
+                    }.buttonStyle(MemoButtonStyle(compact: true))
+                }
+                .padding(12)
+                .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
                 List(selection: $selected) {
                     ForEach(records) { record in
                         HStack(spacing: 10) {
@@ -32,7 +45,7 @@ struct HistoryView: View {
                     }
                 }.listStyle(.inset).overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.border))
             }.padding(23)
-        }.frame(width: 700, height: 570).background(Palette.paper).font(.system(size: 13)).foregroundStyle(Palette.ink)
+        }.frame(width: 700, height: 570).background(Palette.paper).font(.system(size: 13)).foregroundStyle(Palette.ink).noFocusRing()
     }
 }
 
@@ -146,31 +159,37 @@ struct StubbornView: View {
                 .padding(12)
                 .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
-                HStack(spacing: 10) {
-                    Text("单词").frame(width: 180, alignment: .leading)
-                    Text("释义").padding(.leading, 8)
-                    Spacer()
-                }.font(.system(size: 11)).foregroundStyle(Palette.muted).padding(10).background(Palette.wash)
-                ScrollView {
-                    LazyVStack(spacing: 2) { ForEach(visible, id: \.spellingText) { value in
-                        let word = value["spelling"].text
-                        HStack(alignment: .center, spacing: 10) {
-                            Button(word) { model.sheet = nil; model.lookup(word) }.buttonStyle(.plain).foregroundStyle(Palette.deep).frame(width: 180, alignment: .leading)
-                            Button { if model.preferences.concealMeanings { if revealed.contains(word) { revealed.remove(word) } else { revealed.insert(word) } } } label: {
-                                let hidden = model.preferences.concealMeanings && !revealed.contains(word)
-                                WordListMeaning(core: model.core, word: word, local: meanings[word],
-                                                concealed: hidden, lineByLine: true) { onlineMeanings[word] = $0 }
-                                    .padding(.horizontal, 8).padding(.vertical, 7)
-                                    .background(hidden ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 5))
-                            }.buttonStyle(.plain)
-                        }.padding(.horizontal, 10).frame(minHeight: 35)
-                    } }
-                }.overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border))
+                VStack(spacing: 0) {
+                    HStack(spacing: 10) {
+                        Text("单词").frame(width: 180, alignment: .leading)
+                        Text("释义").padding(.leading, 8)
+                        Spacer()
+                    }.font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.muted).padding(.horizontal, 12).frame(height: 32).background(Palette.wash)
+                    Divider().overlay(Palette.border)
+                    ScrollView {
+                        LazyVStack(spacing: 2) { ForEach(visible, id: \.spellingText) { value in
+                            let word = value["spelling"].text
+                            HStack(alignment: .center, spacing: 10) {
+                                Button(word) { model.sheet = nil; model.lookup(word) }.buttonStyle(.plain).font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.deep).frame(width: 180, alignment: .leading)
+                                Button { if model.preferences.concealMeanings { if revealed.contains(word) { revealed.remove(word) } else { revealed.insert(word) } } } label: {
+                                    let hidden = model.preferences.concealMeanings && !revealed.contains(word)
+                                    WordListMeaning(core: model.core, word: word, local: meanings[word],
+                                                    concealed: hidden, lineByLine: true) { onlineMeanings[word] = $0 }
+                                        .padding(.horizontal, 8).padding(.vertical, 7)
+                                        .background(hidden ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                }.buttonStyle(.plain)
+                            }.padding(.horizontal, 12).frame(minHeight: 36)
+                        } }
+                    }
+                }
+                .background(Palette.paper)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.85))
                 if model.stubbornLoading { ProgressView().controlSize(.small) }
                 Text(stubbornStatus.statusMessage).font(.footnote).foregroundStyle(.secondary)
             }.padding(23)
             }
-        }.frame(width: 730, height: min(650, (NSScreen.main?.visibleFrame.height ?? 760) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep)
+        }.frame(width: 730, height: min(650, (NSScreen.main?.visibleFrame.height ?? 760) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).tint(Palette.deep).noFocusRing()
             .onChange(of: model.activeAccountID) { _ in practiceSession = nil }
             .task { await model.refreshStubborn() }
             .task(id: model.stubbornWords.map { $0["spelling"].text }.joined(separator: "\n")) {
@@ -203,18 +222,30 @@ struct MnemonicView: View {
             DialogHeader(title: "编辑助记") { model.sheet = nil }
             VStack(alignment: .leading, spacing: 14) {
                 Text("\(model.word) · 编辑助记").font(.system(size: 23, weight: .semibold))
-                MemoPicker(title: "助记", selection: $selected, options: [("", "新建助记")] + model.notes.map { note in
-                    (note["id"].text, note["noteType"].text + " · " + String(note["text"].text.prefix(35)))
-                }).onChange(of: selected) { value in load(value) }
-                HStack {
-                    Text("分类").sectionLabel()
-                    MemoPicker(title: "助记分类", selection: $type, options: types.map { ($0, $0) }).frame(width: 170)
+                VStack(alignment: .leading, spacing: 10) {
+                    MemoPicker(title: "助记", selection: $selected, options: [("", "新建助记")] + model.notes.map { note in
+                        (note["id"].text, note["noteType"].text + " · " + String(note["text"].text.prefix(35)))
+                    }).onChange(of: selected) { value in load(value) }
+                    HStack(spacing: 10) {
+                        Text("分类").sectionLabel()
+                        MemoPicker(title: "助记分类", selection: $type, options: types.map { ($0, $0) }).frame(width: 170)
+                    }
                 }
+                .padding(12)
+                .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
                 TextEditor(text: $text).font(.system(size: 15)).padding(8).frame(maxWidth: .infinity, maxHeight: .infinity).overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.border))
                 Text(error.isEmpty ? "本地保存后离线也能查看；登录后可同步到墨墨。" : error).font(.system(size: 12)).foregroundStyle(error.isEmpty ? Palette.muted : .red)
-                HStack { Spacer(); Button("保存到本地") { Task { await save(cloud: false) } }; Button("同步到墨墨") { Task { await save(cloud: true) } }.disabled(!model.loggedIn) }.buttonStyle(MemoButtonStyle()).disabled(saving || text.trimmed.isEmpty || text.count > 20000)
+                HStack(spacing: 8) {
+                    Spacer()
+                    Button("保存到本地") { Task { await save(cloud: false) } }
+                        .buttonStyle(PillButtonStyle(compact: false))
+                    Button("同步到墨墨") { Task { await save(cloud: true) } }
+                        .buttonStyle(MemoButtonStyle(accent: true))
+                        .disabled(!model.loggedIn)
+                }.disabled(saving || text.trimmed.isEmpty || text.count > 20000)
             }.padding(23)
-        }.frame(width: 700, height: 560).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13))
+        }.frame(width: 700, height: 560).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).noFocusRing()
             .onAppear { if let first = model.notes.first { selected = first["id"].text; load(selected) } }
     }
     private func load(_ value: String) {
@@ -252,13 +283,29 @@ struct NotebookView: View {
                 if tab == 0 { wordsPage } else { infoPage }
                 Text(error).font(.system(size: 12)).foregroundStyle(.red)
             }.padding(23).disabled(busy)
-        }.frame(width: 820, height: min(700, (NSScreen.main?.visibleFrame.height ?? 800) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).toggleStyle(.checkbox)
+        }.frame(width: 820, height: min(700, (NSScreen.main?.visibleFrame.height ?? 800) - 60)).background(Palette.paper).foregroundStyle(Palette.ink).font(.system(size: 13)).toggleStyle(.checkbox).noFocusRing()
             .task { original = model.selectedPad; applyOriginal(); await describe() }
     }
     private var wordsPage: some View {
         VStack(alignment: .leading, spacing: 11) {
-            TextField("筛选单词或释义", text: $filter).inputFrame()
-            HStack { Button("全选当前结果") { selected = Set(visible.filter { !$0["isChapter"].flag }.map { $0["word"].text }) }; Button("清除选择") { selected = [] }; Button("删除选中") { Task { await removeSelected() } }.disabled(selected.isEmpty); Spacer(); Text("已选 \(selected.count) 个").font(.system(size: 11)).foregroundStyle(Palette.muted) }.buttonStyle(MemoButtonStyle(compact: true))
+            VStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 12.5)).foregroundStyle(Palette.muted)
+                    TextField("筛选单词或释义", text: $filter).textFieldStyle(.plain)
+                }.padding(.horizontal, 10).frame(height: 34).controlSurface()
+                HStack {
+                    Button("全选当前结果") { selected = Set(visible.filter { !$0["isChapter"].flag }.map { $0["word"].text }) }
+                    Button("清除选择") { selected = [] }
+                    Button("删除选中") { Task { await removeSelected() } }.disabled(selected.isEmpty)
+                    Spacer()
+                    Text("已选 \(selected.count) 个").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Palette.deep)
+                        .padding(.horizontal, 9).padding(.vertical, 3)
+                        .background(Palette.wash, in: Capsule())
+                }.buttonStyle(MemoButtonStyle(compact: true))
+            }
+            .padding(12)
+            .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
             List(selection: $selected) {
                 ForEach(Array(visible.enumerated()), id: \.offset) { _, row in
                     if row["isChapter"].flag {
@@ -267,23 +314,26 @@ struct NotebookView: View {
                         let word = row["word"].text
                         HStack(alignment: .firstTextBaseline, spacing: 14) {
                             Button(word) { model.sheet = nil; model.lookup(word) }
-                                .buttonStyle(.plain).foregroundStyle(Palette.deep).frame(width: 170, alignment: .leading)
+                                .buttonStyle(.plain).font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.deep).frame(width: 170, alignment: .leading)
                             WordListMeaning(core: model.core, word: word, local: row["meaning"].text) { onlineMeanings[word] = $0 }
                         }.padding(.vertical, 5).tag(word)
                     }
                 }
-            }.listStyle(.inset).frame(maxHeight: .infinity).overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border))
+            }.listStyle(.inset).frame(maxHeight: .infinity).overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.border))
             DisclosureGroup("添加 / 编辑词条与分组", isExpanded: $editing) {
-                VStack(alignment: .leading, spacing: 9) { TextEditor(text: $content).font(.system(size: 13, design: .monospaced)).padding(6).frame(height: 150).overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border)); HStack { Text("每行一个词，# 开头为分组。").font(.system(size: 11)).foregroundStyle(Palette.muted); Spacer(); Button("保存词表") { Task { await save(infoOnly: false) } }.buttonStyle(MemoButtonStyle()) } }.padding(.top, 9)
+                VStack(alignment: .leading, spacing: 9) { TextEditor(text: $content).font(.system(size: 13, design: .monospaced)).padding(6).frame(height: 150).overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border)); HStack { Text("每行一个词，# 开头为分组。").font(.system(size: 11)).foregroundStyle(Palette.muted); Spacer(); Button("保存词表") { Task { await save(infoOnly: false) } }.buttonStyle(MemoButtonStyle(accent: true, compact: true)) } }.padding(.top, 9)
             }
             Text("按住 ⌘ 多选，按住 ⇧ 连选。").font(.system(size: 11)).foregroundStyle(Palette.muted)
         }
     }
     private var infoPage: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("词本名称").foregroundStyle(Palette.muted); TextField("名称", text: $title).inputFrame()
-            Text("简介").foregroundStyle(Palette.muted); TextEditor(text: $brief).font(.system(size: 14)).padding(8).frame(height: 150).overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border))
-            HStack { Spacer(); Button("保存词本信息") { Task { await save(infoOnly: true) } }.buttonStyle(MemoButtonStyle(accent: true)) }; Spacer()
+            SettingsCard(title: "云词本信息") {
+                Text("词本名称").sectionLabel(); TextField("名称", text: $title).inputFrame()
+                Text("简介").sectionLabel(); TextEditor(text: $brief).font(.system(size: 14)).padding(8).frame(height: 150).overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border))
+                HStack { Spacer(); Button("保存词本信息") { Task { await save(infoOnly: true) } }.buttonStyle(MemoButtonStyle(accent: true)) }
+            }
+            Spacer()
         }
     }
     private func applyOriginal() { title = original["title"].text; brief = original["brief"].text; content = original["content"].text; selected = [] }

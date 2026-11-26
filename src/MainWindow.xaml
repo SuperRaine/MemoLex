@@ -33,15 +33,7 @@
                 <Grid Margin="13,0,6,0">
                     <Grid.ColumnDefinitions><ColumnDefinition x:Name="BrandColumn" Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <StackPanel x:Name="BrandGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
-                        <Border x:Name="BrandLogoBadge" Width="38" Height="38" CornerRadius="10" BorderBrush="#D4E9F8" BorderThickness="1" Padding="3" Margin="0,0,9,0">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#FFFFFF" Offset="0"/>
-                                    <GradientStop Color="#EAF6FF" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <Image x:Name="BrandLogo" Source="Assets/owl-logo.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
-                        </Border>
+                        <Image x:Name="BrandLogo" Source="Assets/owl-logo.png" Width="34" Height="34" Margin="0,0,9,0" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
                         <StackPanel VerticalAlignment="Center"><TextBlock x:Name="BrandTitleText" Text="墨墨搜词" FontSize="16.5" FontWeight="Bold" Foreground="#0E2B40"/><TextBlock Text="MemoLex" FontFamily="Segoe UI" FontSize="9.5" FontWeight="SemiBold" Foreground="#88A1B5" Margin="1,0,0,0"/></StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">

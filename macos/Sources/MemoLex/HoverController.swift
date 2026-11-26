@@ -153,7 +153,7 @@ private struct HoverView: View {
                 Divider().overlay(Palette.border.opacity(0.8))
                 bookmark
             }
-        }.padding(15).frame(width: 360, height: height, alignment: .topLeading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Palette.accent.opacity(0.45), lineWidth: 1))
+        }.padding(15).frame(width: 360, height: height, alignment: .topLeading).background(Palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Palette.accent.opacity(0.45), lineWidth: 1)).noFocusRing()
     }
 
     private var bookmark: some View {

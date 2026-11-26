@@ -28,7 +28,7 @@ public partial class MainWindow
             SidebarColumn.Width=new GridLength(compact?224:268);
             BrandColumn.Width=GridLength.Auto;
             BrandGroup.Margin=new Thickness(0,0,compact?6:12,0);
-            BrandLogoBadge.Width=BrandLogoBadge.Height=compact?32:38;BrandTitleText.FontSize=compact?14.5:16.5;
+            BrandLogo.Width=BrandLogo.Height=compact?28:34;BrandTitleText.FontSize=compact?14.5:16.5;
             BackButton.Width=ForwardButton.Width=compact?28:32;
             MinimizeWindowButton.Width=MaximizeButton.Width=CloseWindowButton.Width=compact?32:40;
             SettingsButton.Width=PinButton.Width=compact?29:34;

@@ -317,6 +317,7 @@ private struct FlashcardRatingStyle: ButtonStyle {
             .opacity(enabled ? 1 : 0.42)
             .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.97 : 1)
             .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.78), value: configuration.isPressed)
+            .noFocusRing()
     }
 }
 

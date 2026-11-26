@@ -108,14 +108,17 @@ struct PermissionsSettings: View {
         SettingsCard(title: kind.title) {
             HStack {
                 Label(enabled ? "已允许" : "待系统确认", systemImage: enabled ? "checkmark.circle.fill" : kind.icon)
-                    .font(.callout).foregroundStyle(enabled ? Palette.deep : Palette.muted)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(enabled ? Color(red: 0.06, green: 0.56, blue: 0.37) : Color(red: 0.75, green: 0.44, blue: 0.04))
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background((enabled ? Color(red: 0.08, green: 0.72, blue: 0.48) : Color(red: 0.96, green: 0.62, blue: 0.04)).opacity(0.14), in: Capsule())
                 Spacer()
                 if !enabled {
                     Button(resetting == kind ? "正在重置…" : "重置旧授权") { confirmReset(kind) }
                         .buttonStyle(MemoButtonStyle(compact: true)).disabled(resetting != nil)
                 }
                 Button("前往系统设置") { PermissionCenter.openSettings(for: kind) }
-                    .buttonStyle(MemoButtonStyle(compact: true)).disabled(resetting != nil)
+                    .buttonStyle(MemoButtonStyle(accent: !enabled, compact: true)).disabled(resetting != nil)
             }
             Text(detail).font(.callout).foregroundStyle(Palette.muted)
         }
@@ -191,6 +194,7 @@ private struct ShortcutRecorder: NSViewRepresentable {
         field.isBezeled = false
         field.isBordered = false
         field.drawsBackground = false
+        field.focusRingType = .none
         field.font = .monospacedSystemFont(ofSize: 13, weight: .medium)
         field.alignment = .center
         return field

@@ -421,8 +421,20 @@ struct UpdatesSettings: View {
                 }
                 Text("自动选择会在连接失败时切换下载源。").font(.footnote).foregroundStyle(Palette.muted)
             }
-            SettingsCard(title: "当前版本 \(AppPaths.version)") {
-                Text(updates.status.statusMessage).font(.callout).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text("v\(AppPaths.version)")
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundStyle(Palette.deep)
+                        .padding(.horizontal, 10).padding(.vertical, 3.5)
+                        .background(Palette.wash, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Palette.accent.opacity(0.32), lineWidth: 0.8))
+                    Text("macOS 通用版")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(Palette.muted)
+                    Spacer()
+                }
+                Text(updates.status.statusMessage).font(.callout).foregroundStyle(Palette.ink.opacity(0.88)).fixedSize(horizontal: false, vertical: true)
                 if updates.downloading, let received = updates.receivedBytes, updates.downloadSize > 0 {
                     HStack(spacing: 10) {
                         ProgressView(value: Double(received), total: Double(updates.downloadSize)).tint(Palette.accent)
@@ -439,7 +451,24 @@ struct UpdatesSettings: View {
                     Button(updates.cancelling ? "正在取消…" : "取消当前操作") { updates.cancelCurrentOperation() }
                         .buttonStyle(MemoButtonStyle(compact: true)).disabled(updates.cancelling)
                 }
-            }.tourTarget("updates")
+                Divider().overlay(Palette.border.opacity(0.85))
+                HStack(spacing: 8) {
+                    Text("手动下载通道").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.muted)
+                    Button("夸克网盘下载") { NSWorkspace.shared.open(URL(string: AppPaths.quarkDownload)!) }
+                        .buttonStyle(PillButtonStyle())
+                    Button("GitHub 发布页") { NSWorkspace.shared.open(URL(string: AppPaths.repository + "/releases/latest")!) }
+                        .buttonStyle(PillButtonStyle())
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(colors: [Palette.wash.opacity(0.75), Palette.paper], startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Palette.accent.opacity(0.32), lineWidth: 0.85))
+            .tourTarget("updates")
             if !updates.release["body"].text.isEmpty { DisclosureGroup("更新说明") { Text(updates.release["body"].text).font(.system(size: 12)).textSelection(.enabled) } }
             SettingsCard(title: "卸载软件") {
                 DisclosureGroup("卸载与清理选项") {
@@ -470,10 +499,6 @@ struct UpdatesSettings: View {
         Button(updates.downloaded == nil ? "下载并安装" : "更新并重启") { Task { await updates.install() } }
             .buttonStyle(MemoButtonStyle(accent: updates.downloaded != nil, compact: true))
             .disabled(updates.busy || !updates.hasUpdate)
-        Button("夸克下载") { NSWorkspace.shared.open(URL(string: AppPaths.quarkDownload)!) }
-            .buttonStyle(PillButtonStyle())
-        Button("GitHub 下载") { NSWorkspace.shared.open(URL(string: AppPaths.repository + "/releases/latest")!) }
-            .buttonStyle(PillButtonStyle())
     }
 }
 
