@@ -24,22 +24,36 @@ internal static class NotepadEditor
         foreach(var height in new[]{GridLength.Auto,GridLength.Auto,GridLength.Auto,GridLength.Auto,new GridLength(1,GridUnitType.Star),GridLength.Auto})browse.RowDefinitions.Add(new RowDefinition {Height=height});
         void Add(UIElement item,int row){Grid.SetRow(item,row);browse.Children.Add(item);}
         var titleDisplay=new TextBlock {Text=original.Title,FontSize=16,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,10),TextTrimming=TextTrimming.CharacterEllipsis};Add(titleDisplay,0);
-        var fields=new StackPanel {Margin=new Thickness(18,15,18,15)};
-        fields.Children.Add(new TextBlock {Text="云词本信息",FontSize=20,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,18)});
+        var fields=new StackPanel();
+        fields.Children.Add(new TextBlock {Text="云词本信息",FontSize=18,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(11,34,52)),Margin=new Thickness(0,0,0,14)});
         fields.Children.Add(InputDialog.Text("词本名称"));
-        var title=new TextBox {Text=original.Title,MaxLength=100,Margin=new Thickness(0,4,0,8)};fields.Children.Add(title);
-        fields.Children.Add(InputDialog.Text("简介"));var brief=new TextBox {Text=original.Brief,MaxLength=2000,Margin=new Thickness(0,4,0,18),AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,Height=110,VerticalContentAlignment=VerticalAlignment.Top,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};fields.Children.Add(brief);
+        var title=new TextBox {Text=original.Title,MaxLength=100,Margin=new Thickness(0,4,0,12)};fields.Children.Add(title);
+        fields.Children.Add(InputDialog.Text("简介"));var brief=new TextBox {Text=original.Brief,MaxLength=2000,Margin=new Thickness(0,4,0,14),AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,Height=110,VerticalContentAlignment=VerticalAlignment.Top,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};fields.Children.Add(brief);
         var tagsInfo=InputDialog.Text("标签："+(original.Tags.Count==0?"无":string.Join("、",original.Tags)));fields.Children.Add(tagsInfo);
         string StatusLabel(string value)=>value switch {"UNPUBLISHED"=>"未发布","PUBLISHED"=>"已发布","DELETED"=>"已删除",_=>value};
-        var publicationInfo=InputDialog.Text("发布状态："+StatusLabel(original.Status));fields.Children.Add(publicationInfo);
-        fields.Children.Add(new TextBlock {Text="标签和公开状态保持不变。",FontSize=11,Foreground=new SolidColorBrush(Color.FromRgb(140,161,179)),Margin=new Thickness(0,12,0,0),TextWrapping=TextWrapping.Wrap});
-        var metadata=new ScrollViewer {Content=fields,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
-        var searchPanel=new DockPanel {Margin=new Thickness(0,0,0,9)};
-        searchPanel.Children.Add(new TextBlock {Text="筛选",Width=42,VerticalAlignment=VerticalAlignment.Center,Foreground=new SolidColorBrush(Color.FromRgb(88,113,138))});
-        var search=new TextBox {ToolTip="按英文或中文释义筛选"};searchPanel.Children.Add(search);Add(searchPanel,1);
-        var toolbar=new WrapPanel {Margin=new Thickness(0,0,0,7)};
-        Button Tool(string label){var button=new Button {Content=label,FontSize=11,Padding=new Thickness(9,5,9,5),Margin=new Thickness(0,0,7,4)};toolbar.Children.Add(button);return button;}
-        var selectAll=Tool("全选当前结果");var clear=Tool("清除选择");var delete=Tool("删除选中");Add(toolbar,2);
+        var publicationInfo=InputDialog.Text("发布状态："+StatusLabel(original.Status));publicationInfo.Margin=new Thickness(0,4,0,0);fields.Children.Add(publicationInfo);
+        fields.Children.Add(new TextBlock {Text="标签和公开状态保持不变。",FontSize=11,Foreground=new SolidColorBrush(Color.FromRgb(140,161,179)),Margin=new Thickness(0,10,0,0),TextWrapping=TextWrapping.Wrap});
+        var metadataCard=new Border
+        {
+            Child=fields,Padding=new Thickness(18,16,18,16),Margin=new Thickness(12,12,12,12),
+            CornerRadius=new CornerRadius(12),Background=new SolidColorBrush(Color.FromRgb(248,252,255)),
+            BorderBrush=new SolidColorBrush(Color.FromRgb(222,236,246)),BorderThickness=new Thickness(1)
+        };
+        var metadata=new ScrollViewer {Content=metadataCard,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
+        var controlsStack=new StackPanel();
+        var searchPanel=new DockPanel {Margin=new Thickness(0,0,0,8)};
+        searchPanel.Children.Add(new TextBlock {Text="筛选",Width=42,VerticalAlignment=VerticalAlignment.Center,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(88,113,138))});
+        var search=new TextBox {ToolTip="按英文或中文释义筛选"};searchPanel.Children.Add(search);controlsStack.Children.Add(searchPanel);
+        var toolbar=new WrapPanel();
+        Button Tool(string label){var button=new Button {Content=label,FontSize=11.5,Padding=new Thickness(10,5,10,5),Margin=new Thickness(0,0,7,0)};toolbar.Children.Add(button);return button;}
+        var selectAll=Tool("全选当前结果");var clear=Tool("清除选择");var delete=Tool("删除选中");controlsStack.Children.Add(toolbar);
+        var controlsCard=new Border
+        {
+            Child=controlsStack,Padding=new Thickness(12,10,12,10),Margin=new Thickness(0,0,0,9),
+            CornerRadius=new CornerRadius(11),Background=new SolidColorBrush(Color.FromRgb(245,250,255)),
+            BorderBrush=new SolidColorBrush(Color.FromRgb(222,236,246)),BorderThickness=new Thickness(1)
+        };
+        Add(controlsCard,1);
         var entryPanel=new Expander {Header="添加或编辑单词与分组",Margin=new Thickness(0,0,0,8)};
         var entryBody=new Grid {Margin=new Thickness(0,8,0,5)};foreach(var height in new[]{GridLength.Auto,GridLength.Auto})entryBody.RowDefinitions.Add(new RowDefinition {Height=height});
         var entryInput=new TextBox {Text=original.Content,AcceptsReturn=true,AcceptsTab=true,TextWrapping=TextWrapping.Wrap,Height=150,VerticalContentAlignment=VerticalAlignment.Top,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,MaxLength=300000,FontFamily=new FontFamily("Consolas, Microsoft YaHei UI")};entryBody.Children.Add(entryInput);

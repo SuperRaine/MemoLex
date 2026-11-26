@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using MemoLex.Core;
@@ -121,7 +122,7 @@ internal sealed class UpdateManager:IDisposable
     internal async Task InstallAsync(Window owner)
     {
         if(!CanInstall||_release==null||_asset==null||_download==null)return;
-        if(MessageBox.Show(owner,$"更新到 {_release.Version} 并重启墨墨搜词？\n设置和个人资料会保留。","安装更新",MessageBoxButton.OKCancel,MessageBoxImage.Information)!=MessageBoxResult.OK)return;
+        if(!InputDialog.Confirm(owner,"安装更新",$"更新到 {_release.Version} 并重启墨墨搜词？\n设置和个人资料会保留。","更新并重启"))return;
         _busy=true;Changed?.Invoke();
         try
         {
@@ -156,38 +157,102 @@ internal sealed class UpdateManager:IDisposable
     internal FrameworkElement BuildPanel(Window owner)
     {
         var panel=new StackPanel();
-        panel.Children.Add(InputDialog.Text("当前版本 "+_current+" · Windows x64"));
-        var policyRow=new WrapPanel{Margin=new Thickness(0,12,0,10),ItemHeight=36};panel.Children.Add(policyRow);
-        var enabled=new CheckBox{Content="自动检查更新",Style=(Style)Application.Current.FindResource("SwitchCheckBox"),IsChecked=_preferences.AutomaticUpdates,Margin=new Thickness(0,0,16,0),VerticalAlignment=VerticalAlignment.Center};policyRow.Children.Add(enabled);
-        var choices=new[]{new Frequency("每次启动","startup"),new Frequency("每 6 小时","6h"),new Frequency("每天","daily"),new Frequency("每周","weekly")};
-        var frequencyLabel=new TextBlock{Text="检查更新间隔",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,8,0),Foreground=InputDialog.Text("").Foreground};policyRow.Children.Add(frequencyLabel);
-        var frequency=new ComboBox{ItemsSource=choices,SelectedItem=choices.FirstOrDefault(c=>c.Value==_preferences.UpdateFrequency)??choices[2],MinWidth=150,Height=36,VerticalAlignment=VerticalAlignment.Center};policyRow.Children.Add(frequency);
-        var sourceRow=new WrapPanel{Margin=new Thickness(0,0,0,8),ItemHeight=36};panel.Children.Add(sourceRow);
-        var sourceLabel=new TextBlock{Text="下载源",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0),Foreground=frequencyLabel.Foreground};sourceRow.Children.Add(sourceLabel);
-        var sources=GitHubUpdateClient.DownloadSources;var source=new ComboBox{ItemsSource=sources,SelectedItem=sources.FirstOrDefault(s=>s.Id==_preferences.UpdateSource)??sources[0],MinWidth=180,Height=36,VerticalAlignment=VerticalAlignment.Center};sourceRow.Children.Add(source);
-        var autoDownload=new CheckBox{Content="发现新版后自动下载",Style=(Style)Application.Current.FindResource("SwitchCheckBox"),IsChecked=AutomaticallyDownload,Margin=new Thickness(18,0,0,0),VerticalAlignment=VerticalAlignment.Center};sourceRow.Children.Add(autoDownload);
-        panel.Children.Add(InputDialog.Text("默认发现新版时只提醒，点击「下载更新」后开始下载。连接失败时会切换备用源。"));
-        var state=InputDialog.Text(Status, status: true);state.Margin=new Thickness(0,14,0,8);panel.Children.Add(state);
-        var bar=new ProgressBar{Minimum=0,Maximum=100,Height=5,Margin=new Thickness(0,0,0,16)};panel.Children.Add(bar);
-        var last=InputDialog.Text("");panel.Children.Add(last);
-        var buttons=new WrapPanel{Margin=new Thickness(0,10,0,6)};panel.Children.Add(buttons);
-        Button Button(string title,string name,Action action){var button=new Button{Content=title,Margin=new Thickness(0,0,8,10)};button.Click+=(_,_)=>action();buttons.Children.Add(button);owner.RegisterName(name,button);return button;}
-        var check=Button("手动检查更新","CheckUpdatesButton",async()=>await CheckAsync());
-        var download=Button("下载更新","DownloadUpdateButton",async()=>await DownloadAsync());
-        var install=Button("更新并重启","InstallUpdateButton",async()=>await InstallAsync(owner));
-        var cancel=Button("取消当前操作","CancelUpdateButton",Cancel);
+        var accentStyle=(Style)Application.Current.FindResource("AccentButton");
+        var defaultStyle=(Style)Application.Current.FindResource(typeof(Button));
+        var pillStyle=(Style)Application.Current.FindResource("PillButton");
+
+        // Card 1: Version, live update status, and direct download links
+        var heroContent=new StackPanel();
+        var heroTop=new DockPanel{Margin=new Thickness(0,0,0,10)};
+        var last=InputDialog.Text("");
+        last.FontSize=11.5;last.VerticalAlignment=VerticalAlignment.Center;
+        DockPanel.SetDock(last,Dock.Right);heroTop.Children.Add(last);
+
+        var versionRow=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Center};
+        versionRow.Children.Add(new Border
+        {
+            Background=new SolidColorBrush(Color.FromRgb(221,242,255)),
+            BorderBrush=new SolidColorBrush(Color.FromRgb(186,225,248)),
+            BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(11),
+            Padding=new Thickness(10,3,10,3),Margin=new Thickness(0,0,8,0),
+            Child=new TextBlock{Text="v"+_current,FontSize=12.5,FontWeight=FontWeights.Bold,Foreground=new SolidColorBrush(Color.FromRgb(11,132,189))}
+        });
+        versionRow.Children.Add(new TextBlock{Text="Windows x64",FontSize=12.5,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(83,108,128)),VerticalAlignment=VerticalAlignment.Center});
+        heroTop.Children.Add(versionRow);
+        heroContent.Children.Add(heroTop);
+
+        var state=InputDialog.Text(Status, status: true);
+        state.FontSize=13;state.Margin=new Thickness(0,0,0,10);
+        heroContent.Children.Add(state);
+
+        var bar=new ProgressBar{Minimum=0,Maximum=100,Height=6,Margin=new Thickness(0,0,0,12),Foreground=new SolidColorBrush(Color.FromRgb(14,142,208)),Background=new SolidColorBrush(Color.FromRgb(222,238,249)),BorderThickness=new Thickness(0)};
+        heroContent.Children.Add(bar);
+
+        var buttons=new WrapPanel{Margin=new Thickness(0,2,0,4)};heroContent.Children.Add(buttons);
+        Button AddAction(Panel container,string title,string name,Action action,Style? style=null)
+        {
+            var button=new Button{Content=title,Margin=new Thickness(0,0,8,8)};
+            if(style!=null)button.Style=style;
+            button.Click+=(_,_)=>action();
+            container.Children.Add(button);owner.RegisterName(name,button);
+            return button;
+        }
+        var check=AddAction(buttons,"手动检查更新","CheckUpdatesButton",async()=>await CheckAsync(),accentStyle);
+        var download=AddAction(buttons,"下载更新","DownloadUpdateButton",async()=>await DownloadAsync());
+        var install=AddAction(buttons,"更新并重启","InstallUpdateButton",async()=>await InstallAsync(owner));
+        var cancel=AddAction(buttons,"取消当前操作","CancelUpdateButton",Cancel);
+
         void OpenDownloadPage(string address)
         {
             try { Process.Start(new ProcessStartInfo(address) { UseShellExecute = true }); }
             catch { state.Text = "无法打开浏览器。"; }
         }
-        Button("GitHub 下载","UpdateReleasePage",()=>OpenDownloadPage(_release?.Page.AbsoluteUri??GitHubUpdateClient.Repository+"/releases/latest"));
-        Button("夸克下载","UpdateQuarkPage",()=>OpenDownloadPage(SettingsDialog.QuarkDownloadUrl));
-        var notes=new TextBox{IsReadOnly=true,TextWrapping=TextWrapping.Wrap,MaxHeight=130,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
-        var notesSection=new Expander{Header="更新说明",Content=notes,Visibility=Visibility.Collapsed};panel.Children.Add(notesSection);
+        var downloadRow=new Border
+        {
+            Margin=new Thickness(0,6,0,0),Padding=new Thickness(0,10,0,0),
+            BorderBrush=new SolidColorBrush(Color.FromRgb(218,236,248)),BorderThickness=new Thickness(0,1,0,0)
+        };
+        var downloadLinks=new WrapPanel{VerticalAlignment=VerticalAlignment.Center};
+        downloadLinks.Children.Add(new TextBlock{Text="手动下载通道",FontSize=12,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(90,115,136)),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,6)});
+        AddAction(downloadLinks,"夸克网盘下载","UpdateQuarkPage",()=>OpenDownloadPage(SettingsDialog.QuarkDownloadUrl),pillStyle);
+        AddAction(downloadLinks,"GitHub 发布页","UpdateReleasePage",()=>OpenDownloadPage(_release?.Page.AbsoluteUri??GitHubUpdateClient.Repository+"/releases/latest"),pillStyle);
+        downloadRow.Child=downloadLinks;
+        heroContent.Children.Add(downloadRow);
+
+        panel.Children.Add(new Border
+        {
+            Child=heroContent,Padding=new Thickness(16,14,16,12),Margin=new Thickness(0,0,0,12),
+            CornerRadius=new CornerRadius(12),
+            Background=new LinearGradientBrush(Color.FromRgb(240,249,255),Color.FromRgb(251,254,255),new Point(0,0),new Point(1,1)),
+            BorderBrush=new SolidColorBrush(Color.FromRgb(198,227,247)),BorderThickness=new Thickness(1)
+        });
+
+        // Card 2: Automatic update policy & source
+        var policyCard=new StackPanel();
+        policyCard.Children.Add(new TextBlock{Text="更新策略与下载源",FontSize=14,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(20,46,68)),Margin=new Thickness(0,0,0,10)});
+        var policyRow=new WrapPanel{Margin=new Thickness(0,0,0,10),ItemHeight=36};policyCard.Children.Add(policyRow);
+        var enabled=new CheckBox{Content="自动检查更新",Style=(Style)Application.Current.FindResource("SwitchCheckBox"),IsChecked=_preferences.AutomaticUpdates,Margin=new Thickness(0,0,18,0),VerticalAlignment=VerticalAlignment.Center};policyRow.Children.Add(enabled);
+        var choices=new[]{new Frequency("每次启动","startup"),new Frequency("每 6 小时","6h"),new Frequency("每天","daily"),new Frequency("每周","weekly")};
+        var frequencyLabel=new TextBlock{Text="检查间隔",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,8,0),Foreground=InputDialog.Text("").Foreground};policyRow.Children.Add(frequencyLabel);
+        var frequency=new ComboBox{ItemsSource=choices,SelectedItem=choices.FirstOrDefault(c=>c.Value==_preferences.UpdateFrequency)??choices[2],MinWidth=140,Height=34,VerticalAlignment=VerticalAlignment.Center};policyRow.Children.Add(frequency);
+        var sourceRow=new WrapPanel{Margin=new Thickness(0,0,0,8),ItemHeight=36};policyCard.Children.Add(sourceRow);
+        var sourceLabel=new TextBlock{Text="下载源",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0),Foreground=frequencyLabel.Foreground};sourceRow.Children.Add(sourceLabel);
+        var sources=GitHubUpdateClient.DownloadSources;var source=new ComboBox{ItemsSource=sources,SelectedItem=sources.FirstOrDefault(s=>s.Id==_preferences.UpdateSource)??sources[0],MinWidth=170,Height=34,VerticalAlignment=VerticalAlignment.Center};sourceRow.Children.Add(source);
+        var autoDownload=new CheckBox{Content="发现新版后自动下载",Style=(Style)Application.Current.FindResource("SwitchCheckBox"),IsChecked=AutomaticallyDownload,Margin=new Thickness(18,0,0,0),VerticalAlignment=VerticalAlignment.Center};sourceRow.Children.Add(autoDownload);
+        var policyHint=InputDialog.Text("默认发现新版时只提醒，点击「下载更新」后开始下载；连接失败时会自动切换备用源。");
+        policyHint.FontSize=12;policyCard.Children.Add(policyHint);
+        panel.Children.Add(new Border
+        {
+            Child=policyCard,Padding=new Thickness(16,14,16,14),Margin=new Thickness(0,0,0,12),
+            CornerRadius=new CornerRadius(12),Background=new SolidColorBrush(Color.FromRgb(248,252,255)),
+            BorderBrush=new SolidColorBrush(Color.FromRgb(222,236,246)),BorderThickness=new Thickness(1)
+        });
+
+        var notes=new TextBox{IsReadOnly=true,TextWrapping=TextWrapping.Wrap,MaxHeight=140,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
+        var notesSection=new Expander{Header="查看更新说明",Content=notes,Visibility=Visibility.Collapsed,Margin=new Thickness(0,0,0,12)};panel.Children.Add(notesSection);
         var directory=ApplicationPaths.InstallDirectory;
         var uninstallPath=Path.Combine(directory,"Uninstall.exe");
-        var uninstall=new Button{Content="卸载墨墨搜词",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,14,0,0)};
+        var uninstall=new Button{Content="卸载墨墨搜词",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,2,0,0)};
         uninstall.Visibility=File.Exists(uninstallPath)?Visibility.Visible:Visibility.Collapsed;
         uninstall.Click+=(_,_)=>
         {
@@ -202,7 +267,18 @@ internal sealed class UpdateManager:IDisposable
         };
         panel.Children.Add(uninstall);owner.RegisterName("UninstallMemoLexButton",uninstall);
         void UpdateUninstallAvailability() => uninstall.IsEnabled = !Busy;
-        void Render(){state.Text=Status;bar.Value=Progress;bar.IsIndeterminate=Busy&&Progress==0;bar.Visibility=_busy?Visibility.Visible:Visibility.Collapsed;check.IsEnabled=!Busy;download.IsEnabled=CanDownload;install.IsEnabled=CanInstall;source.IsEnabled=!Busy;autoDownload.IsChecked=AutomaticallyDownload;autoDownload.IsEnabled=enabled.IsChecked==true;cancel.Visibility=Busy?Visibility.Visible:Visibility.Collapsed;frequency.IsEnabled=enabled.IsChecked==true;last.Text=_preferences.LastUpdateCheck is {} at?"上次检查："+at.ToLocalTime().ToString("yyyy-MM-dd HH:mm"):"还未检查";notes.Text=_release?.Notes??"";notesSection.Visibility=notes.Text.Length>0?Visibility.Visible:Visibility.Collapsed;}
+        void Render()
+        {
+            state.Text=Status;bar.Value=Progress;bar.IsIndeterminate=Busy&&Progress==0;bar.Visibility=_busy?Visibility.Visible:Visibility.Collapsed;
+            check.IsEnabled=!Busy;download.IsEnabled=CanDownload;install.IsEnabled=CanInstall;
+            check.Style=!CanDownload&&!CanInstall?accentStyle:defaultStyle;
+            download.Style=CanDownload?accentStyle:defaultStyle;
+            install.Style=CanInstall?accentStyle:defaultStyle;
+            source.IsEnabled=!Busy;autoDownload.IsChecked=AutomaticallyDownload;autoDownload.IsEnabled=enabled.IsChecked==true;
+            cancel.Visibility=Busy?Visibility.Visible:Visibility.Collapsed;frequency.IsEnabled=enabled.IsChecked==true;
+            last.Text=_preferences.LastUpdateCheck is {} at?"上次检查 "+at.ToLocalTime().ToString("yyyy-MM-dd HH:mm"):"尚未检查更新";
+            notes.Text=_release?.Notes??"";notesSection.Visibility=notes.Text.Length>0?Visibility.Visible:Visibility.Collapsed;
+        }
         enabled.Checked+=(_,_)=>{_preferences.AutomaticUpdates=true;PolicyChanged();};enabled.Unchecked+=(_,_)=>{_preferences.AutomaticUpdates=false;PolicyChanged();};
         frequency.SelectionChanged+=(_,_)=>{_preferences.UpdateFrequency=((Frequency)frequency.SelectedItem).Value;PolicyChanged();};
         source.SelectionChanged+=(_,_)=>{_preferences.UpdateSource=((UpdateDownloadSource)source.SelectedItem).Id;PolicyChanged();};

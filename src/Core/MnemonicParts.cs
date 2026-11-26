@@ -22,7 +22,7 @@ public static partial class MnemonicParts
 {
     // Match authored constructions such as re-（再次）＋view（看）→回头再看,
     // including stem changes such as abbreviat(e) or accompan(y→i).
-    [GeneratedRegex(@"^(?<form>-?[a-z]+(?:\([a-z]+(?:→[a-z]+)?\))?[a-z]*-?)(?:\s*(?:（(?<meaning>.+)）|\((?<meaning>.+)\))|(?:\s+|\s*[：:]\s*)(?<meaning>[\p{IsCJKUnifiedIdeographs}].*))$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?<form>-?[a-z]+(?:\([a-z]+(?:→[a-z]+)?\))?[a-z]*-?)(?:\s*(?:（(?<meaning>[^。！？\r\n]+)）|\((?<meaning>[^。！？\r\n]+)\))|(?:\s+|\s*[：:]\s*)(?<meaning>[\p{IsCJKUnifiedIdeographs}][^。！？\r\n]*))$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex LabeledPart();
 
     [GeneratedRegex(@"^-?[a-z]+(?:\([a-z]+(?:→[a-z]+)?\))?[a-z]*-?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
@@ -70,9 +70,13 @@ public static partial class MnemonicParts
 
         foreach (var line in lines)
         {
-            if (breakdowns.Count < 3 && TryParseLine(word, line, breakdowns.Count == 0, findExamples, out var breakdown))
+            if (breakdowns.Count < 3 && TryParseLine(word, line, breakdowns.Count == 0, findExamples, out var breakdown, out var extraBefore, out var extraAfter))
             {
+                if (!string.IsNullOrWhiteSpace(extraBefore))
+                    remaining.Add(extraBefore);
                 breakdowns.Add(breakdown);
+                if (!string.IsNullOrWhiteSpace(extraAfter))
+                    remaining.Add(extraAfter);
                 continue;
             }
             remaining.Add(line);
@@ -89,25 +93,30 @@ public static partial class MnemonicParts
         string line,
         bool isPrimary,
         Func<string, string, string, IReadOnlyList<string>>? findExamples,
-        out MnemonicBreakdown breakdown)
+        out MnemonicBreakdown breakdown,
+        out string? extraBefore,
+        out string? extraAfter)
     {
         breakdown = default!;
-        var arrow = line.IndexOf('→');
-        var equals = line.IndexOfAny(['=', '＝']);
-        var boundary = arrow < 0 ? equals : equals < 0 ? arrow : Math.Min(arrow, equals);
+        extraBefore = null;
+        extraAfter = null;
+
+        var candidate = line;
+        var boundary = FindFormulaBoundary(candidate);
         if (boundary < 0) return false;
 
-        var left = line[..boundary];
-        // Ignore paren-internal arrows like accompan(y→i) when locating the formula arrow.
-        while (boundary >= 0 && IsInsideParentheses(line, boundary))
+        // If a leading root-intro sentence precedes the formula on the same line
+        // (e.g. "port：搬运、携带。im-（向内）＋port（搬运）→..."), split it into extraBefore.
+        var leadingStop = LastTopLevelSentenceStop(candidate, boundary);
+        if (leadingStop >= 0)
         {
-            var nextArrow = line.IndexOf('→', boundary + 1);
-            var nextEquals = line.IndexOfAny(['=', '＝'], boundary + 1);
-            boundary = nextArrow < 0 ? nextEquals : nextEquals < 0 ? nextArrow : Math.Min(nextArrow, nextEquals);
+            extraBefore = candidate[..(leadingStop + 1)].Trim();
+            candidate = candidate[(leadingStop + 1)..].Trim();
+            boundary = FindFormulaBoundary(candidate);
+            if (boundary < 0) return false;
         }
-        if (boundary < 0) return false;
-        left = line[..boundary];
 
+        var left = candidate[..boundary];
         var pieces = left.Split(['+', '＋'], StringSplitOptions.TrimEntries);
         if (pieces.Length is < 2 or > 8) return false;
 
@@ -115,7 +124,7 @@ public static partial class MnemonicParts
         foreach (var piece in pieces)
         {
             var match = LabeledPart().Match(piece);
-            if (match.Success && match.Groups["meaning"].Value.Trim() is { Length: > 0 } meaning)
+            if (match.Success && match.Groups["meaning"].Value.Trim() is { Length: > 0 } meaning && HasBalancedParens(meaning))
                 rawParts.Add((match.Groups["form"].Value, meaning));
             else if (UnlabeledPart().IsMatch(piece))
                 rawParts.Add((piece, ""));
@@ -124,8 +133,21 @@ public static partial class MnemonicParts
         }
 
         if (rawParts.Count(part => part.Meaning.Length > 0) < 2) return false;
-        var explanation = line[(boundary + 1)..].Trim();
+        var explanation = candidate[(boundary + 1)..].Trim();
         if (explanation.Length == 0) return false;
+
+        // If a trailing related-words list or extra root sentence sits after the explanation's period
+        // (e.g. "...→导入。export（出口）；transport（运输）。"), move it to extraAfter.
+        var firstStop = FirstTopLevelSentenceStop(explanation);
+        if (firstStop >= 0 && firstStop < explanation.Length - 1)
+        {
+            var tail = explanation[(firstStop + 1)..].Trim();
+            if (LooksLikeTrailingNote(tail))
+            {
+                extraAfter = tail;
+                explanation = explanation[..(firstStop + 1)].Trim();
+            }
+        }
 
         var parts = new List<MnemonicPart>(rawParts.Count);
         for (var i = 0; i < rawParts.Count; i++)
@@ -145,6 +167,66 @@ public static partial class MnemonicParts
         breakdown = new(parts, explanation, resultWord);
         return true;
     }
+
+    private static int FindFormulaBoundary(string text)
+    {
+        var searchFrom = 0;
+        while (searchFrom < text.Length)
+        {
+            var arrow = text.IndexOf('→', searchFrom);
+            var equals = text.IndexOfAny(['=', '＝'], searchFrom);
+            var boundary = arrow < 0 ? equals : equals < 0 ? arrow : Math.Min(arrow, equals);
+            if (boundary < 0) return -1;
+            if (!IsInsideParentheses(text, boundary)) return boundary;
+            searchFrom = boundary + 1;
+        }
+        return -1;
+    }
+
+    private static int LastTopLevelSentenceStop(string text, int endExclusive)
+    {
+        var depth = 0;
+        var last = -1;
+        for (var i = 0; i < endExclusive; i++)
+        {
+            var ch = text[i];
+            if (ch is '(' or '（') depth++;
+            else if (ch is ')' or '）' && depth > 0) depth--;
+            else if (depth == 0 && ch is '。' or '；') last = i;
+        }
+        return last;
+    }
+
+    private static int FirstTopLevelSentenceStop(string text)
+    {
+        var depth = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+            if (ch is '(' or '（') depth++;
+            else if (ch is ')' or '）' && depth > 0) depth--;
+            else if (depth == 0 && ch == '。') return i;
+        }
+        return -1;
+    }
+
+    private static bool HasBalancedParens(string text)
+    {
+        var depth = 0;
+        foreach (var ch in text)
+        {
+            if (ch is '(' or '（') depth++;
+            else if (ch is ')' or '）')
+            {
+                if (depth == 0) return false;
+                depth--;
+            }
+        }
+        return depth == 0;
+    }
+
+    private static bool LooksLikeTrailingNote(string tail) =>
+        Regex.IsMatch(tail, @"^[a-zA-Z-]{2,}\s*(?:（|\(|[：:])");
 
     private static bool IsInsideParentheses(string text, int index)
     {
@@ -172,6 +254,10 @@ public static partial class MnemonicParts
 
         if (isPrimary && entryWord.Length >= 4 && EditDistance(entryWord.ToLowerInvariant(), droppedCombined.ToLowerInvariant()) <= 2)
             return entryWord;
+
+        if (!isPrimary && droppedCombined.Length >= 3 && droppedCombined.All(char.IsAsciiLetter)
+            && entryWord.Contains(droppedCombined, StringComparison.OrdinalIgnoreCase))
+            return droppedCombined.ToLowerInvariant();
 
         return isPrimary ? entryWord : null;
     }

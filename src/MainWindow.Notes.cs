@@ -101,27 +101,54 @@ public partial class MainWindow
             TextWrapping=TextWrapping.Wrap
         };
         var buttons=new Dictionary<int,(Button Button,MnemonicPart Part)>();
-        int? active=null;
+        var selected=new HashSet<int>();
 
-        void ApplyState(int? nextActive,Button? clickedChip)
+        void RenderSelection(Button? clickedChip)
         {
-            active=nextActive;
-            if(active is int idx&&buttons.TryGetValue(idx,out var selected))
-                detail.Text=selected.Part.FocusExplanation??$"{selected.Part.Form} · {selected.Part.Meaning}";
-            else
+            var allLit=selected.Count==0||selected.Count==buttons.Count;
+            if(allLit)
+            {
                 detail.Text=breakdown.Explanation;
+            }
+            else
+            {
+                var chosen=selected.OrderBy(i=>i)
+                    .Where(buttons.ContainsKey)
+                    .Select(i=>buttons[i].Part.FocusExplanation??$"{buttons[i].Part.Form} · {buttons[i].Part.Meaning}");
+                detail.Text=string.Join("\n",chosen);
+            }
 
             foreach(var (position,entry) in buttons)
             {
-                var lit=active==null||active==position;
-                var solo=active==position;
-                entry.Button.Background=lit?Brush(solo?"#E6F6FF":"#F0FAFF"):Brushes.White;
-                entry.Button.BorderBrush=Brush(solo?"#24B4F5":lit?"#46BEF6":"#C6E4F7");
+                var lit=allLit||selected.Contains(position);
+                var emphasized=!allLit&&selected.Contains(position);
+                entry.Button.Background=lit?Brush(emphasized?"#E2F5FF":"#ECF8FF"):Brushes.White;
+                entry.Button.BorderBrush=Brush(emphasized?"#19ACF2":lit?"#38B8F6":"#C6E4F7");
                 entry.Button.Opacity=1.0;
-                entry.Button.Effect=lit?LitShadow(solo?0.20:0.13):null;
+                entry.Button.Effect=lit?LitShadow(emphasized?0.22:0.15):null;
             }
             if(clickedChip!=null)Desktop.UiMotion.Pop(clickedChip,peakScale:1.04,durationMs:180);
             Desktop.UiMotion.Reveal(detail,distance:3);
+        }
+
+        void ToggleChoice(int choice,Button clickedChip)
+        {
+            if(selected.Count==0||selected.Count==buttons.Count)
+            {
+                selected.Clear();
+                selected.Add(choice);
+            }
+            else if(selected.Contains(choice))
+            {
+                if(selected.Count==1)selected.Clear();
+                else selected.Remove(choice);
+            }
+            else
+            {
+                selected.Add(choice);
+                if(selected.Count==buttons.Count)selected.Clear();
+            }
+            RenderSelection(clickedChip);
         }
 
         for(var index=0;index<breakdown.Parts.Count;index++)
@@ -147,13 +174,13 @@ public partial class MainWindow
             var chip=new Button
             {
                 Content=body,Style=chipStyle,
-                Background=Brush("#F0FAFF"),BorderBrush=Brush("#46BEF6"),BorderThickness=new Thickness(1.5),
-                Effect=LitShadow(0.13),ToolTip=part.FocusExplanation??part.Meaning,VerticalAlignment=VerticalAlignment.Center
+                Background=Brush("#ECF8FF"),BorderBrush=Brush("#38B8F6"),BorderThickness=new Thickness(1.5),
+                Effect=LitShadow(0.15),ToolTip=part.FocusExplanation??part.Meaning,VerticalAlignment=VerticalAlignment.Center
             };
-            AutomationProperties.SetName(chip,$"{part.Form}，点击查看构词含义");
+            AutomationProperties.SetName(chip,$"{part.Form}，点击查看或组合构词含义");
             buttons.Add(index,(chip,part));
             builder.Children.Add(chip);
-            chip.Click+=(_,_)=>ApplyState(active==choice?null:choice,chip);
+            chip.Click+=(_,_)=>ToggleChoice(choice,chip);
         }
 
         builder.Children.Add(new TextBlock{Text="→",FontSize=14.5,FontWeight=FontWeights.Bold,Foreground=Brush("#6CA9CC"),VerticalAlignment=VerticalAlignment.Center});
@@ -170,7 +197,7 @@ public partial class MainWindow
             Background=new LinearGradientBrush(Color.FromRgb(226,245,255),Color.FromRgb(238,249,255),new Point(0,0),new Point(1,1)),
             Child=resultStack
         };
-        resultCard.MouseLeftButtonUp+=(_,_)=>{if(active!=null)ApplyState(null,null);};
+        resultCard.MouseLeftButtonUp+=(_,_)=>{if(selected.Count>0){selected.Clear();RenderSelection(null);}};
         builder.Children.Add(resultCard);
         return builder;
     }

@@ -14,19 +14,25 @@ struct MnemonicPartsView: View {
 
 private struct MnemonicBreakdownView: View {
     let breakdown: J
-    @State private var selected: Int?
+    @State private var selected: Set<Int> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let parts = breakdown["parts"].list
         let word = breakdown["word"].text
+        let clickableIndices = Set(parts.indices.filter { !parts[$0]["meaning"].text.isEmpty })
+        let allLit = selected.isEmpty || selected.count >= clickableIndices.count
         let detail: String = {
-            if let index = selected, parts.indices.contains(index) {
+            if allLit {
+                return breakdown["explanation"].text
+            }
+            let lines = selected.sorted().compactMap { index -> String? in
+                guard parts.indices.contains(index) else { return nil }
                 let focus = parts[index]["focusExplanation"].text
                 if !focus.isEmpty { return focus }
                 return "\(parts[index]["form"].text) · \(parts[index]["meaning"].text)"
             }
-            return breakdown["explanation"].text
+            return lines.isEmpty ? breakdown["explanation"].text : lines.joined(separator: "\n")
         }()
 
         MorphemeFlowLayout(spacing: 7, lineSpacing: 8, expandLast: true, lastMinWidth: 185) {
@@ -54,12 +60,25 @@ private struct MnemonicBreakdownView: View {
                         form: form,
                         meaning: meaning,
                         tooltip: focus.isEmpty ? meaning : focus,
-                        lit: selected == nil || selected == index,
-                        active: selected == index,
+                        lit: allLit || selected.contains(index),
+                        active: !allLit && selected.contains(index),
                         reduceMotion: reduceMotion
                     ) {
                         withAnimation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.78)) {
-                            selected = selected == index ? nil : index
+                            if allLit {
+                                selected = [index]
+                            } else if selected.contains(index) {
+                                if selected.count == 1 {
+                                    selected.removeAll()
+                                } else {
+                                    selected.remove(index)
+                                }
+                            } else {
+                                selected.insert(index)
+                                if selected.count >= clickableIndices.count {
+                                    selected.removeAll()
+                                }
+                            }
                         }
                     }
                 }
@@ -69,9 +88,9 @@ private struct MnemonicBreakdownView: View {
                 .foregroundStyle(Palette.accent.opacity(0.82))
                 .accessibilityHidden(true)
             Button {
-                if selected != nil {
+                if !selected.isEmpty {
                     withAnimation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.78)) {
-                        selected = nil
+                        selected.removeAll()
                     }
                 }
             } label: {

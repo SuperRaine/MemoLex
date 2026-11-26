@@ -22,7 +22,7 @@ internal static class SettingsDialog
     internal const string BugReportUrl=RepositoryUrl+"/issues/new?template=bug_report.yml";
     internal const string FeatureRequestUrl=RepositoryUrl+"/issues/new?template=feature_request.yml";
     internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
-    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.2.3";
+    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.2.4";
     [Flags]
     private enum SettingsArea { None=0, General=1, Hover=2, Shortcuts=4 }
     public static void Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null)
@@ -161,13 +161,14 @@ internal static class SettingsDialog
         foreach(var child in support.Children.Cast<UIElement>().ToArray()){support.Children.Remove(child);supportHeading.Children.Add(child);}
         ((FrameworkElement)supportHeading.Children[1]).Margin=new Thickness(0,4,0,10);
         var supportLinks = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top };
+        var pillStyle = (Style)Application.Current.FindResource("PillButton");
         foreach (var (label, url, name) in new[] {
             ("软件主页", HomepageUrl, "SupportHomepageButton"),
             ("夸克下载", QuarkDownloadUrl, "SupportQuarkButton"),
             ("GitHub", RepositoryUrl, "SupportRepositoryButton")
         })
         {
-            var link = new Button { Content = label, Margin = new Thickness(6, 0, 0, 0), Tag = url };
+            var link = new Button { Content = label, Margin = new Thickness(6, 0, 0, 0), Tag = url, Style = pillStyle };
             link.Click += (_, _) => OpenLink(url, "无法打开浏览器，请稍后重试。");
             supportLinks.Children.Add(link);
             dialog.RegisterName(name, link);

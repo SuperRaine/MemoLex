@@ -441,12 +441,14 @@ struct UpdatesSettings: View {
                 }
             }.tourTarget("updates")
             if !updates.release["body"].text.isEmpty { DisclosureGroup("更新说明") { Text(updates.release["body"].text).font(.system(size: 12)).textSelection(.enabled) } }
-            DisclosureGroup("卸载软件") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Toggle("保留用户资料", isOn: $keepData)
-                    Text("默认删除本机账号、助记、查词历史和设置，云端数据不受影响。").font(.footnote).foregroundStyle(Palette.muted)
-                    Button("卸载墨墨搜词", action: confirmUninstall).buttonStyle(MemoButtonStyle())
-                }.padding(.top, 10).disabled(updates.busy)
+            SettingsCard(title: "卸载软件") {
+                DisclosureGroup("卸载与清理选项") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle("保留用户资料", isOn: $keepData)
+                        Text("默认删除本机账号、助记、查词历史和设置，云端数据不受影响。").font(.footnote).foregroundStyle(Palette.muted)
+                        Button("卸载墨墨搜词", action: confirmUninstall).buttonStyle(MemoButtonStyle())
+                    }.padding(.top, 8).disabled(updates.busy)
+                }
             }
         }.onChange(of: preferences.automaticUpdates) { _ in updates.preferencesChanged() }.onChange(of: preferences.automaticDownloads) { _ in updates.preferencesChanged() }.onChange(of: preferences.updateFrequency) { _ in preferences.save() }.onChange(of: preferences.updateSource) { _ in preferences.save() }
     }
@@ -461,17 +463,17 @@ struct UpdatesSettings: View {
 
     @ViewBuilder private var updateActions: some View {
         Button("手动检查更新") { Task { await updates.check() } }
-            .buttonStyle(MemoButtonStyle(compact: true)).disabled(updates.busy)
+            .buttonStyle(MemoButtonStyle(accent: !updates.hasUpdate, compact: true)).disabled(updates.busy)
         Button("下载更新") { Task { await updates.download() } }
             .buttonStyle(MemoButtonStyle(accent: updates.hasUpdate && updates.downloaded == nil, compact: true))
             .disabled(updates.busy || !updates.hasUpdate || updates.downloaded != nil)
         Button(updates.downloaded == nil ? "下载并安装" : "更新并重启") { Task { await updates.install() } }
             .buttonStyle(MemoButtonStyle(accent: updates.downloaded != nil, compact: true))
             .disabled(updates.busy || !updates.hasUpdate)
-        Button("GitHub 下载") { NSWorkspace.shared.open(URL(string: AppPaths.repository + "/releases/latest")!) }
-            .buttonStyle(MemoButtonStyle(compact: true))
         Button("夸克下载") { NSWorkspace.shared.open(URL(string: AppPaths.quarkDownload)!) }
-            .buttonStyle(MemoButtonStyle(compact: true))
+            .buttonStyle(PillButtonStyle())
+        Button("GitHub 下载") { NSWorkspace.shared.open(URL(string: AppPaths.repository + "/releases/latest")!) }
+            .buttonStyle(PillButtonStyle())
     }
 }
 
