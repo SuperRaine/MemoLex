@@ -114,9 +114,69 @@ public sealed class LocalDictionary : IDisposable
     private FileStream? _data;
     private readonly object _gate = new();
     private readonly string _directory;
+    private static readonly Regex MnemonicAffixBefore = new(
+        @"(?:前缀|后缀|词根|词缀|字母组合|字母|谐音|近似|读作|读音|拼音|拆分|拆成|拆作)\s*[「『""'“‘（(]?\s*$",
+        RegexOptions.CultureInvariant);
+    private static readonly Regex MnemonicAffixAfter = new(
+        @"^\s*[」』""'”’）)]?\s*(?:字母|词根|前缀|后缀|词缀)",
+        RegexOptions.CultureInvariant);
+    private static readonly Regex MnemonicEditBefore = new(
+        @"(?:改为|改成|换成|换作|变为|变成|去掉|减去|加上|[改换变去加])\s*[「『""'“‘（(]?\s*$",
+        RegexOptions.CultureInvariant);
+    private static readonly Regex MnemonicEditAfter = new(
+        @"^\s*[」』""'”’）)]?\s*(?:改为|改成|换成|换作|变为|变成|[改换变])",
+        RegexOptions.CultureInvariant);
     public LocalDictionary(string? directory = null)
     {
         _directory = directory ?? Path.Combine(ApplicationPaths.RuntimeDirectory, "data");
+    }
+
+    public bool IsMnemonicLinkableWord(string token, string currentWord, string prevText, string nextText)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return false;
+        var word = token.Trim();
+        if (word.Length < 3) return false;
+        if (!string.IsNullOrEmpty(currentWord) && word.Equals(currentWord.Trim(), StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (prevText.TrimEnd().EndsWith('-') || nextText.TrimStart().StartsWith('-'))
+            return false;
+        if (MnemonicAffixBefore.IsMatch(prevText) || MnemonicAffixAfter.IsMatch(nextText))
+            return false;
+        if (word.Length <= 4 && (MnemonicEditBefore.IsMatch(prevText) || MnemonicEditAfter.IsMatch(nextText)))
+            return false;
+
+        var entry = Lookup(word);
+        if (entry == null || string.IsNullOrWhiteSpace(entry.translation)) return false;
+
+        var trimmedTrans = entry.translation.TrimStart();
+        if (trimmedTrans.StartsWith("abbr.", StringComparison.OrdinalIgnoreCase)
+            || trimmedTrans.StartsWith("pref.", StringComparison.OrdinalIgnoreCase)
+            || trimmedTrans.StartsWith("suf.", StringComparison.OrdinalIgnoreCase)
+            || trimmedTrans.StartsWith("comb.", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(entry.tag) || entry.oxford == "1") return true;
+        if (int.TryParse(entry.collins, CultureInfo.InvariantCulture, out var collins) && collins > 0) return true;
+        if (int.TryParse(entry.bnc, CultureInfo.InvariantCulture, out var bnc) && bnc is > 0 and <= 35000) return true;
+        if (int.TryParse(entry.frq, CultureInfo.InvariantCulture, out var frq) && frq is > 0 and <= 35000) return true;
+        return false;
+    }
+
+    public string[] ExtractMnemonicLinkableWords(string text, string currentWord)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        var parts = ExampleText.Tokenize(text);
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < parts.Count; i++)
+        {
+            var part = parts[i];
+            if (part.LookupWord == null) continue;
+            var prev = i > 0 ? parts[i - 1].Text : "";
+            var next = i + 1 < parts.Count ? parts[i + 1].Text : "";
+            if (IsMnemonicLinkableWord(part.LookupWord, currentWord, prev, next))
+                result.Add(part.LookupWord);
+        }
+        return result.ToArray();
     }
     public int Count => _entries.Count;
     public Task LoadAsync() => Task.Run(() =>

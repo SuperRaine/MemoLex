@@ -491,11 +491,12 @@ public partial class MainWindow : Window
             var word = part.LookupWord;
             if (accentLinks)
             {
-                var touchesHyphen = (index > 0 && parts[index - 1].Text.EndsWith('-'))
-                    || (index + 1 < parts.Count && parts[index + 1].Text.StartsWith('-'));
-                if (touchesHyphen && _dictionary.Lookup(word) == null)
+                var prev = index > 0 ? parts[index - 1].Text : "";
+                var next = index + 1 < parts.Count ? parts[index + 1].Text : "";
+                if (!_dictionary.IsMnemonicLinkableWord(word, sourceWord, prev, next))
                 {
-                    block.Inlines.Add(new Run(part.Text) { FontWeight = FontWeights.SemiBold });
+                    var isSelf = !string.IsNullOrEmpty(sourceWord) && word.Equals(sourceWord, StringComparison.OrdinalIgnoreCase);
+                    block.Inlines.Add(new Run(part.Text) { FontWeight = isSelf ? FontWeights.SemiBold : FontWeights.Normal });
                     continue;
                 }
             }
@@ -863,7 +864,6 @@ public partial class MainWindow : Window
         UpdateThemeToggleIcon();
         if (ValidWord(_word)) RenderNotes(_word, _displayedNotes);
     }
-    private void QuickLookupButton_Click(object sender, RoutedEventArgs e) => OpenQuickLookupBar();
     private void OpenQuickLookupBar()
     {
         if (!_ready) return;

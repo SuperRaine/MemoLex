@@ -311,7 +311,6 @@ private struct MainTitlebar: View {
                 }
             }.buttonStyle(PillButtonStyle()).fixedSize(horizontal: true, vertical: false).layoutPriority(2)
                 .help(model.titleAccount + " · " + model.accountStatus)
-            titleButton("bolt.fill", label: "悬浮快查条") { model.showQuickLookup?() }
             titleButton("chart.bar", label: "学习统计看板") { model.sheet = .dashboard }
             titleButton("gearshape", label: "设置") { model.sheet = .settings }
             HStack(spacing: 7) {
@@ -534,7 +533,14 @@ private struct WordPage: View {
                                 if hasBreakdowns {
                                     Divider().overlay(Palette.border.opacity(0.75))
                                 }
-                                LinkedText(text: remainingText, size: hasBreakdowns ? 13.5 : 15, color: Palette.ink, accentLinks: true)
+                                LinkedText(
+                                    text: remainingText,
+                                    size: hasBreakdowns ? 13.5 : 15,
+                                    color: Palette.ink,
+                                    accentLinks: true,
+                                    allowedLinks: Set(note["linkableWords"].list.map { $0.text.lowercased() }),
+                                    boldWord: model.word
+                                )
                             }
                         }.padding(.horizontal, 16).padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading)
                             .background(Palette.wash.opacity(0.75), in: RoundedRectangle(cornerRadius: 12, style: .continuous))

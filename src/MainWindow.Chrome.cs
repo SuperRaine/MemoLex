@@ -39,8 +39,8 @@ public partial class MainWindow
             MinimizeWindowButton.Width=MaximizeButton.Width=CloseWindowButton.Width=narrow?30:(compact?32:40);
             var iconWidth=narrow?26:(compact?28:34);
             var iconMargin=new Thickness(0,0,narrow?0:(compact?1:2),0);
-            QuickLookupButton.Width=DashboardButton.Width=ThemeToggleButton.Width=SettingsButton.Width=PinButton.Width=iconWidth;
-            QuickLookupButton.Margin=DashboardButton.Margin=ThemeToggleButton.Margin=iconMargin;
+            DashboardButton.Width=ThemeToggleButton.Width=SettingsButton.Width=PinButton.Width=iconWidth;
+            DashboardButton.Margin=ThemeToggleButton.Margin=iconMargin;
             SettingsButton.Margin=new Thickness(0,0,narrow?0:(compact?1:3),0);
             PinButton.Margin=new Thickness(0,0,narrow?2:(compact?3:6),0);
             WindowControlsSeparator.Margin=new Thickness(0,0,narrow?2:(compact?3:6),0);

@@ -385,6 +385,8 @@ struct LinkedText: View {
     var color: Color = Palette.ink
     var highlightPartOfSpeech: Bool = false
     var accentLinks: Bool = false
+    var allowedLinks: Set<String>? = nil
+    var boldWord: String? = nil
     private static let posRegex = try? NSRegularExpression(pattern: "(?m)^\\s*(?:n|v|vt|vi|adj|adv|prep|conj|pron|num|art|int|aux|abbr|pl|a|ad)\\.(?=\\s|$)")
     private var formatted: AttributedString {
         var value = AttributedString(text)
@@ -409,11 +411,19 @@ struct LinkedText: View {
                   let start = AttributedString.Index(range.lowerBound, within: value),
                   let end = AttributedString.Index(range.upperBound, within: value) else { continue }
             let token = String(text[range])
-            if accentLinks {
+            if let allowedLinks {
                 let beforeHyphen = range.lowerBound > text.startIndex && text[text.index(before: range.lowerBound)] == "-"
                 let afterHyphen = range.upperBound < text.endIndex && text[range.upperBound] == "-"
-                if beforeHyphen || afterHyphen {
-                    value[start..<end].font = .system(size: size, weight: .semibold)
+                if beforeHyphen || afterHyphen || !allowedLinks.contains(token.lowercased()) {
+                    if let boldWord, token.caseInsensitiveCompare(boldWord) == .orderedSame {
+                        value[start..<end].font = .system(size: size, weight: .semibold)
+                    }
+                    continue
+                }
+            } else if accentLinks {
+                let beforeHyphen = range.lowerBound > text.startIndex && text[text.index(before: range.lowerBound)] == "-"
+                let afterHyphen = range.upperBound < text.endIndex && text[range.upperBound] == "-"
+                if beforeHyphen || afterHyphen || token.count < 3 {
                     continue
                 }
             }

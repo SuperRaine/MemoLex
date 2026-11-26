@@ -269,11 +269,14 @@ internal sealed class CoreService : IDisposable
         {
             var analysis = MnemonicParts.Analyze(word, note.NoteType, note.Text,
                 (form, meaning, current) => _notes.FindMorphemeExamples(form, meaning, current));
+            var linkSource = analysis.Breakdowns.Count > 0 ? analysis.RemainingText : note.Text;
+            var linkableWords = _dictionary.ExtractMnemonicLinkableWords(linkSource, word);
             return new
             {
                 note.Id, note.NoteType, note.Text, note.CloudId, note.Origin, note.AccountKey,
                 Breakdowns = analysis.Breakdowns,
-                RemainingText = analysis.RemainingText
+                RemainingText = analysis.RemainingText,
+                LinkableWords = linkableWords
             };
         }).ToArray();
 
