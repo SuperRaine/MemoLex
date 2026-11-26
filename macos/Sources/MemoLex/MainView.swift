@@ -23,10 +23,9 @@ struct MainView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let compact = geometry.size.width < 950
-            let narrow = geometry.size.width < 880
+            let compact = geometry.size.width < 920
             VStack(spacing: 0) {
-                MainTitlebar(model: model, preferences: preferences, compact: compact, narrow: narrow)
+                MainTitlebar(model: model, preferences: preferences, compact: compact)
                 Divider().overlay(Palette.border)
                 HStack(spacing: 0) {
                     sidebar(compact: compact, short: geometry.size.height < 620).frame(width: compact ? 220 : 264)
@@ -283,11 +282,10 @@ private struct MainTitlebar: View {
     @ObservedObject var model: AppModel
     @ObservedObject var preferences: Preferences
     var compact: Bool
-    var narrow: Bool = false
     @FocusState private var pinFocused: Bool
     var body: some View {
         let metrics = model.titlebar
-        HStack(spacing: narrow ? 4 : (compact ? 5 : 8)) {
+        HStack(spacing: compact ? 5 : 8) {
             Color.clear.frame(width: metrics.leading).allowsHitTesting(false)
             if !metrics.isFullScreen {
                 pinButton
@@ -296,7 +294,7 @@ private struct MainTitlebar: View {
                 titleButton("chevron.left", label: "后退") { model.move(-1) }.disabled(!model.canGoBack)
                 titleButton("chevron.right", label: "前进") { model.move(1) }.disabled(!model.canGoForward)
             }
-            stubbornBar.frame(minWidth: 168, maxWidth: compact ? 240 : 300).layoutPriority(1).tourTarget("stubborn")
+            stubbornBar.frame(minWidth: 168, maxWidth: compact ? 250 : 300).layoutPriority(1).tourTarget("stubborn")
             Spacer(minLength: 0)
             if preferences.showCountdown {
                 TimelineView(.periodic(from: Date(), by: 30)) { context in countdown(at: context.date) }
@@ -307,7 +305,7 @@ private struct MainTitlebar: View {
                     Circle()
                         .fill(accountDotColor)
                         .frame(width: 7, height: 7)
-                    Text(model.titleAccount).font(.system(size: 12, weight: .semibold)).lineLimit(1).frame(maxWidth: narrow ? 64 : (compact ? 82 : 132), alignment: .leading)
+                    Text(model.titleAccount).font(.system(size: 12, weight: .semibold)).lineLimit(1).frame(maxWidth: compact ? 108 : 132, alignment: .leading)
                 }
             }.buttonStyle(PillButtonStyle()).fixedSize(horizontal: true, vertical: false).layoutPriority(2)
                 .help(model.titleAccount + " · " + model.accountStatus)
@@ -315,9 +313,9 @@ private struct MainTitlebar: View {
             titleButton("gearshape", label: "设置") { model.sheet = .settings }
             HStack(spacing: 7) {
                 OwlImage().frame(width: 28, height: 28).accessibilityHidden(true)
-                if !narrow {
+                if !compact {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("墨墨搜词").font(.system(size: compact ? 12 : 13.5, weight: .bold))
+                        Text("墨墨搜词").font(.system(size: 13.5, weight: .bold))
                         Text("MemoLex").font(.system(size: 9, weight: .medium)).foregroundStyle(Palette.muted)
                     }
                 }
@@ -375,13 +373,13 @@ private struct MainTitlebar: View {
         let calendar = Calendar.current
         let days = max(0, calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: preferences.examDate)).day ?? 0)
         let name = preferences.examName.trimmed.isEmpty ? "考试" : preferences.examName.trimmed
-        let limit = narrow ? 4 : (compact ? 7 : 12)
+        let limit = compact ? 5 : 12
         let visibleName = name.count > limit ? String(name.prefix(limit)) + "…" : name
-        let labelText = narrow ? "\(visibleName) \(days)天" : "距 \(visibleName) 还有 \(days) 天"
+        let labelText = compact ? "\(visibleName) \(days)天" : "距 \(visibleName) 还有 \(days) 天"
         return Text(labelText)
             .font(.system(size: 11.5, weight: .semibold)).monospacedDigit()
             .foregroundStyle(Color(red: 0.78, green: 0.14, blue: 0.25))
-            .padding(.horizontal, narrow ? 7 : 9).padding(.vertical, narrow ? 3 : 4)
+            .padding(.horizontal, compact ? 8 : 9).padding(.vertical, compact ? 3.5 : 4)
             .background(Color(red: 0.96, green: 0.25, blue: 0.37).opacity(0.11), in: Capsule())
             .overlay(Capsule().strokeBorder(Color(red: 0.96, green: 0.25, blue: 0.37).opacity(0.28), lineWidth: 0.8))
             .lineLimit(1).help("距 \(name) 还有\(days)天")

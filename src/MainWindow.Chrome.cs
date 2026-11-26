@@ -9,11 +9,15 @@ namespace MemoLex;
 public partial class MainWindow
 {
     private bool? _compactLayout;
-    private bool? _narrowLayout;
     private bool? _shortLayout;
     private void UpdateResponsiveLayout(Size size)
     {
-        var shortWindow = size.Height < 620;
+        var shortWindow = _shortLayout switch
+        {
+            true => size.Height < 640,
+            false => size.Height < 610,
+            null => size.Height < 620
+        };
         if (_shortLayout != shortWindow)
         {
             _shortLayout = shortWindow;
@@ -22,43 +26,47 @@ public partial class MainWindow
             CloudNotepadCard.Margin = new Thickness(0, shortWindow ? 6 : 12, 0, 0);
         }
 
-        var compact=size.Width<960;
-        var narrow=size.Width<900;
-        if(_compactLayout!=compact||_narrowLayout!=narrow)
+        var compact = _compactLayout switch
         {
-            _compactLayout=compact;
-            _narrowLayout=narrow;
-            SidebarColumn.Width=new GridLength(compact?224:268);
-            BrandColumn.Width=GridLength.Auto;
-            BrandTitlePanel.Visibility=narrow?Visibility.Collapsed:Visibility.Visible;
-            BrandLogo.Margin=new Thickness(0,0,narrow?0:(compact?7:9),0);
-            BrandGroup.Margin=new Thickness(0,0,narrow?6:(compact?8:12),0);
-            BrandLogo.Width=BrandLogo.Height=compact?28:34;BrandTitleText.FontSize=compact?14.5:16.5;
-            NavSeparator.Margin=new Thickness(0,0,narrow?6:(compact?8:12),0);
-            BackButton.Width=ForwardButton.Width=narrow?26:(compact?28:32);
-            MinimizeWindowButton.Width=MaximizeButton.Width=CloseWindowButton.Width=narrow?30:(compact?32:40);
-            var iconWidth=narrow?26:(compact?28:34);
-            var iconMargin=new Thickness(0,0,narrow?0:(compact?1:2),0);
-            DashboardButton.Width=ThemeToggleButton.Width=SettingsButton.Width=PinButton.Width=iconWidth;
-            DashboardButton.Margin=ThemeToggleButton.Margin=iconMargin;
-            SettingsButton.Margin=new Thickness(0,0,narrow?0:(compact?1:3),0);
-            PinButton.Margin=new Thickness(0,0,narrow?2:(compact?3:6),0);
-            WindowControlsSeparator.Margin=new Thickness(0,0,narrow?2:(compact?3:6),0);
-            AccountButton.Margin=new Thickness(0,0,narrow?2:(compact?3:5),0);
-            ExamCountdownBadge.Margin=new Thickness(0,0,narrow?4:(compact?6:10),0);
-            ExamCountdownBadge.Padding=narrow?new Thickness(7,3,7,3):compact?new Thickness(8,4,8,4):new Thickness(10,4,10,4);
-            HeaderCenterGrid.Margin=narrow?new Thickness(6,0,6,0):compact?new Thickness(6,0,6,0):new Thickness(10,0,10,0);
-            CloudStatusText.MaxWidth=narrow?56:(compact?70:104);
-            AccountButton.MaxWidth=narrow?88:(compact?112:152);
-            AccountButton.Padding=narrow?new Thickness(7,5,7,5):compact?new Thickness(8,6,8,6):new Thickness(11,6,11,6);
-            ExamCountdownText.MaxWidth=narrow?84:(compact?115:200);
+            true => size.Width < 945,
+            false => size.Width < 915,
+            null => size.Width < 930
+        };
+        if (_compactLayout != compact)
+        {
+            _compactLayout = compact;
+            SidebarColumn.Width = new GridLength(compact ? 224 : 268);
+            BrandColumn.Width = GridLength.Auto;
+            BrandTitlePanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+            BrandLogo.Margin = new Thickness(0, 0, compact ? 0 : 9, 0);
+            BrandGroup.Margin = new Thickness(0, 0, compact ? 6 : 12, 0);
+            BrandLogo.Width = BrandLogo.Height = compact ? 28 : 34;
+            NavSeparator.Margin = new Thickness(0, 0, compact ? 6 : 12, 0);
+            BackButton.Width = ForwardButton.Width = compact ? 28 : 32;
+            StubbornLabelText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+            MinimizeWindowButton.Width = MaximizeButton.Width = CloseWindowButton.Width = compact ? 32 : 40;
+            var iconWidth = compact ? 28 : 34;
+            var iconMargin = new Thickness(0, 0, compact ? 1 : 2, 0);
+            DashboardButton.Width = ThemeToggleButton.Width = SettingsButton.Width = PinButton.Width = iconWidth;
+            DashboardButton.Margin = ThemeToggleButton.Margin = iconMargin;
+            SettingsButton.Margin = new Thickness(0, 0, compact ? 1 : 3, 0);
+            PinButton.Margin = new Thickness(0, 0, compact ? 3 : 6, 0);
+            WindowControlsSeparator.Margin = new Thickness(0, 0, compact ? 3 : 6, 0);
+            AccountButton.Margin = new Thickness(0, 0, compact ? 4 : 5, 0);
+            AccountButton.Padding = compact ? new Thickness(9, 5, 9, 5) : new Thickness(11, 6, 11, 6);
+            AccountButton.MaxWidth = 152;
+            CloudStatusText.MaxWidth = 104;
+            ExamCountdownBadge.Margin = new Thickness(0, 0, compact ? 5 : 10, 0);
+            ExamCountdownBadge.Padding = compact ? new Thickness(8, 3.5, 8, 3.5) : new Thickness(10, 4, 10, 4);
+            ExamCountdownText.MaxWidth = compact ? 92 : 200;
+            HeaderCenterGrid.Margin = compact ? new Thickness(6, 0, 6, 0) : new Thickness(10, 0, 10, 0);
             UpdateExamCountdown();
-            MainContentGrid.Margin=compact?new Thickness(15,15,15,13):new Thickness(26,20,26,16);
-            WordCard.Padding=compact?new Thickness(18):new Thickness(28,24,28,26);
-            WordText.FontSize=compact?32:40;
-            WordActions.Orientation=compact?System.Windows.Controls.Orientation.Vertical:System.Windows.Controls.Orientation.Horizontal;
-            AddTodayButton.Margin=compact?new Thickness(0,6,0,0):new Thickness(8,0,0,0);
-            AddTodayButton.Padding=compact?new Thickness(10,7,10,7):new Thickness(14,10,14,10);
+            MainContentGrid.Margin = compact ? new Thickness(15, 15, 15, 13) : new Thickness(26, 20, 26, 16);
+            WordCard.Padding = compact ? new Thickness(18) : new Thickness(28, 24, 28, 26);
+            WordText.FontSize = compact ? 32 : 40;
+            WordActions.Orientation = compact ? System.Windows.Controls.Orientation.Vertical : System.Windows.Controls.Orientation.Horizontal;
+            AddTodayButton.Margin = compact ? new Thickness(0, 6, 0, 0) : new Thickness(8, 0, 0, 0);
+            AddTodayButton.Padding = compact ? new Thickness(10, 7, 10, 7) : new Thickness(14, 10, 14, 10);
         }
     }
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);

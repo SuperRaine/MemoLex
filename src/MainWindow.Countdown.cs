@@ -25,7 +25,7 @@ public partial class MainWindow
         var name=string.IsNullOrWhiteSpace(_preferences.ExamName)?"考试":_preferences.ExamName.Trim();
         var fullText=$"距 {name} 还有{days.ToString(CultureInfo.InvariantCulture)}天";
         var shortName=name.Length>4?name[..4]+"…":name;
-        ExamCountdownText.Text=_narrowLayout==true?$"{shortName} {days.ToString(CultureInfo.InvariantCulture)}天":fullText;
+        ExamCountdownText.Text=_compactLayout==true?$"{shortName} {days.ToString(CultureInfo.InvariantCulture)}天":fullText;
         ExamCountdownBadge.ToolTip=fullText;
         ExamCountdownBadge.Visibility=Visibility.Visible;
     }

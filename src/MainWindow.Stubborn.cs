@@ -58,23 +58,15 @@ public partial class MainWindow
             StubbornWordText.Text=_stubbornLoading?"刷新中…":_stubbornError!=null?"重试":"暂无";
         }
         var shownCount = online ? _stubbornWords?.Total : _stubbornWords?.Words.Count;
-        var cardWidth = StubbornCard.Width;
-        var tightCard = !double.IsNaN(cardWidth) && cardWidth < 185;
         StubbornCountText.Text=online&&_stubbornLoading&&_stubbornRotation.Current!=null
-            ?"刷新中…":shownCount is int count?(tightCard?$"{count}":$"全部 {count}"):"全部";
-        AllStubbornButton.Visibility=!double.IsNaN(cardWidth)&&cardWidth<125?Visibility.Collapsed:Visibility.Visible;
+            ?"刷新中…":shownCount is int count?$"全部 {count}":"全部";
+        AllStubbornButton.Visibility=Visibility.Visible;
         AllStubbornButton.ToolTip=shownCount is int total?$"查看全部 {total} 个顽固单词":"查看全部顽固单词";
         ShuffleStubbornButton.IsEnabled=online&&_stubbornRotation.Words.Count>1;
         ShuffleStubbornButton.ToolTip=StubbornMode==StubbornSortMode.Random?"下一个顽固单词（本轮不重复）":"下一个顽固单词";
         StubbornNextGlyph.Text=StubbornMode==StubbornSortMode.Random?"\uE8B1":"\uE72A";
         StubbornPreviewButton.ToolTip=_stubbornError??(_stubbornRotation.Current is { } current ? $"查看 {current.Spelling} 的释义" : !online?"登录后查看顽固单词":"查看顽固单词列表");
         AutomationProperties.SetName(StubbornPreviewButton,$"顽固单词：{StubbornWordText.Text}，点击查词");
-    }
-    private void HeaderCenterGrid_SizeChanged(object sender,SizeChangedEventArgs e)
-    {
-        var available=Math.Max(1,e.NewSize.Width);StubbornCard.Width=Math.Min(270,available);
-        StubbornLabelText.Visibility=available>=190?Visibility.Visible:Visibility.Collapsed;
-        UpdateStubbornCard();
     }
     private async void StubbornWordButton_Click(object sender,RoutedEventArgs e)
     {
