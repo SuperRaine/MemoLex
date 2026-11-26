@@ -80,12 +80,26 @@ internal static class StubbornFlashcards
             SelectedValue = preferences?.FlashcardAutoSpeak ?? "off",
             Margin = new Thickness(0, 0, 6, 0)
         };
+        var speakNowContent = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        speakNowContent.Children.Add(new TextBlock
+        {
+            Text = "\uE767",
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 5, 0)
+        });
+        speakNowContent.Children.Add(new TextBlock
+        {
+            Text = "朗读",
+            FontFamily = new FontFamily("Microsoft YaHei UI"),
+            FontSize = 11.5,
+            VerticalAlignment = VerticalAlignment.Center
+        });
         var speakNowBtn = new Button
         {
-            Content = "\uE767 朗读",
-            FontFamily = new FontFamily("Segoe MDL2 Assets, Microsoft YaHei UI"),
-            FontSize = 11.5,
-            Padding = new Thickness(9, 4, 9, 4),
+            Content = speakNowContent,
+            Padding = new Thickness(10, 4, 10, 4),
             ToolTip = "朗读当前单词"
         };
         if (Application.Current.TryFindResource("PillButton") is Style pillStyle) speakNowBtn.Style = pillStyle;
@@ -508,12 +522,14 @@ internal static class StubbornFlashcards
 
             var inputBox = new TextBox
             {
-                Width = 340,
-                Height = 42,
-                FontSize = 19,
-                FontFamily = new FontFamily("Segoe UI"),
+                Width = 350,
+                MinHeight = 48,
+                Padding = new Thickness(14, 7, 14, 7),
+                FontSize = 20,
+                FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 4, 0, 10)
             };
             // Prevent card click from firing when interacting with the input box
@@ -599,9 +615,58 @@ internal static class StubbornFlashcards
             {
                 var breakdown = analysis.Breakdowns[0];
                 var bStack = new StackPanel();
-                var chipsRow = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
+                var chipsRow = new WrapPanel { Margin = new Thickness(0, 0, 0, 7) };
                 var detailText = new TextBlock { Text = breakdown.Explanation, FontSize = 13.5, LineHeight = 20, TextWrapping = TextWrapping.Wrap };
                 detailText.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+
+                var chipButtons = new Dictionary<int, (Button Button, MnemonicPart Part)>();
+                var selectedChips = new HashSet<int>();
+
+                void RenderChipSelection()
+                {
+                    var allLit = selectedChips.Count == 0 || selectedChips.Count == chipButtons.Count;
+                    if (allLit)
+                    {
+                        detailText.Text = breakdown.Explanation;
+                    }
+                    else
+                    {
+                        var lines = selectedChips.OrderBy(idx => idx)
+                            .Where(chipButtons.ContainsKey)
+                            .Select(idx => chipButtons[idx].Part.FocusExplanation ?? $"{chipButtons[idx].Part.Form} · {chipButtons[idx].Part.Meaning}");
+                        detailText.Text = string.Join("\n", lines);
+                    }
+
+                    foreach (var (pos, pair) in chipButtons)
+                    {
+                        var lit = allLit || selectedChips.Contains(pos);
+                        var emphasized = !allLit && selectedChips.Contains(pos);
+                        pair.Button.SetResourceReference(Control.BackgroundProperty, lit ? (emphasized ? "SelectedBgBrush" : "PillBgBrush") : "SurfaceBrush");
+                        pair.Button.BorderBrush = ThemeManager.Hex(emphasized ? "#19ACF2" : lit ? "#38B8F6" : (ThemeManager.IsDark ? "#345068" : "#C6E4F7"));
+                        pair.Button.BorderThickness = new Thickness(1.5);
+                        pair.Button.Effect = lit ? new DropShadowEffect { BlurRadius = 10, ShadowDepth = 2, Opacity = emphasized ? 0.22 : 0.13, Color = Color.FromRgb(18, 134, 196) } : null;
+                    }
+                }
+
+                void ToggleChip(int pos)
+                {
+                    if (selectedChips.Count == 0 || selectedChips.Count == chipButtons.Count)
+                    {
+                        selectedChips.Clear();
+                        selectedChips.Add(pos);
+                    }
+                    else if (selectedChips.Contains(pos))
+                    {
+                        if (selectedChips.Count == 1) selectedChips.Clear();
+                        else selectedChips.Remove(pos);
+                    }
+                    else
+                    {
+                        selectedChips.Add(pos);
+                        if (selectedChips.Count == chipButtons.Count) selectedChips.Clear();
+                    }
+                    RenderChipSelection();
+                }
 
                 for (var i = 0; i < breakdown.Parts.Count; i++)
                 {
@@ -609,39 +674,69 @@ internal static class StubbornFlashcards
                     {
                         chipsRow.Children.Add(new TextBlock
                         {
-                            Text = "＋", FontSize = 12, FontWeight = FontWeights.Bold,
+                            Text = "＋", FontSize = 12.5, FontWeight = FontWeights.Bold,
                             Foreground = ThemeManager.Hex("#5BBDF4"), VerticalAlignment = VerticalAlignment.Center,
-                            Margin = new Thickness(4, 0, 4, 4)
+                            Margin = new Thickness(5, 0, 5, 5)
                         });
                     }
                     var part = breakdown.Parts[i];
-                    var chipText = new StackPanel { Orientation = Orientation.Horizontal };
+                    if (part.Meaning.Length == 0)
+                    {
+                        var staticChip = new Border
+                        {
+                            Padding = new Thickness(9, 4, 9, 4), Margin = new Thickness(0, 0, 0, 5),
+                            CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1.2),
+                            Child = new TextBlock { Text = part.Form, FontSize = 13.5, FontWeight = FontWeights.Bold }
+                        };
+                        staticChip.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+                        staticChip.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+                        ((TextBlock)staticChip.Child).SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+                        chipsRow.Children.Add(staticChip);
+                        continue;
+                    }
+
+                    var idx = i;
+                    var chipText = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
                     var formLbl = new TextBlock { Text = part.Form, FontSize = 13.5, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 5, 0) };
                     formLbl.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
                     chipText.Children.Add(formLbl);
-                    if (part.Meaning.Length > 0)
-                    {
-                        var meanLbl = new TextBlock { Text = part.Meaning, FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center };
-                        meanLbl.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-                        chipText.Children.Add(meanLbl);
-                    }
+                    var meanLbl = new TextBlock { Text = part.Meaning, FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center };
+                    meanLbl.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+                    chipText.Children.Add(meanLbl);
+
                     var chipBtn = new Button
                     {
                         Content = chipText,
-                        Padding = new Thickness(8, 3.5, 8, 3.5),
-                        Margin = new Thickness(0, 0, 0, 4),
+                        Padding = new Thickness(9, 4, 9, 4),
+                        Margin = new Thickness(0, 0, 0, 5),
                         ToolTip = part.FocusExplanation ?? part.Meaning
                     };
-                    chipBtn.Click += (_, e) =>
-                    {
-                        e.Handled = true;
-                        detailText.Text = part.FocusExplanation ?? $"{part.Form}：{part.Meaning}";
-                    };
+                    chipBtn.Click += (_, e) => { e.Handled = true; ToggleChip(idx); };
+                    chipButtons[idx] = (chipBtn, part);
                     chipsRow.Children.Add(chipBtn);
                 }
 
+                RenderChipSelection();
+
+                var detailCard = new Border
+                {
+                    Padding = new Thickness(10, 7, 10, 7),
+                    CornerRadius = new CornerRadius(8),
+                    BorderThickness = new Thickness(1),
+                    Cursor = Cursors.Hand,
+                    ToolTip = "点击还原完整构词解释",
+                    Child = detailText
+                };
+                detailCard.SetResourceReference(Border.BackgroundProperty, "AccentWashBrush");
+                detailCard.SetResourceReference(Border.BorderBrushProperty, "PillBorderBrush");
+                detailCard.MouseLeftButtonUp += (_, e) =>
+                {
+                    e.Handled = true;
+                    if (selectedChips.Count > 0) { selectedChips.Clear(); RenderChipSelection(); }
+                };
+
                 bStack.Children.Add(chipsRow);
-                bStack.Children.Add(detailText);
+                bStack.Children.Add(detailCard);
                 noteBox.Child = bStack;
                 face.Children.Add(noteBox);
                 return;
@@ -680,9 +775,12 @@ internal static class StubbornFlashcards
                 UiMotion.Reveal(card, distance: 10);
             if (practice.Current == null) next.Focus();
             else if (!spellingMode) card.Focus();
+        }
 
+        void TriggerAutoSpeakOnReveal()
+        {
             var autoMode = autoSpeakCombo.SelectedValue as string ?? "off";
-            if (practice.Current != null && autoMode is "en-GB" or "en-US")
+            if (revealed && practice.Current != null && autoMode is "en-GB" or "en-US")
                 SpeakCurrentWord(autoMode == "en-GB" ? EnglishAccent.British : EnglishAccent.American);
         }
 
@@ -702,7 +800,12 @@ internal static class StubbornFlashcards
         void Flip()
         {
             if (practice.Current == null || flipping || swiping) return;
-            void SwitchFace(bool animate) { revealed = !revealed; Render(animateActions: animate && revealed); }
+            void SwitchFace(bool animate)
+            {
+                revealed = !revealed;
+                Render(animateActions: animate && revealed);
+                if (revealed) TriggerAutoSpeakOnReveal();
+            }
             if (!UiMotion.Enabled) { SwitchFace(false); return; }
             flipping = true;
             var restoreFocus = card.IsKeyboardFocusWithin && activeSpellingBox == null;

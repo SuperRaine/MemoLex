@@ -212,7 +212,7 @@ enum EnglishAccent: String, CaseIterable {
                     entry = result["entry"]
                     if account == accountVersion { notes = result["notes"].list }
                     suggestions = result["suggestions"].list.map(\.text)
-                    spellingSuggestions = entry == .null ? result["spellingSuggestions"].list.map(\.text) : []
+                    spellingSuggestions = entry["translation"].text.trimmed.isEmpty ? result["spellingSuggestions"].list.map(\.text) : []
                     definitionLoading = entry["translation"].text.trimmed.isEmpty
                     recordHistory(word); status = definitionLoading ? "正在查找释义…" : "查词完成。"
                     Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }

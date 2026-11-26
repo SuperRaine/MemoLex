@@ -443,7 +443,7 @@ private struct WordPage: View {
                     }.buttonStyle(PillButtonStyle()).padding(.top, 8).padding(.bottom, 14)
                     wordTags
                     definitionSource.font(.caption).padding(.top, 8)
-                    if model.entry == .null && !model.spellingSuggestions.isEmpty {
+                    if model.entry["translation"].text.trimmed.isEmpty && !model.spellingSuggestions.isEmpty {
                         VStack(alignment: .leading, spacing: 7) {
                             Text("离线词库未找到精确匹配，你是不是要查：")
                                 .font(.system(size: 12, weight: .semibold))

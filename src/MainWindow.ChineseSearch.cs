@@ -116,7 +116,10 @@ public partial class MainWindow
         _suggestionCts?.Cancel();_suggestionCts?.Dispose();_suggestionCts=new CancellationTokenSource();var cancellation=_suggestionCts.Token;
         if(!ChineseReverseSearch.ContainsChinese(query))
         {
-            _changingLists=true;SuggestionList.ItemsSource=_dictionary.Suggest(ExampleText.NormalizeLookup(query),25);_changingLists=false;return;
+            var normalized=ExampleText.NormalizeLookup(query);
+            var list=_dictionary.Suggest(normalized,25);
+            if(list.Count==0&&normalized.Length>=3)list=_dictionary.SuggestSpellingCorrections(normalized,10);
+            _changingLists=true;SuggestionList.ItemsSource=list;_changingLists=false;return;
         }
         _changingLists=true;SuggestionList.ItemsSource=null;_changingLists=false;
         try

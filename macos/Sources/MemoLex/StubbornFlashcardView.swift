@@ -227,9 +227,6 @@ struct StubbornFlashcardView: View {
         .task(id: practice.current) {
             resetSpellingInput()
             guard let word = practice.current else { return }
-            if let onSpeak, autoSpeak == "en-GB" || autoSpeak == "en-US" {
-                onSpeak(word, autoSpeak == "en-GB" ? .british : .american)
-            }
             if spellingMode { spellingFocused = true }
             let result = try? await core.request("dictionary.lookup", ["word": .string(word)])
             guard !Task.isCancelled, practice.current == word else { return }
@@ -263,11 +260,11 @@ struct StubbornFlashcardView: View {
 
             TextField("输入英文拼写…", text: $typedSpelling)
                 .textFieldStyle(.plain)
-                .font(.system(size: 19, weight: .medium))
+                .font(.system(size: 20, weight: .medium))
                 .multilineTextAlignment(.center)
                 .focused($spellingFocused)
                 .onSubmit { submitSpelling(word) }
-                .padding(.horizontal, 14).frame(width: 320, height: 40)
+                .padding(.horizontal, 14).frame(width: 330, height: 44)
                 .controlSurface()
 
             if !spellingClue.isEmpty {
@@ -414,7 +411,11 @@ struct StubbornFlashcardView: View {
     }
 
     private func flip() {
-        guard !flipping, !swiping, practice.current != nil else { return }
+        guard !flipping, !swiping, let current = practice.current else { return }
+        let willReveal = !revealed
+        if willReveal, let onSpeak, autoSpeak == "en-GB" || autoSpeak == "en-US" {
+            onSpeak(current, autoSpeak == "en-GB" ? .british : .american)
+        }
         if reduceMotion { revealed.toggle(); return }
         flipping = true
         withAnimation(.easeInOut(duration: 0.32)) { revealed.toggle() }

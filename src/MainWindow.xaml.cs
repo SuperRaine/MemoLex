@@ -269,7 +269,7 @@ public partial class MainWindow : Window
             ? $"BNC 词频排名 {frequency:N0}"
             : null;
         RenderTags(entry);
-        RenderSpellingSuggestions(word, entry == null);
+        RenderSpellingSuggestions(word, !hasLocalMeaning);
         ResultScroll.ScrollToTop();
         UiMotion.Reveal(DefinitionSection);
         ResetExampleView();
@@ -980,7 +980,7 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(new Action(async () =>
             {
                 if(command=="screenshot"){await StartScreenshotTranslationAsync();return;}
-                if(command=="search"&&_preferences.UseQuickLookupBar){OpenQuickLookupBar();return;}
+                if(command=="search"){OpenQuickLookupBar();return;}
                 RestoreWindow();
                 if(OwnedWindows.Cast<Window>().LastOrDefault(window=>window.IsVisible) is { } dialog)
                 {

@@ -22,7 +22,7 @@ internal static class SettingsDialog
     internal const string BugReportUrl=RepositoryUrl+"/issues/new?template=bug_report.yml";
     internal const string FeatureRequestUrl=RepositoryUrl+"/issues/new?template=feature_request.yml";
     internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
-    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.3.0";
+    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.3.1";
     [Flags]
     private enum SettingsArea { None=0, General=1, Hover=2, Shortcuts=4 }
     public static void Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null)
@@ -119,8 +119,6 @@ internal static class SettingsDialog
         try{startupEnabled=startupRegistration.Enabled;}catch{startupReadError="无法读取开机自启动状态，请检查当前用户权限。";}
         var autoStart=new CheckBox {Content="开机自启动",IsChecked=startupEnabled==true,IsEnabled=startupEnabled.HasValue,Margin=new Thickness(0,0,0,8)};
         launchCard.Children.Add(autoStart);if(startupReadError!=null)launchCard.Children.Add(InputDialog.Text(startupReadError));
-        var quickBarToggle=new CheckBox {Content=new TextBlock{Text="全局查词快捷键使用悬浮快查条",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.UseQuickLookupBar,Margin=new Thickness(0,4,0,8)};
-        launchCard.Children.Add(quickBarToggle);
         var doubleCopy=new CheckBox {Content=new TextBlock{Text="连按两次 Ctrl+C 查词或翻译",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.DoubleCopyEnabled,Margin=new Thickness(0,4,0,8)};
         dialog.RegisterName("DoubleCopyEnabled",doubleCopy);launchCard.Children.Add(doubleCopy);launchCard.Children.Add(InputDialog.Text("选中文字后，在 750 毫秒内连按两次 Ctrl+C。"));
         var guide=new Button{Content="查看新手引导",HorizontalAlignment=HorizontalAlignment.Left,IsEnabled=startOnboarding!=null};guide.Click+=(_,_)=>{dialog.Close();owner.Dispatcher.BeginInvoke(startOnboarding!);};general.Children.Add(guide);dialog.RegisterName("OpenOnboarding",guide);
@@ -280,7 +278,6 @@ internal static class SettingsDialog
             if(areas.HasFlag(SettingsArea.General))
             {
                 preferences.ThemeMode=themeDark.IsChecked==true?"dark":themeSystem.IsChecked==true?"system":"light";
-                preferences.UseQuickLookupBar=quickBarToggle.IsChecked==true;
                 preferences.DoubleCopyEnabled=doubleCopy.IsChecked==true;
                 ThemeManager.Apply(preferences.ThemeMode);
                 if(showCountdown.IsChecked!=true)preferences.ShowExamCountdown=false;
@@ -333,7 +330,7 @@ internal static class SettingsDialog
         exit.Checked+=(_,_)=>SaveClosingOptions();
         rememberClose.Checked+=(_,_)=>SaveClosingOptions();
         rememberClose.Unchecked+=(_,_)=>SaveClosingOptions();
-        foreach(var control in new System.Windows.Controls.Primitives.ToggleButton[]{showCountdown,autoStart,doubleCopy,quickBarToggle,themeLight,themeDark,themeSystem})
+        foreach(var control in new System.Windows.Controls.Primitives.ToggleButton[]{showCountdown,autoStart,doubleCopy,themeLight,themeDark,themeSystem})
             Watch(control,SettingsArea.General);
         examName.TextChanged+=(_,_)=>QueueSave(SettingsArea.General);
         foreach(var part in new[]{examDate.Year,examDate.Month,examDate.Day})

@@ -155,13 +155,21 @@ private struct QuickLookupView: View {
                             .foregroundStyle(Palette.ink)
 
                         if let note = state.result["notes"].list.first?["text"].text, !note.isEmpty {
-                            Text("助记：\(note)")
-                                .font(.system(size: 12))
-                                .lineLimit(2)
-                                .foregroundStyle(Palette.deep)
-                                .padding(.horizontal, 10).padding(.vertical, 7)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Palette.wash, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            HStack(alignment: .top, spacing: 8) {
+                                Text("记")
+                                    .font(.system(size: 10.5, weight: .bold))
+                                    .foregroundStyle(Palette.deep)
+                                    .frame(width: 20, height: 20)
+                                    .background(Palette.accent.opacity(0.2), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                Text(note)
+                                    .font(.system(size: 12.5))
+                                    .lineLimit(2)
+                                    .foregroundStyle(Palette.deep)
+                            }
+                            .padding(.horizontal, 11).padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Palette.wash, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
                         }
 
                         if !prefixSuggestions.isEmpty {

@@ -167,7 +167,7 @@ internal sealed class CoreService : IDisposable
                 word = ExampleText.ResolveLookupWord(word, candidate => _dictionary.Lookup(candidate) != null);
                 var entry = _dictionary.Lookup(word);
                 if (entry != null) entry.translation = entry.DisplayMeaning;
-                var spellingSuggestions = entry == null ? _dictionary.SuggestSpellingCorrections(word, 5) : Array.Empty<string>();
+                var spellingSuggestions = string.IsNullOrWhiteSpace(entry?.translation) ? _dictionary.SuggestSpellingCorrections(word, 5) : Array.Empty<string>();
                 return new { entry, word, notes = DisplayNotes(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24), spellingSuggestions };
             }
             case "mnemonic.family":
@@ -180,7 +180,12 @@ internal sealed class CoreService : IDisposable
             case "dictionary.online":
                 return string.IsNullOrEmpty(_dictionary.Lookup(word)?.DisplayMeaning)
                     ? await _onlineDictionary.LookupAsync(word, cancellation) : null;
-            case "dictionary.suggest": return _dictionary.Suggest(word, 30);
+            case "dictionary.suggest":
+            {
+                var list = _dictionary.Suggest(word, 30);
+                if (list.Count == 0 && word.Length >= 3) list = _dictionary.SuggestSpellingCorrections(word, 10);
+                return list;
+            }
             case "dictionary.related": return await _related.LookupAsync(word, cancellation);
             case "dictionary.reverse": return await _chinese.SearchAsync(T(p, "query"), Number(p, "limit", 160, 1, 3000), cancellation);
             case "dictionary.batch": return NotepadContent.Describe(T(p, "content"), value => _dictionary.Lookup(value)?.translation, cancellation);

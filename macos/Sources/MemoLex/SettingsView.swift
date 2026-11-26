@@ -142,7 +142,6 @@ private struct GeneralSettings: View {
     private var launchBehavior: some View {
         SettingsCard(title: "启动与快捷查词") {
             Toggle("登录 Mac 时自动启动", isOn: $preferences.startAtLogin)
-            Toggle("全局查词快捷键使用悬浮快查条", isOn: $preferences.useQuickLookupBar)
             Toggle("连按两次 ⌘C 查词或翻译", isOn: $preferences.doubleCopy).tourTarget("clipboard")
             Text("选中文字后，在 750 毫秒内连按两次 ⌘C。").font(.system(size: 11)).foregroundStyle(Palette.muted)
         }.frame(minWidth: 195)

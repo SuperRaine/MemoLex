@@ -160,7 +160,7 @@ enum LoginService {
 
 struct ShortcutSettings: View {
     @ObservedObject var preferences: Preferences
-    private let rows = [("search", "唤起快速查词"), ("clipboard", "查询剪贴板"), ("screenshot", "截图翻译")]
+    private let rows = [("search", "悬浮快查条"), ("clipboard", "查询剪贴板"), ("screenshot", "截图翻译")]
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             SettingsCard(title: "全局快捷键") {
@@ -177,7 +177,7 @@ struct ShortcutSettings: View {
                 Text("全局快捷键可在其他软件中使用。").font(.callout).foregroundStyle(Palette.muted)
             }
             SettingsCard(title: "窗口内快捷键") {
-                Text("⌘L 快速查词   ·   ⌘Y 查词历史   ·   ⌘[ / ⌘] 后退或前进").foregroundStyle(Palette.muted)
+                Text("⌘L 悬浮快查条   ·   ⌘Y 查词历史   ·   ⌘[ / ⌘] 后退或前进").foregroundStyle(Palette.muted)
                 Text("⌘T 段落翻译   ·   ⌘↩ 加入云词本或开始翻译").foregroundStyle(Palette.muted)
             }
         }
@@ -281,11 +281,10 @@ private struct ShortcutRecorder: NSViewRepresentable {
     }
     private func invoke(_ id: UInt32) {
         if id == 3, model.sheet == nil { screenshot.start(); return }
-        if id == 1, model.sheet == nil, model.preferences.useQuickLookupBar { model.showQuickLookup?(); return }
+        if id == 1, model.sheet == nil { model.showQuickLookup?(); return }
         model.showWindow?()
         guard model.sheet == nil else { return }
-        if id == 1 { model.focusSearch?() }
-        else if id == 2 { clipboard() }
+        if id == 2 { clipboard() }
     }
     func clipboard() { guard let text = NSPasteboard.general.string(forType: .string) else { return }; Task { await model.classify(text) } }
     private func copyEvent(_ event: NSEvent) {

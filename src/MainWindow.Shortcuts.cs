@@ -66,7 +66,7 @@ public partial class MainWindow
         {
             case "back":await MoveNavigationAsync(-1);break;
             case "forward":await MoveNavigationAsync(1);break;
-            case "search":RestoreWindow();break;
+            case "search":OpenQuickLookupBar();break;
             case "history":HistoryButton_Click(this,new RoutedEventArgs());break;
             case "toggleWord":if(_viewTarget is ViewTarget.Word or ViewTarget.Examples)await AddCurrentWordAsync();break;
             case "translation":TranslationModeButton_Click(this,new RoutedEventArgs());break;

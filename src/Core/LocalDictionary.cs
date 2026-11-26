@@ -184,7 +184,7 @@ public sealed class LocalDictionary : IDisposable
             if (lenDiff < -maxDist || lenDiff > maxDist || candidate.Length < 2) continue;
             var c0 = char.ToLowerInvariant(candidate[0]);
             var c1 = char.ToLowerInvariant(candidate[1]);
-            if (c0 != q0 && c0 != q1 && c1 != q0) continue;
+            if (c0 != q0 && c0 != q1 && c1 != q0 && c1 != q1) continue;
 
             var validChars = true;
             for (var i = 0; i < candidate.Length; i++)

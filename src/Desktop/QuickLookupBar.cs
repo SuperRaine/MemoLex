@@ -17,6 +17,7 @@ internal sealed class QuickLookupBar : Window
     private readonly Action<string> _openMain;
     private readonly Func<string?> _accountKey;
     private readonly TextBox _input;
+    private readonly TextBlock _placeholder;
     private readonly StackPanel _resultPanel;
     private readonly Border _resultContainer;
     private readonly TextBlock _wordText;
@@ -48,7 +49,7 @@ internal sealed class QuickLookupBar : Window
         _accountKey = accountKey;
 
         Title = "快速查词 · 墨墨搜词";
-        Width = 620;
+        Width = 636;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         WindowStyle = WindowStyle.None;
@@ -59,8 +60,8 @@ internal sealed class QuickLookupBar : Window
 
         var layout = new StackPanel();
 
-        // Top search bar
-        var searchRow = new Grid { Margin = new Thickness(16, 14, 14, 14) };
+        // Borderless Spotlight search header (no ugly nested TextBox frame!)
+        var searchRow = new Grid { Margin = new Thickness(20, 15, 16, 15) };
         searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -71,31 +72,59 @@ internal sealed class QuickLookupBar : Window
             FontFamily = new FontFamily("Segoe MDL2 Assets"),
             FontSize = 18,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(2, 0, 12, 0)
+            Margin = new Thickness(0, 1, 13, 0)
         };
         searchIcon.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
         searchRow.Children.Add(searchIcon);
 
+        var inputHost = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        _placeholder = new TextBlock
+        {
+            Text = "输入英文查词，或输入中文反查…",
+            FontSize = 17.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,
+            Margin = new Thickness(2, 0, 0, 0)
+        };
+        _placeholder.SetResourceReference(TextBlock.ForegroundProperty, "SubtleBrush");
+
+        // Clean borderless ControlTemplate so WPF never draws a boxed TextBox border or double focus halo
+        var borderlessTemplate = new ControlTemplate(typeof(TextBox));
+        var scrollViewer = new FrameworkElementFactory(typeof(ScrollViewer)) { Name = "PART_ContentHost" };
+        scrollViewer.SetValue(FocusableProperty, false);
+        scrollViewer.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        borderlessTemplate.VisualTree = scrollViewer;
+
         _input = new TextBox
         {
-            FontSize = 18,
+            Template = borderlessTemplate,
+            FontSize = 18.5,
             FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
-            BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
-            Padding = new Thickness(0, 2, 8, 2),
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0, 4, 8, 4),
+            MinHeight = 34,
             VerticalContentAlignment = VerticalAlignment.Center
         };
-        Grid.SetColumn(_input, 1);
-        searchRow.Children.Add(_input);
+        _input.SetResourceReference(Control.ForegroundProperty, "InkStrongBrush");
+        _input.SetResourceReference(System.Windows.Controls.Primitives.TextBoxBase.CaretBrushProperty, "AccentDeepBrush");
+
+        inputHost.Children.Add(_placeholder);
+        inputHost.Children.Add(_input);
+        Grid.SetColumn(inputHost, 1);
+        searchRow.Children.Add(inputHost);
 
         var escBadge = new Border
         {
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(7, 3, 7, 3),
+            CornerRadius = new CornerRadius(7),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 3.5, 8, 3.5),
             VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = "Esc", FontSize = 10.5, FontWeight = FontWeights.SemiBold }
+            Margin = new Thickness(8, 0, 0, 0),
+            Child = new TextBlock { Text = "Esc", FontSize = 11, FontFamily = new FontFamily("Segoe UI"), FontWeight = FontWeights.SemiBold }
         };
         escBadge.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
+        escBadge.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         ((TextBlock)escBadge.Child).SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         Grid.SetColumn(escBadge, 2);
         searchRow.Children.Add(escBadge);
@@ -105,17 +134,33 @@ internal sealed class QuickLookupBar : Window
         // Result container
         _resultPanel = new StackPanel();
 
-        var headRow = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+        var headRow = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
         var headActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(headActions, Dock.Right);
 
+        // Separate icon & text blocks so Chinese never falls back to Segoe MDL2 Assets (fixes □□ bug!)
+        var speakContent = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        speakContent.Children.Add(new TextBlock
+        {
+            Text = "\uE767",
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 12.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 5, 0)
+        });
+        speakContent.Children.Add(new TextBlock
+        {
+            Text = "朗读",
+            FontFamily = new FontFamily("Microsoft YaHei UI"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
         _speakBtn = new Button
         {
-            Content = "\uE767 朗读",
-            FontFamily = new FontFamily("Segoe MDL2 Assets, Microsoft YaHei UI"),
-            FontSize = 11.5,
-            Padding = new Thickness(10, 4, 10, 4),
-            Margin = new Thickness(0, 0, 6, 0),
+            Content = speakContent,
+            Padding = new Thickness(11, 5, 11, 5),
+            Margin = new Thickness(0, 0, 7, 0),
             ToolTip = "播放美音"
         };
         if (Application.Current.TryFindResource("PillButton") is Style pillStyle) _speakBtn.Style = pillStyle;
@@ -123,16 +168,16 @@ internal sealed class QuickLookupBar : Window
         _bookmarkBtn = new Button
         {
             Content = "＋ 收藏",
-            FontSize = 11.5,
-            Padding = new Thickness(10, 4, 10, 4),
-            Margin = new Thickness(0, 0, 6, 0)
+            FontSize = 12,
+            Padding = new Thickness(11, 5, 11, 5),
+            Margin = new Thickness(0, 0, 7, 0)
         };
 
         _openBtn = new Button
         {
             Content = "展开主窗口 →",
-            FontSize = 11.5,
-            Padding = new Thickness(11, 4, 11, 4)
+            FontSize = 12,
+            Padding = new Thickness(13, 5, 13, 5)
         };
         if (Application.Current.TryFindResource("AccentButton") is Style accentStyle) _openBtn.Style = accentStyle;
 
@@ -142,45 +187,89 @@ internal sealed class QuickLookupBar : Window
         headRow.Children.Add(headActions);
 
         var wordWrap = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
-        _wordText = new TextBlock { FontSize = 24, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Bottom };
+        _wordText = new TextBlock
+        {
+            FontSize = 26,
+            FontWeight = FontWeights.Bold,
+            FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
+            Margin = new Thickness(0, 0, 10, 0),
+            VerticalAlignment = VerticalAlignment.Bottom
+        };
         _wordText.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
-        _phoneticText = new TextBlock { FontSize = 13.5, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 3) };
+        _phoneticText = new TextBlock
+        {
+            FontSize = 14,
+            FontFamily = new FontFamily("Segoe UI"),
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 0, 3)
+        };
         _phoneticText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         wordWrap.Children.Add(_wordText);
         wordWrap.Children.Add(_phoneticText);
         headRow.Children.Add(wordWrap);
         _resultPanel.Children.Add(headRow);
 
-        _meaningText = new TextBlock { FontSize = 14.5, LineHeight = 23, TextWrapping = TextWrapping.Wrap };
+        _meaningText = new TextBlock { FontSize = 15, LineHeight = 25, TextWrapping = TextWrapping.Wrap };
         _meaningText.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         _resultPanel.Children.Add(_meaningText);
 
-        _mnemonicText = new TextBlock { FontSize = 12.5, LineHeight = 19, TextWrapping = TextWrapping.Wrap };
+        var noteRow = new Grid();
+        noteRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        noteRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var noteBadge = new Border
+        {
+            Width = 20, Height = 20, CornerRadius = new CornerRadius(5),
+            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 1, 8, 0),
+            Child = new TextBlock { Text = "记", FontSize = 10.5, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+        };
+        noteBadge.SetResourceReference(Border.BackgroundProperty, "PillBgBrush");
+        ((TextBlock)noteBadge.Child).SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+        noteRow.Children.Add(noteBadge);
+
+        _mnemonicText = new TextBlock { FontSize = 12.5, LineHeight = 20, TextWrapping = TextWrapping.Wrap };
         _mnemonicText.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+        Grid.SetColumn(_mnemonicText, 1);
+        noteRow.Children.Add(_mnemonicText);
+
         _mnemonicBox = new Border
         {
-            CornerRadius = new CornerRadius(9),
-            Padding = new Thickness(11, 8, 11, 8),
-            Margin = new Thickness(0, 10, 0, 0),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(12, 9, 12, 9),
+            Margin = new Thickness(0, 12, 0, 0),
             BorderThickness = new Thickness(1),
             Visibility = Visibility.Collapsed,
-            Child = _mnemonicText
+            Child = noteRow
         };
         _mnemonicBox.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
         _mnemonicBox.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         _resultPanel.Children.Add(_mnemonicBox);
 
-        _suggestionsPanel = new WrapPanel { Margin = new Thickness(0, 10, 0, 0), Visibility = Visibility.Collapsed };
+        _suggestionsPanel = new WrapPanel { Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Collapsed };
         _resultPanel.Children.Add(_suggestionsPanel);
 
         _statusText = new TextBlock { FontSize = 11.5, Margin = new Thickness(0, 8, 0, 0), Visibility = Visibility.Collapsed };
         _statusText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         _resultPanel.Children.Add(_statusText);
 
+        var footerBar = new Border
+        {
+            Margin = new Thickness(0, 12, 0, 0),
+            Padding = new Thickness(0, 9, 0, 0),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Child = new TextBlock
+            {
+                Text = "↩ 回车在主窗口查看完整释义 · 点击候选词切换 · Esc 关闭",
+                FontSize = 11
+            }
+        };
+        footerBar.SetResourceReference(Border.BorderBrushProperty, "RuleBrush");
+        ((TextBlock)footerBar.Child).SetResourceReference(TextBlock.ForegroundProperty, "SubtleBrush");
+        _resultPanel.Children.Add(footerBar);
+
         _resultContainer = new Border
         {
             BorderThickness = new Thickness(0, 1, 0, 0),
-            Padding = new Thickness(18, 14, 18, 16),
+            Padding = new Thickness(22, 16, 22, 14),
             Visibility = Visibility.Collapsed,
             Child = _resultPanel
         };
@@ -189,17 +278,21 @@ internal sealed class QuickLookupBar : Window
 
         var shell = new Border
         {
-            CornerRadius = new CornerRadius(16),
+            CornerRadius = new CornerRadius(18),
             BorderThickness = new Thickness(1.2),
-            Margin = new Thickness(16, 12, 16, 20),
-            Effect = new DropShadowEffect { BlurRadius = 28, ShadowDepth = 8, Opacity = 0.22, Color = Color.FromRgb(8, 28, 46) },
+            Margin = new Thickness(18, 12, 18, 22),
+            Effect = new DropShadowEffect { BlurRadius = 32, ShadowDepth = 10, Opacity = 0.24, Color = Color.FromRgb(8, 28, 46) },
             Child = layout
         };
         shell.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
         shell.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         Content = shell;
 
-        _input.TextChanged += (_, _) => UpdateLiveResult();
+        _input.TextChanged += (_, _) =>
+        {
+            _placeholder.Visibility = string.IsNullOrEmpty(_input.Text) ? Visibility.Visible : Visibility.Collapsed;
+            UpdateLiveResult();
+        };
         _input.PreviewKeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape) { e.Handled = true; Hide(); }
@@ -247,9 +340,10 @@ internal sealed class QuickLookupBar : Window
     {
         var work = SystemParameters.WorkArea;
         Left = work.Left + (work.Width - Width) / 2;
-        Top = work.Top + Math.Min(140, work.Height * 0.18);
+        Top = work.Top + Math.Min(135, work.Height * 0.16);
         _statusText.Visibility = Visibility.Collapsed;
         _statusText.Text = "";
+        _placeholder.Visibility = string.IsNullOrEmpty(_input.Text) ? Visibility.Visible : Visibility.Collapsed;
         Show();
         Activate();
         _input.Focus();
@@ -287,7 +381,7 @@ internal sealed class QuickLookupBar : Window
             entry = _dictionary.Lookup(suggestions[0]);
         }
 
-        if (entry != null)
+        if (entry != null && !string.IsNullOrWhiteSpace(entry.DisplayMeaning))
         {
             _currentWord = entry.word;
             _wordText.Text = entry.word;
@@ -298,7 +392,7 @@ internal sealed class QuickLookupBar : Window
             var note = _mnemonics.Get(entry.word, _accountKey()).FirstOrDefault()?.Text;
             if (!string.IsNullOrWhiteSpace(note))
             {
-                _mnemonicText.Text = "助记：" + (note.Length <= 150 ? note : note[..150] + "…");
+                _mnemonicText.Text = note.Length <= 150 ? note : note[..150] + "…";
                 _mnemonicBox.Visibility = Visibility.Visible;
             }
             else _mnemonicBox.Visibility = Visibility.Collapsed;
@@ -316,15 +410,15 @@ internal sealed class QuickLookupBar : Window
             _mnemonicBox.Visibility = Visibility.Collapsed;
             _speakBtn.Visibility = _bookmarkBtn.Visibility = Visibility.Collapsed;
 
-            var fuzzy = _dictionary.SuggestSpellingCorrections(raw, 5);
+            var fuzzy = _dictionary.SuggestSpellingCorrections(raw, 6);
             if (fuzzy.Count > 0)
             {
-                _meaningText.Text = "离线词库未找到该词，你是不是要查：";
+                _meaningText.Text = "离线词库未找到精确匹配，你是不是要查：";
                 AddSuggestionPills(fuzzy);
             }
             else
             {
-                _meaningText.Text = "按 Enter 在主窗口中联网查询或用中文反查。";
+                _meaningText.Text = "按 Enter 在主窗口中联网查词或进行中文反查。";
             }
         }
     }
@@ -339,9 +433,9 @@ internal sealed class QuickLookupBar : Window
             var btn = new Button
             {
                 Content = word,
-                FontSize = 11.5,
-                Padding = new Thickness(10, 4, 10, 4),
-                Margin = new Thickness(0, 0, 6, 4)
+                FontSize = 12,
+                Padding = new Thickness(11, 4, 11, 4),
+                Margin = new Thickness(0, 0, 7, 5)
             };
             if (pillStyle != null) btn.Style = pillStyle;
             btn.Click += (_, _) => { _input.Text = word; _input.CaretIndex = word.Length; };
