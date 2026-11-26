@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>MemoLex.Core</AssemblyName>
-    <Version>2.3.6</Version>
+    <Version>2.3.7</Version>
     <Product>墨墨搜词 MemoLex</Product>
     <NuGetAudit>false</NuGetAudit>
     <MemoLexDeepLKeyFile Condition="'$(MemoLexDeepLKeyFile)' == ''">$(MSBuildThisFileDirectory)../../src/Private/DeepL.key</MemoLexDeepLKeyFile>
