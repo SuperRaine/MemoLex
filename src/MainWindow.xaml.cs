@@ -88,6 +88,7 @@ public partial class MainWindow : Window
         {
             ThemeManager.ApplyWindowFrame(this);
             InstallHotkey();
+            _source?.AddHook(ResizeHook);
             if (!desktopIntegration) return;
             RefreshDoubleCopy();
             EnsureTrayIcon();
@@ -97,6 +98,8 @@ public partial class MainWindow : Window
         PreviewMouseDown += Window_PreviewMouseDown;
         Closed += (_, _) =>
         {
+            EndResizeSurface();
+            _source?.RemoveHook(ResizeHook);
             StopOnboardingOnExit();
             _examCountdownTimer?.Stop();
             _doubleCopy?.Dispose();_clipboardCts?.Cancel();
