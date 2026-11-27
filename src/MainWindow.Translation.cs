@@ -12,6 +12,7 @@ public partial class MainWindow
     private int _translationVersion;
     private string _translatedText="",_translatedSource="";
     private string _translatedProvider="";
+    private string _lastTranslationSourceLabel="段落翻译";
     private string TranslationPair => (TranslationDirectionCombo.SelectedItem as ComboBoxItem)?.Tag as string??"en|zh-CN";
     private TranslationSnapshot CaptureTranslation()=>new(TranslationInput.Text,TranslationPair,_translatedText,_translatedSource,TranslationScroll.VerticalOffset,_translatedProvider);
     private void TranslationScroll_ScrollChanged(object sender,ScrollChangedEventArgs e)
@@ -26,9 +27,11 @@ public partial class MainWindow
     private void EnterTranslationView()
     {
         StopPronunciation();
+        StopRecallMode();
         CancelChineseSearch();ChineseSearchView.Visibility=Visibility.Collapsed;
         _lookupCts?.Cancel();_examplesCts?.Cancel();++_wordVersion;++_membershipVersion;
         _viewTarget=ViewTarget.Translation;ResultScroll.Visibility=Visibility.Collapsed;TranslationView.Visibility=Visibility.Visible;
+        UpdateContextReviewButtons();
         UiMotion.Reveal(TranslationView);
         UpdateHeader();
     }
@@ -52,10 +55,22 @@ public partial class MainWindow
         }
         _navigating=false;UpdateNavigationButtons();
     }
-    private async Task NavigateTranslationWordAsync(string word)
+    private PendingWordContext? ExtractCurrentTranslationContext(string rawWord,string resolvedWord)
     {
-        word=ExampleText.ResolveLookupWord(word,spelling=>_dictionary.Lookup(spelling)!=null);
-        if(ValidWord(word))await LoadWordAsync(word);
+        var englishCorpus=TranslationPair=="zh-CN|en"?_translatedText:_translatedSource;
+        var chineseCorpus=TranslationPair=="zh-CN|en"?_translatedSource:_translatedText;
+        if(string.IsNullOrWhiteSpace(englishCorpus))return null;
+        var sentence=ContextSentenceHelper.ExtractSentenceForWord(englishCorpus,resolvedWord,rawWord);
+        if(string.IsNullOrWhiteSpace(sentence)||sentence.Length<3)return null;
+        var translation=ContextSentenceHelper.ExtractTranslationHint(englishCorpus,chineseCorpus,sentence);
+        return new PendingWordContext(resolvedWord,rawWord,sentence,translation,_lastTranslationSourceLabel);
+    }
+    private async Task NavigateTranslationWordAsync(string rawWord)
+    {
+        var word=ExampleText.ResolveLookupWord(rawWord,spelling=>_dictionary.Lookup(spelling)!=null);
+        if(!ValidWord(word))return;
+        _pendingContext=ExtractCurrentTranslationContext(rawWord,word);
+        await LoadWordAsync(word,keepPendingContext:true);
     }
     private readonly List<ExtractedVocabularyItem> _extractedWords=[];
     private readonly HashSet<string> _selectedExtracted=new(StringComparer.OrdinalIgnoreCase);
@@ -116,10 +131,32 @@ public partial class MainWindow
                 tagLbl.SetResourceReference(TextBlock.ForegroundProperty,"AccentDeepBrush");
                 chipPanel.Children.Add(tagLbl);
             }
+            var chipMenu=new ContextMenu();
+            var lookupItem=new MenuItem{Header=$"查词「{word}」"};
+            lookupItem.Click+=async(_, _)=>
+            {
+                _pendingContext=ExtractCurrentTranslationContext(word,word);
+                await LoadWordAsync(word,keepPendingContext:true);
+            };
+            var saveSentenceItem=new MenuItem{Header="保存原句，稍后考我"};
+            saveSentenceItem.Click+=(_, _)=>
+            {
+                var ctx=ExtractCurrentTranslationContext(word,word);
+                if(ctx==null)return;
+                _contextSentences.Save(ctx.Word,ctx.Sentence,ctx.Translation,ctx.Source,ctx.MatchedForm);
+                UpdateContextReviewButtons();
+                TranslationExtractedStatus.Text=$"✓ 已保存「{word}」所在原句，可点击右上角「原句复习」离线自测。";
+                TranslationExtractedStatus.Visibility=Visibility.Visible;
+                StatusText.Text=$"已保存「{word}」的原句。";
+            };
+            chipMenu.Items.Add(lookupItem);
+            chipMenu.Items.Add(saveSentenceItem);
+
             var chip=new Button
             {
                 Content=chipPanel,Padding=new Thickness(10,5,10,5),Margin=new Thickness(0,0,7,7),
-                ToolTip=$"{item.Word}{(item.Phonetic.Length>0?$" /{item.Phonetic}/":"")}\n{item.Meaning}\n（单击选中/取消，右键查词）"
+                ContextMenu=chipMenu,
+                ToolTip=$"{item.Word}{(item.Phonetic.Length>0?$" /{item.Phonetic}/":"")}\n{item.Meaning}\n（单击选中/取消，右键查词或保存原句）"
             };
             chip.SetResourceReference(Control.BackgroundProperty,chosen?"SelectedBgBrush":"ControlBgBrush");
             chip.SetResourceReference(Control.BorderBrushProperty,chosen?"AccentBrush":"BorderBrush");
@@ -128,7 +165,6 @@ public partial class MainWindow
                 if(!_selectedExtracted.Remove(word))_selectedExtracted.Add(word);
                 RenderExtractedChips();
             };
-            chip.MouseRightButtonUp+=async(_,e)=>{e.Handled=true;await LoadWordAsync(word);};
             TranslationExtractedPanel.Children.Add(chip);
         }
     }
@@ -177,7 +213,11 @@ public partial class MainWindow
             BatchAddExtractedButton.IsEnabled=_selectedExtracted.Count>0;
         }
     }
-    private async void TranslateButton_Click(object sender,RoutedEventArgs e)=>await TranslateParagraphAsync();
+    private async void TranslateButton_Click(object sender,RoutedEventArgs e)
+    {
+        _lastTranslationSourceLabel="段落翻译";
+        await TranslateParagraphAsync();
+    }
     private async Task TranslateParagraphAsync()
     {
         var text=TranslationInput.Text;var pair=TranslationPair;

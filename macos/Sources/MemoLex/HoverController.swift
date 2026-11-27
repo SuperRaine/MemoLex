@@ -244,7 +244,7 @@ private struct HoverView: View {
         closePanels()
         guard rect.width >= 4, rect.height >= 4 else { if wasVisible { model.showWindow?() }; return }
         Task {
-            do { try await Task.sleep(nanoseconds: 120_000_000); let image = try await ScreenCapture.image(rect); let result = try await ScreenText.recognize(image, crop: rect); model.showWindow?(); await model.classify(result.0) }
+            do { try await Task.sleep(nanoseconds: 120_000_000); let image = try await ScreenCapture.image(rect); let result = try await ScreenText.recognize(image, crop: rect); model.showWindow?(); await model.classify(result.0, sourceLabel: "截图翻译") }
             catch { model.showWindow?(); model.fail(CoreFailure(code: "capture", message: "未能读取截图，请检查屏幕录制权限后重试。")) }
         }
     }

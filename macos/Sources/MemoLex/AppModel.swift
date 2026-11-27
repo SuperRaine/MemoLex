@@ -4,7 +4,14 @@ import Combine
 import Foundation
 import SwiftUI
 
-enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan, dashboard; var id: String { rawValue } }
+enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan, dashboard, contextReview, morphemePractice; var id: String { rawValue } }
+struct PendingWordContext: Equatable {
+    let word: String
+    let matchedForm: String
+    let sentence: String
+    let translation: String
+    let source: String
+}
 struct Notice: Identifiable {
     let id = UUID()
     var title: String
@@ -31,6 +38,16 @@ enum EnglishAccent: String, CaseIterable {
     @Published var suggestions: [String] = []
     @Published var spellingSuggestions: [String] = []
     @Published var extractedWords: [J] = []
+    @Published var contextSentences: [J] = []
+    @Published var activeSpellingMistakes: [J] = []
+    @Published var pendingContext: PendingWordContext? = nil
+    @Published var contextReviewFocusWord: String? = nil
+    @Published var morphemePracticeGroup: J? = nil
+    @Published var recallMode = false
+    @Published var recallProgress: Double = 0
+    @Published var recallReady = false
+    var lastTranslationSourceLabel = "段落翻译"
+    private var recallTimerTask: Task<Void, Never>?
     @Published var entry = J.null
     @Published private(set) var onlineDefinition = J.null
     @Published private(set) var definitionLoading = false
@@ -159,6 +176,10 @@ enum EnglishAccent: String, CaseIterable {
             let metadata = try await core.request("initialize")
             wordCount = metadata["wordCount"].integer; translationProvider = metadata["translationProvider"].text
             ready = true; status = metadata["warning"].text.isEmpty ? "词库已就绪。" : metadata["warning"].text
+            Task {
+                await refreshContextSentences()
+                await refreshActiveSpellingMistakes()
+            }
             if !preferences.onboardingCompleted { startTour() }
         } catch { fail(error) }
     }
@@ -176,10 +197,12 @@ enum EnglishAccent: String, CaseIterable {
             if let result = try? await core.request("dictionary.suggest", ["word": .string(query)]), query == search.trimmed { suggestions = result.list.map(\.text) }
         }
     }
-    func lookup(_ raw: String, navigate: Bool = true) {
+    func lookup(_ raw: String, navigate: Bool = true, recallMode enterRecall: Bool = false, keepPendingContext: Bool = false) {
         let query = raw.trimmed
         guard ready, !query.isEmpty, query.count <= 100 else { return }
         stopPronunciation()
+        if !keepPendingContext { pendingContext = nil }
+        if !enterRecall { stopRecallMode() }
         if page == .translation { cancelTranslation() }
         lookupTask?.cancel(); cancelCloudWordLookup(); wordVersion += 1
         let version = wordVersion; let account = accountVersion
@@ -189,6 +212,7 @@ enum EnglishAccent: String, CaseIterable {
             do {
                 let chinese = query.range(of: "[\\p{Han}]", options: .regularExpression) != nil
                 if chinese {
+                    stopRecallMode()
                     chineseQuery = query
                     chineseHint = "正在查找相关词…"
                     chineseResults = []
@@ -209,12 +233,16 @@ enum EnglishAccent: String, CaseIterable {
                     let result = try await core.request("dictionary.lookup", ["word": .string(query)])
                     guard version == wordVersion, !Task.isCancelled else { return }
                     word = result["word"].text
+                    if keepPendingContext, let ctx = pendingContext {
+                        pendingContext = PendingWordContext(word: word, matchedForm: ctx.matchedForm, sentence: ctx.sentence, translation: ctx.translation, source: ctx.source)
+                    }
                     entry = result["entry"]
                     if account == accountVersion { notes = result["notes"].list }
                     suggestions = result["suggestions"].list.map(\.text)
                     spellingSuggestions = entry["translation"].text.trimmed.isEmpty ? result["spellingSuggestions"].list.map(\.text) : []
                     definitionLoading = entry["translation"].text.trimmed.isEmpty
                     recordHistory(word); status = definitionLoading ? "正在查找释义…" : "查词完成。"
+                    if enterRecall { startRecallMode() }
                     Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }
                     Task { await loadExamples(reset: true) }
                     loadCloudWord()
@@ -314,8 +342,201 @@ enum EnglishAccent: String, CaseIterable {
         if version == examplesVersion { examplesLoading = false }
     }
     var currentWordLookupCount: Int {
-        guard !word.isEmpty else { return 0 }
-        return history.first { $0.word.caseInsensitiveCompare(word) == .orderedSame }?.count ?? 0
+        lookupCount(for: word)
+    }
+
+    func lookupCount(for target: String) -> Int {
+        let trimmed = target.trimmed
+        guard !trimmed.isEmpty else { return 0 }
+        return history.first { $0.word.caseInsensitiveCompare(trimmed) == .orderedSame }?.count ?? 0
+    }
+
+    var contextSentenceMap: [String: J] {
+        var map: [String: J] = [:]
+        for item in contextSentences {
+            let key = item["word"].text.trimmed.lowercased()
+            if !key.isEmpty, map[key] == nil {
+                map[key] = item
+            }
+        }
+        return map
+    }
+
+    func contextSentences(for targetWord: String) -> [J] {
+        let trimmed = targetWord.trimmed
+        guard !trimmed.isEmpty else { return [] }
+        return contextSentences.filter { $0["word"].text.caseInsensitiveCompare(trimmed) == .orderedSame }
+    }
+
+    func isContextSentenceSaved(word targetWord: String, sentence: String) -> Bool {
+        let w = targetWord.trimmed
+        let s = sentence.trimmed.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return contextSentences.contains {
+            $0["word"].text.caseInsensitiveCompare(w) == .orderedSame &&
+            $0["sentence"].text.trimmed.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).caseInsensitiveCompare(s) == .orderedSame
+        }
+    }
+
+    func refreshContextSentences() async {
+        if let result = try? await core.request("contextSentences.list") {
+            contextSentences = result.list
+        }
+    }
+
+    func refreshActiveSpellingMistakes() async {
+        if let result = try? await core.request("spelling.active") {
+            activeSpellingMistakes = result.list
+        }
+    }
+
+    func saveContextSentence(word targetWord: String, sentence: String, translation: String, source: String, matchedForm: String? = nil) async {
+        var params: [String: J] = [
+            "word": .string(targetWord),
+            "sentence": .string(sentence),
+            "translation": .string(translation),
+            "source": .string(source)
+        ]
+        if let matchedForm, !matchedForm.isEmpty { params["matchedForm"] = .string(matchedForm) }
+        if (try? await core.request("contextSentences.save", params)) != nil {
+            await refreshContextSentences()
+            status = "已保存「\(targetWord)」的原句，离线也能随时自测。"
+        }
+    }
+
+    func removeContextSentence(id: String) async {
+        _ = try? await core.request("contextSentences.remove", ["id": .string(id)])
+        await refreshContextSentences()
+        status = "已删除该条原句。"
+    }
+
+    func recordContextReview(id: String) async {
+        _ = try? await core.request("contextSentences.review", ["id": .string(id)])
+        await refreshContextSentences()
+    }
+
+    func openContextReview(focusWord: String? = nil) {
+        guard !contextSentences.isEmpty else {
+            status = "还没有保存的原句。在段落翻译、截图翻译或真题例句中点击「保存原句」即可积累。"
+            return
+        }
+        contextReviewFocusWord = focusWord
+        sheet = .contextReview
+    }
+
+    func lookupFromTranslation(_ rawWord: String) {
+        let englishCorpus = translationDirection == "zh-CN|en" ? translationOutput : translationSource
+        let chineseCorpus = translationDirection == "zh-CN|en" ? translationSource : translationOutput
+        let sourceLabel = lastTranslationSourceLabel
+        Task {
+            if !englishCorpus.trimmed.isEmpty,
+               let extracted = try? await core.request("contextSentences.extract", [
+                    "word": .string(rawWord),
+                    "matchedForm": .string(rawWord),
+                    "paragraph": .string(englishCorpus),
+                    "translation": .string(chineseCorpus)
+               ]) {
+                let sentence = extracted["sentence"].text
+                let trans = extracted["translation"].text
+                if !sentence.trimmed.isEmpty {
+                    pendingContext = PendingWordContext(word: rawWord, matchedForm: rawWord, sentence: sentence, translation: trans, source: sourceLabel)
+                }
+            }
+            lookup(rawWord, keepPendingContext: true)
+        }
+    }
+
+    func saveFromTranslation(word targetWord: String) async {
+        let englishCorpus = translationDirection == "zh-CN|en" ? translationOutput : translationSource
+        let chineseCorpus = translationDirection == "zh-CN|en" ? translationSource : translationOutput
+        guard !englishCorpus.trimmed.isEmpty else { return }
+        if (try? await core.request("contextSentences.save", [
+            "word": .string(targetWord),
+            "matchedForm": .string(targetWord),
+            "paragraph": .string(englishCorpus),
+            "translation": .string(chineseCorpus),
+            "source": .string(lastTranslationSourceLabel)
+        ])) != nil {
+            await refreshContextSentences()
+            status = "已保存「\(targetWord)」所在原句，可点击「原句复习」离线自测。"
+        }
+    }
+
+    func startRecallMode() {
+        recallTimerTask?.cancel()
+        recallMode = true
+        recallProgress = 0
+        recallReady = false
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        recallTimerTask = Task { @MainActor in
+            let steps = 40
+            for step in 1...steps {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                guard !Task.isCancelled, recallMode else { return }
+                recallProgress = Double(step) / Double(steps)
+            }
+            if recallMode { recallReady = true }
+        }
+    }
+
+    func stopRecallMode() {
+        recallTimerTask?.cancel()
+        recallTimerTask = nil
+        recallMode = false
+        recallProgress = 0
+        recallReady = false
+    }
+
+    func revealFromRecall(remembered: Bool?) {
+        guard recallMode else { return }
+        stopRecallMode()
+        switch remembered {
+        case .some(true): status = "太棒了！核对一下释义是否和你想的一致。"
+        case .some(false): status = "没关系，结合下方助记和例句再记一次，或加入云词本巩固。"
+        case .none: status = "已揭晓释义。"
+        }
+    }
+
+    func triggerSearchTabRecall() -> Bool {
+        let query = search.trimmed
+        guard ready, !query.isEmpty, query.range(of: "[\\p{Han}]", options: .regularExpression) == nil else { return false }
+        let target: String
+        if let exact = suggestions.first(where: { $0.caseInsensitiveCompare(query) == .orderedSame }) {
+            target = exact
+        } else if let first = suggestions.first {
+            target = first
+        } else {
+            target = query
+        }
+        lookup(target, recallMode: true)
+        return true
+    }
+
+    func openMorphemePractice(form: String, meaning: String, currentWord: String) {
+        Task {
+            var priority = Set<String>()
+            for h in history where !h.word.trimmed.isEmpty { priority.insert(h.word) }
+            for s in stubbornWords {
+                let sp = s["spelling"].text.trimmed
+                if !sp.isEmpty { priority.insert(sp) }
+            }
+            for line in selectedPad["content"].text.components(separatedBy: .newlines) {
+                let w = line.trimmed
+                if !w.isEmpty && !w.hasPrefix("#") { priority.insert(w) }
+            }
+            let result = try? await core.request("mnemonic.practiceGroup", [
+                "form": .string(form),
+                "meaning": .string(meaning),
+                "currentWord": .string(currentWord),
+                "priorityWords": J.strings(Array(priority)),
+                "limit": .number(6)
+            ])
+            if let result, result != .null, !result["members"].list.isEmpty {
+                morphemePracticeGroup = result
+                sheet = .morphemePractice
+            } else {
+                status = "「\(form)」同根词数量不足，暂无法组成辨析练习。"
+            }
+        }
     }
 
     func speak(_ accent: EnglishAccent) {
@@ -381,6 +602,7 @@ enum EnglishAccent: String, CaseIterable {
     }
     func enterTranslation() {
         stopPronunciation()
+        stopRecallMode()
         lookupTask?.cancel()
         cancelCloudWordLookup()
         page = .translation
@@ -412,13 +634,13 @@ enum EnglishAccent: String, CaseIterable {
         translationTask = nil
         translating = false
     }
-    func classify(_ text: String, foreground: Bool = true) async {
+    func classify(_ text: String, foreground: Bool = true, sourceLabel: String = "段落翻译") async {
         do {
             let result = try await core.request("text.classify", ["text": .string(text)])
             if foreground { showWindow?() }
             switch result["kind"].text {
             case "Word", "Chinese": lookup(result["text"].text)
-            case "Paragraph": translationInput = result["text"].text; translationDirection = result["direction"].text; enterTranslation(); await translate()
+            case "Paragraph": lastTranslationSourceLabel = sourceLabel; translationInput = result["text"].text; translationDirection = result["direction"].text; enterTranslation(); await translate()
             default: status = "未识别到可查询的文字。"
             }
         } catch { fail(error) }

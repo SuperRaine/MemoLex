@@ -127,7 +127,9 @@ struct StubbornView: View {
                     preferences: model.preferences,
                     onSpeak: { model.speakWord($0, accent: $1) },
                     onSaveProgress: { model.saveFlashcardProgress($0) },
-                    onClearProgress: { model.clearFlashcardProgress() }
+                    onClearProgress: { model.clearFlashcardProgress() },
+                    contextItemsByWord: model.contextSentenceMap,
+                    onContextReviewed: { id in Task { await model.recordContextReview(id: id) } }
                 ) { self.practiceSession = nil }
                     .padding(23)
             } else {
@@ -301,7 +303,9 @@ struct NotebookView: View {
                     preferences: model.preferences,
                     onSpeak: { model.speakWord($0, accent: $1) },
                     onSaveProgress: { model.saveFlashcardProgress($0, scope: scope) },
-                    onClearProgress: { model.clearFlashcardProgress(scope: scope) }
+                    onClearProgress: { model.clearFlashcardProgress(scope: scope) },
+                    contextItemsByWord: model.contextSentenceMap,
+                    onContextReviewed: { id in Task { await model.recordContextReview(id: id) } }
                 ) { self.practiceSession = nil }
                     .padding(23)
             } else {

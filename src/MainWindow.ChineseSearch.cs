@@ -9,6 +9,14 @@ using MemoLex.Desktop;
 
 namespace MemoLex;
 
+public sealed record WordSuggestionItem(string Word, int LookupCount)
+{
+    public bool SuggestRecall => LookupCount >= 2;
+    public Visibility RecallVisibility => SuggestRecall ? Visibility.Visible : Visibility.Collapsed;
+    public string RecallBadge => $"查过 {LookupCount} 次 · Tab";
+    public string RecallToolTip => $"你已查过 {LookupCount} 次，按 Tab 或点这里先花 2 秒回想意思";
+}
+
 public partial class MainWindow
 {
     private sealed record ChineseSnapshot(string Query,ChineseSearchResult[] Items,int Total,bool Ready,double ScrollOffset);
@@ -29,6 +37,7 @@ public partial class MainWindow
     private void EnterChineseView()
     {
         StopPronunciation();
+        StopRecallMode();
         _lookupCts?.Cancel();_examplesCts?.Cancel();++_wordVersion;++_membershipVersion;
         _viewTarget=ViewTarget.ChineseSearch;ResultScroll.Visibility=TranslationView.Visibility=Visibility.Collapsed;ChineseSearchView.Visibility=Visibility.Visible;
     }
@@ -119,7 +128,11 @@ public partial class MainWindow
             var normalized=ExampleText.NormalizeLookup(query);
             var list=_dictionary.Suggest(normalized,25);
             if(list.Count==0&&normalized.Length>=3)list=_dictionary.SuggestSpellingCorrections(normalized,10);
-            _changingLists=true;SuggestionList.ItemsSource=list;_changingLists=false;return;
+            var lookupCounts=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+            foreach(var h in _preferences.SearchHistory)
+                if(!string.IsNullOrWhiteSpace(h.Word)&&!lookupCounts.ContainsKey(h.Word))lookupCounts[h.Word]=h.LookupCount;
+            var wrapped=list.Select(w=>new WordSuggestionItem(w,lookupCounts.GetValueOrDefault(w))).ToArray();
+            _changingLists=true;SuggestionList.ItemsSource=wrapped;_changingLists=false;return;
         }
         _changingLists=true;SuggestionList.ItemsSource=null;_changingLists=false;
         try

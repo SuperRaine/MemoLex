@@ -117,16 +117,29 @@ public partial class MainWindow
         familyDrawer.SetResourceReference(Border.BackgroundProperty,"SurfaceBrush");
         familyDrawer.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");
         var familyStack=new StackPanel();
-        var familyHeader=new TextBlock{FontSize=11.5,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,7)};
+        var familyHeaderRow=new DockPanel{Margin=new Thickness(0,0,0,7)};
+        var familyPracticeBtn=new Button{Content="练这组",FontSize=11,FontWeight=FontWeights.SemiBold,Padding=new Thickness(10,3,10,3),Margin=new Thickness(8,0,0,0),Visibility=Visibility.Collapsed,ToolTip="把这组同根词放在一起对比词缀并做辨析小测"};
+        if(Application.Current?.TryFindResource("AccentButton") is Style accentBtnStyle)familyPracticeBtn.Style=accentBtnStyle;
+        DockPanel.SetDock(familyPracticeBtn,Dock.Right);
+        familyHeaderRow.Children.Add(familyPracticeBtn);
+        var familyHeader=new TextBlock{FontSize=11.5,FontWeight=FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center,TextWrapping=TextWrapping.Wrap};
         familyHeader.SetResourceReference(TextBlock.ForegroundProperty,"AccentDeepBrush");
+        familyHeaderRow.Children.Add(familyHeader);
         var familyWrap=new WrapPanel();
-        familyStack.Children.Add(familyHeader);
+        familyStack.Children.Add(familyHeaderRow);
         familyStack.Children.Add(familyWrap);
         familyDrawer.Child=familyStack;
 
         var buttons=new Dictionary<int,(Button Button,MnemonicPart Part)>();
         var selected=new HashSet<int>();
         string? expandedFamilyKey=null;
+        MnemonicPart? expandedFamilyPart=null;
+
+        familyPracticeBtn.Click+=(_,e)=>
+        {
+            e.Handled=true;
+            if(expandedFamilyPart is {} part)OpenMorphemePractice(part.Form,part.Meaning,currentWord);
+        };
 
         void PopulateFamilyDrawer(MnemonicPart part)
         {
@@ -135,6 +148,7 @@ public partial class MainWindow
             {
                 familyDrawer.Visibility=Visibility.Collapsed;
                 expandedFamilyKey=null;
+                expandedFamilyPart=null;
                 return;
             }
             var members=_mnemonics.FindMorphemeFamily(part.Form,part.Meaning,currentWord,w=>_dictionary.Lookup(w)?.DisplayMeaning,18);
@@ -143,9 +157,13 @@ public partial class MainWindow
             {
                 familyDrawer.Visibility=Visibility.Collapsed;
                 expandedFamilyKey=null;
+                expandedFamilyPart=null;
                 return;
             }
             expandedFamilyKey=key;
+            expandedFamilyPart=part;
+            var canPractice=MorphemeGroupPractice.Build(_mnemonics,part.Form,part.Meaning,currentWord,w=>_dictionary.Lookup(w)?.DisplayMeaning,BuildPriorityWordSet())!=null;
+            familyPracticeBtn.Visibility=canPractice?Visibility.Visible:Visibility.Collapsed;
             familyHeader.Text=$"「{part.Form}（{part.Meaning}）」同根词家族 · 共 {members.Count} 词（点击即可查词）";
             foreach(var member in members)
             {
@@ -208,6 +226,13 @@ public partial class MainWindow
                     if(pillStyle!=null)familyBtn.Style=pillStyle;
                     familyBtn.Click+=(_,e)=>{e.Handled=true;PopulateFamilyDrawer(primary);};
                     cognatesRow.Children.Add(familyBtn);
+                    if(MorphemeGroupPractice.Build(_mnemonics,primary.Form,primary.Meaning,currentWord,w=>_dictionary.Lookup(w)?.DisplayMeaning,BuildPriorityWordSet())!=null)
+                    {
+                        var practiceBtn=new Button{Content="练这组",FontSize=11,FontWeight=FontWeights.SemiBold,Padding=new Thickness(10,2.5,10,2.5),Margin=new Thickness(5,0,0,4),ToolTip="把这组同根词放在一起对比词缀并做辨析小测"};
+                        if(Application.Current?.TryFindResource("AccentButton") is Style accentStyle)practiceBtn.Style=accentStyle;
+                        practiceBtn.Click+=(_,e)=>{e.Handled=true;OpenMorphemePractice(primary.Form,primary.Meaning,currentWord);};
+                        cognatesRow.Children.Add(practiceBtn);
+                    }
                 }
                 if(cognatesRow.Children.Count>0)cognatesRow.Visibility=Visibility.Visible;
             }
@@ -431,6 +456,38 @@ public partial class MainWindow
             }
             return new Size(finalSize.Width,Math.Max(0,y-VerticalSpacing));
         }
+    }
+
+    private HashSet<string> BuildPriorityWordSet()
+    {
+        var set=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach(var h in _preferences.SearchHistory)
+            if(!string.IsNullOrWhiteSpace(h.Word))set.Add(h.Word);
+        if(_stubbornWords!=null)
+            foreach(var s in _stubbornWords.Words)
+                if(!string.IsNullOrWhiteSpace(s.Spelling))set.Add(s.Spelling);
+        foreach(var (_,entry) in _notepadCache)
+            foreach(var w in NotepadContent.Words(entry.Pad.Content))
+                set.Add(w);
+        return set;
+    }
+
+    private void OpenMorphemePractice(string form,string meaning,string currentWord)
+    {
+        var group=MorphemeGroupPractice.Build(
+            _mnemonics,form,meaning,currentWord,
+            w=>_dictionary.Lookup(w)?.DisplayMeaning,
+            BuildPriorityWordSet());
+        if(group==null)
+        {
+            StatusText.Text=$"「{form}」同根词数量不足，暂无法组成辨析练习。";
+            return;
+        }
+        var dialog=Desktop.MorphemeGroupPracticeDialog.Build(
+            this,group,
+            speak:(w,accent)=>PlaySpeechAsync(w,accent),
+            lookupWord:w=>_=LoadWordAsync(w));
+        dialog.ShowDialog();
     }
 
     private string LocalNotesHint()=>_displayedNotes.Length>0?$"本地助记 · {_displayedNotes.Length} 条":"暂无助记，点击「编辑助记」添加。";

@@ -102,6 +102,7 @@ public partial class MainWindow : Window
             _source?.RemoveHook(ResizeHook);
             StopOnboardingOnExit();
             _examCountdownTimer?.Stop();
+            StopRecallMode();
             _doubleCopy?.Dispose();_clipboardCts?.Cancel();
             _hover?.Dispose();_accountTimer?.Stop();_accountWatcher?.Dispose();_updates?.Dispose();
             _studyCts?.Cancel();
@@ -205,6 +206,7 @@ public partial class MainWindow : Window
             _ = RefreshStubbornWordsAsync();
             DictionaryCountText.Text=$"内置词库 · {_dictionary.Count:N0} 词";
             UpdateHistory();
+            UpdateContextReviewButtons();
             SearchBox.Text = _preferences.History.FirstOrDefault() ?? "serendipity";
             SearchBox.Focus();
             SearchBox.SelectAll();
@@ -220,12 +222,14 @@ public partial class MainWindow : Window
     }
 
     private static bool ValidWord(string word) => word.Length is > 0 and <= 100 && Regex.IsMatch(word, @"^[a-zA-Z][a-zA-Z .’'\-]*$");
-    private async Task LoadWordAsync(string raw, bool recordHistory = true, bool addNavigationEntry = true, ViewState? restore = null)
+    private async Task LoadWordAsync(string raw, bool recordHistory = true, bool addNavigationEntry = true, ViewState? restore = null, bool recallMode = false, bool keepPendingContext = false)
     {
         if (!_ready) return;
         var word = ExampleText.NormalizeLookup(raw).Trim();
         if (!ValidWord(word)) { StatusText.Text = "请输入英文单词或短语（最多 100 字符）。"; return; }
         StopPronunciation();
+        if (!keepPendingContext) _pendingContext = null;
+        if (!recallMode) StopRecallMode();
         if (addNavigationEntry) RememberCurrentView();
         CancelChineseSearch();
         CancelTranslation();
@@ -282,7 +286,10 @@ public partial class MainWindow : Window
             _preferences.Save();
             UpdateHistory();
         }
-        UpdateRepeatedWordBanner();
+        UpdateContextCaptureBanner(entry?.word ?? word);
+        RenderSavedContexts(entry?.word ?? word);
+        if (recallMode) EnterRecallMode(entry?.word ?? word);
+        else UpdateRepeatedWordBanner();
         _navigating = false;
         if (addNavigationEntry) _navigation.Navigate(CaptureView());
         UpdateNavigationButtons();
@@ -411,11 +418,38 @@ public partial class MainWindow : Window
         {
             Content = speakContent, Style = (Style)FindResource("PillButton"),
             ToolTip = "朗读整条例句", FontSize = 11,
-            MinWidth = 62, Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(10, 0, 0, 0)
+            MinWidth = 62, Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(6, 0, 0, 0)
         };
         speak.Click += async (_, _) => await SpeakExampleAsync(speak, sentence.English);
-        DockPanel.SetDock(speak, Dock.Right);
-        heading.Children.Add(speak);
+        var alreadySavedSentence = _contextSentences.Contains(sourceWord, sentence.English);
+        var saveSentenceBtn = new Button
+        {
+            Content = alreadySavedSentence ? "✓ 已保存原句" : "保存原句",
+            Style = (Style)FindResource("PillButton"),
+            ToolTip = "保存这条原句到本机，离线也能自测",
+            FontSize = 11,
+            Padding = new Thickness(9, 4, 9, 4),
+            Margin = new Thickness(8, 0, 0, 0)
+        };
+        saveSentenceBtn.Click += (_, _) =>
+        {
+            if (_contextSentences.Contains(sourceWord, sentence.English))
+            {
+                OpenContextSentenceReview(sourceWord);
+                return;
+            }
+            var srcLabel = string.IsNullOrWhiteSpace(sentence.Source) ? "真题例句" : sentence.Source;
+            _contextSentences.Save(sourceWord, sentence.English, sentence.Translation, srcLabel, sentence.MatchedWords.FirstOrDefault());
+            saveSentenceBtn.Content = "✓ 已保存原句";
+            RenderSavedContexts(_word);
+            UpdateContextReviewButtons();
+            StatusText.Text = $"已保存「{sourceWord}」的原句，点击「原句自测」即可离线复习。";
+        };
+        var headingActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        headingActions.Children.Add(saveSentenceBtn);
+        headingActions.Children.Add(speak);
+        DockPanel.SetDock(headingActions, Dock.Right);
+        heading.Children.Add(headingActions);
         var sourceBadge = new Border
         {
             Background = Brush("#E6F5FF"), BorderBrush = Brush("#CBE7FA"), BorderThickness = new Thickness(1),
@@ -669,6 +703,15 @@ public partial class MainWindow : Window
         if (!_ready) return;
         await UpdateSuggestionsAsync(SearchBox.Text);
     }
+    private async void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None && TryResolveRecallTarget(out var recallWord))
+        {
+            e.Handled = true;
+            SearchBox.Text = recallWord;
+            await LoadWordAsync(recallWord, recallMode: true);
+        }
+    }
     private async void SearchBox_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None) { e.Handled = true; await SearchAsync(SearchBox.Text); }
@@ -678,7 +721,7 @@ public partial class MainWindow : Window
     private async void SuggestionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_changingLists) return;
-        var word=SuggestionList.SelectedItem switch {string spelling=>spelling,ChineseSearchResult result=>result.Word,_=>null};
+        var word=SuggestionList.SelectedItem switch {WordSuggestionItem item=>item.Word,string spelling=>spelling,ChineseSearchResult result=>result.Word,_=>null};
         if(word==null)return;
         SearchBox.Text = word;
         await SearchAsync(word);
@@ -865,7 +908,7 @@ public partial class MainWindow : Window
         _preferences.Save();
         ThemeManager.Apply(_preferences.ThemeMode);
         UpdateThemeToggleIcon();
-        if (ValidWord(_word)) RenderNotes(_word, _displayedNotes);
+        if (ValidWord(_word)) { RenderNotes(_word, _displayedNotes); RenderSavedContexts(_word); }
     }
     private void OpenQuickLookupBar()
     {
@@ -889,8 +932,15 @@ public partial class MainWindow : Window
     {
         var accountId = (_tokens.ActiveAccount ?? _tokens.ExpiredAccount)?.Id ?? "default";
         var progress = FlashcardProgressStore.Load(_tokens.ProfileDirectory, accountId);
-        var dialog = LearningDashboardDialog.Build(this, _preferences, progress, _stubbornWords?.Total ?? 0, w => _ = LoadWordAsync(w));
+        var dialog = LearningDashboardDialog.Build(
+            this, _preferences, progress, _stubbornWords?.Total ?? 0,
+            w => _ = LoadWordAsync(w),
+            contextSentences: _contextSentences,
+            spellingMistakes: _spellingMistakes,
+            startContextReview: () => OpenContextSentenceReview());
         dialog.ShowDialog();
+        UpdateContextReviewButtons();
+        if (ValidWord(_word)) RenderSavedContexts(_word);
     }
     private void RenderSpellingSuggestions(string query, bool notFound)
     {
@@ -928,7 +978,7 @@ public partial class MainWindow : Window
     private void UpdateRepeatedWordBanner()
     {
         if (RepeatedWordBanner == null) return;
-        if (_viewTarget != ViewTarget.Word || !ValidWord(_word))
+        if (_recallModeActive || _viewTarget != ViewTarget.Word || !ValidWord(_word))
         {
             RepeatedWordBanner.Visibility = Visibility.Collapsed;
             return;
@@ -968,6 +1018,16 @@ public partial class MainWindow : Window
     {
         if(_onboardingTour?.HandleKey(e)==true)return;
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if(_recallModeActive&&_viewTarget==ViewTarget.Word&&!SearchBox.IsKeyboardFocusWithin&&Keyboard.Modifiers==ModifierKeys.None&&key is Key.Space or Key.Enter)
+        {
+            e.Handled=true;
+            if(!e.IsRepeat)
+            {
+                bool? remembered=ReferenceEquals(Keyboard.FocusedElement,RecallRememberedButton)?true:ReferenceEquals(Keyboard.FocusedElement,RecallForgotButton)?false:null;
+                RevealFromRecallMode(remembered);
+            }
+            return;
+        }
         if(key is Key.BrowserBack or Key.BrowserForward){e.Handled=true;await MoveNavigationAsync(key==Key.BrowserBack?-1:1);return;}
         if(ShortcutGestures.Match(_preferences,key,Keyboard.Modifiers) is { } command){e.Handled=true;await ExecuteShortcutAsync(command);}
     }

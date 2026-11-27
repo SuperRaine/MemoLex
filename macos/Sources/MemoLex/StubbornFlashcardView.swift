@@ -9,6 +9,9 @@ struct StubbornFlashcardView: View {
     let onSpeak: ((String, EnglishAccent) -> Void)?
     let onSaveProgress: (FlashcardProgressSnapshot) -> Void
     let onClearProgress: () -> Void
+    let contextItemsByWord: [String: J]
+    let contextMode: Bool
+    let onContextReviewed: ((String) -> Void)?
     let close: () -> Void
     @State private var practice: FlashcardPractice
     @State private var revealed = false
@@ -27,6 +30,12 @@ struct StubbornFlashcardView: View {
     @State private var spellingClue = ""
     @State private var spellingClueTone = "info"
     @State private var spellingHintLevel = 0
+    @State private var activeDrill: J?
+    @State private var microDrillDone = false
+    @State private var microChoices: [String] = []
+    @State private var hadMistakeOnCurrentWord = false
+    @State private var microDrillFeedback = ""
+    @State private var microDrillWasCorrect = false
     @State private var autoSpeak: String
     @FocusState private var spellingFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -41,6 +50,9 @@ struct StubbornFlashcardView: View {
         onSpeak: ((String, EnglishAccent) -> Void)? = nil,
         onSaveProgress: @escaping (FlashcardProgressSnapshot) -> Void = { _ in },
         onClearProgress: @escaping () -> Void = {},
+        contextItemsByWord: [String: J] = [:],
+        contextMode: Bool = false,
+        onContextReviewed: ((String) -> Void)? = nil,
         close: @escaping () -> Void
     ) {
         self.core = core
@@ -51,9 +63,76 @@ struct StubbornFlashcardView: View {
         self.onSpeak = onSpeak
         self.onSaveProgress = onSaveProgress
         self.onClearProgress = onClearProgress
+        self.contextItemsByWord = contextItemsByWord
+        self.contextMode = contextMode
+        self.onContextReviewed = onContextReviewed
         self.close = close
         _practice = State(initialValue: FlashcardPractice(words: words, saved: persistsProgress ? savedProgress : nil))
         _autoSpeak = State(initialValue: preferences?.flashcardAutoSpeak ?? "off")
+    }
+
+    private func contextItem(for word: String) -> J? {
+        contextItemsByWord[word.trimmed.lowercased()]
+    }
+
+    private func highlightedSentence(_ sentence: String, word: String, matchedForm: String, fontSize: CGFloat) -> AttributedString {
+        var value = AttributedString(sentence)
+        value.foregroundColor = Palette.ink
+        var targets = Set([word.trimmed.lowercased()])
+        if !matchedForm.trimmed.isEmpty { targets.insert(matchedForm.trimmed.lowercased()) }
+        var stem = word.trimmed.lowercased()
+        if stem.count > 4 && stem.hasSuffix("e") { stem.removeLast() }
+        let source = sentence as NSString
+        let regex = try? NSRegularExpression(pattern: "[A-Za-z]+(?:['’-][A-Za-z]+)*")
+        let matches = regex?.matches(in: sentence, range: NSRange(location: 0, length: source.length)) ?? []
+        let hasExact = matches.contains { m in
+            let token = source.substring(with: m.range).lowercased()
+            return targets.contains(token)
+        }
+        for match in matches {
+            guard let range = Range(match.range, in: sentence),
+                  let start = AttributedString.Index(range.lowerBound, within: value),
+                  let end = AttributedString.Index(range.upperBound, within: value) else { continue }
+            let token = String(sentence[range]).lowercased()
+            let hit = targets.contains(token) || (!hasExact && stem.count >= 4 && token.hasPrefix(stem))
+            if hit {
+                value[start..<end].backgroundColor = Palette.wash
+                value[start..<end].foregroundColor = Palette.deep
+                value[start..<end].font = .system(size: fontSize, weight: .bold)
+            }
+        }
+        return value
+    }
+
+    private func blankOutWord(_ sentence: String, word: String, matchedForm: String) -> String {
+        var targets = Set([word.trimmed.lowercased()])
+        if !matchedForm.trimmed.isEmpty { targets.insert(matchedForm.trimmed.lowercased()) }
+        var stem = word.trimmed.lowercased()
+        if stem.count > 4 && stem.hasSuffix("e") { stem.removeLast() }
+        let regex = try? NSRegularExpression(pattern: "[A-Za-z]+(?:['’-][A-Za-z]+)*")
+        let source = sentence as NSString
+        let matches = regex?.matches(in: sentence, range: NSRange(location: 0, length: source.length)) ?? []
+        var result = ""
+        var cursor = 0
+        var replaced = false
+        for match in matches {
+            if match.range.location > cursor {
+                result += source.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            }
+            let token = source.substring(with: match.range)
+            let low = token.lowercased()
+            if targets.contains(low) || (!replaced && stem.count >= 4 && low.hasPrefix(stem)) {
+                result += "______"
+                replaced = true
+            } else {
+                result += token
+            }
+            cursor = NSMaxRange(match.range)
+        }
+        if cursor < source.length {
+            result += source.substring(from: cursor)
+        }
+        return result
     }
 
     private var groupProgress: CGFloat {
@@ -88,7 +167,12 @@ struct StubbornFlashcardView: View {
                     spellingMode = false; revealed = false; resetSpellingInput()
                 }.buttonStyle(MemoButtonStyle(accent: !spellingMode, compact: true))
                 Button("拼写默写") {
-                    spellingMode = true; revealed = false; resetSpellingInput(); spellingFocused = true
+                    spellingMode = true; revealed = false; resetSpellingInput()
+                    if let current = practice.current {
+                        Task { await loadSpellingDrill(for: current) }
+                    } else {
+                        spellingFocused = true
+                    }
                 }.buttonStyle(MemoButtonStyle(accent: spellingMode, compact: true))
 
                 Spacer()
@@ -229,9 +313,12 @@ struct StubbornFlashcardView: View {
         .noFocusRing()
         .task(id: practice.current) {
             resetSpellingInput()
+            activeDrill = nil
+            microChoices = []
             guard let word = practice.current else { return }
-            if spellingMode { spellingFocused = true }
-            let result = try? await core.request("dictionary.lookup", ["word": .string(word)])
+            async let lookupReq = core.request("dictionary.lookup", ["word": .string(word)])
+            await loadSpellingDrill(for: word)
+            let result = try? await lookupReq
             guard !Task.isCancelled, practice.current == word else { return }
             lookup = (word, result ?? .null)
         }.onDisappear {
@@ -240,72 +327,185 @@ struct StubbornFlashcardView: View {
         }
     }
 
+    private func loadSpellingDrill(for word: String) async {
+        let drill = try? await core.request("spelling.getDrill", ["word": .string(word)])
+        guard !Task.isCancelled, practice.current == word else { return }
+        if let drill, drill != .null, !drill["correctOption"].text.isEmpty {
+            activeDrill = drill
+            let correct = drill["correctOption"].text
+            let wrong = drill["wrongOption"].text
+            microChoices = Bool.random() ? [correct, wrong] : [wrong, correct]
+            microDrillDone = false
+        } else {
+            activeDrill = nil
+            microChoices = []
+            if spellingMode { spellingFocused = true }
+        }
+    }
+
+    private func pickMicroOption(_ choice: String, drill: J) {
+        let right = choice.caseInsensitiveCompare(drill["correctOption"].text) == .orderedSame
+        microDrillWasCorrect = right
+        if !right { hadMistakeOnCurrentWord = true }
+        let exp = drill["explanation"].text
+        microDrillFeedback = right
+            ? "✓ 选对了！\(exp) — 现在完整默写一遍："
+            : "✗ 差点又写错！\(exp) — 记住它，再完整默写一遍："
+        microDrillDone = true
+        spellingFocused = true
+    }
+
     private func spellingFront(word: String, data: J?) -> some View {
         let shape = RoundedRectangle(cornerRadius: 15, style: .continuous)
         let phonetic = data?["entry"]["phonetic"].text ?? ""
         let localMeaning = data?["entry"]["translation"].text.decodedLines ?? ""
+        let ctx = contextItem(for: word)
         return VStack(spacing: 12) {
-            Text("第 \(practice.groupNumber) 组 · 拼写默写")
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundStyle(Palette.deep)
-                .padding(.horizontal, 11).padding(.vertical, 4)
-                .background(Palette.paper.opacity(0.88), in: Capsule())
-                .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.8))
+            if let drill = activeDrill, !microDrillDone, microChoices.count == 2 {
+                Text("针对错点微题 · 曾错 \(drill["mistakeCount"].integer) 次")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.65, green: 0.34, blue: 0.03))
+                    .padding(.horizontal, 12).padding(.vertical, 4)
+                    .background(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.15), in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.38), lineWidth: 0.85))
 
-            Text(localMeaning.isEmpty ? "请听发音并拼写该单词" : localMeaning)
-                .font(.system(size: 18, weight: .semibold))
-                .lineSpacing(4)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-                .padding(.horizontal, 12)
-
-            if !phonetic.isEmpty {
-                Text("/\(phonetic.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/")
-                    .font(.system(size: 14.5)).foregroundStyle(Palette.muted)
-            }
-
-            TextField("输入英文拼写…", text: $typedSpelling)
-                .textFieldStyle(.plain)
-                .font(.system(size: 20, weight: .medium))
-                .multilineTextAlignment(.center)
-                .focused($spellingFocused)
-                .onSubmit { submitSpelling(word) }
-                .onChange(of: typedSpelling) { newValue in
-                    handleSpellingChanged(newValue, word: word)
-                }
-                .padding(.horizontal, 14).frame(width: 330, height: 44)
-                .controlSurface()
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(spellingBorderColor, lineWidth: spellingBorderColor == .clear ? 0 : 1.4)
-                )
-
-            if !spellingClue.isEmpty {
-                Text(spellingClue)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(spellingClueForeground)
+                Text(localMeaning.isEmpty
+                     ? "上次你写成了「\(drill["lastWrongInput"].text)」"
+                     : "\(localMeaning)（上次写成了 \(drill["lastWrongInput"].text)）")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Palette.muted)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(spellingClueBackground, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(spellingClueBorder, lineWidth: 0.9))
-            }
+                    .lineLimit(2)
+                    .padding(.horizontal, 12)
 
-            HStack(spacing: 8) {
-                Button("核对拼写") { submitSpelling(word) }
-                    .buttonStyle(MemoButtonStyle(accent: true, compact: true))
-                Button("提示字母") {
-                    let maxReveal = max(1, word.count - 1)
-                    spellingHintLevel = min(maxReveal, spellingHintLevel + 1)
-                    let mask = maskSpellingWord(word, revealCount: spellingHintLevel)
-                    spellingClue = "提示：\(mask)（共 \(word.count) 字母）"
-                    spellingClueTone = "info"
+                Text(drill["contextMask"].text)
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(Palette.ink)
+                    .padding(.top, 2)
+
+                Text(drill["question"].text)
+                    .font(.system(size: 15.5, weight: .semibold))
+                    .foregroundStyle(Palette.deep)
+                    .multilineTextAlignment(.center)
+
+                HStack(spacing: 12) {
+                    ForEach(Array(microChoices.enumerated()), id: \.offset) { idx, opt in
+                        Button {
+                            pickMicroOption(opt, drill: drill)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text("\(idx + 1)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Palette.deep)
+                                    .frame(width: 20, height: 20)
+                                    .background(Palette.wash, in: Circle())
+                                Text(opt)
+                                    .font(.system(size: 19, weight: .bold))
+                                    .foregroundStyle(Palette.ink)
+                            }
+                            .frame(minWidth: 120)
+                            .padding(.horizontal, 18).padding(.vertical, 10)
+                            .background(Palette.paper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .noFocusRing()
+                        .keyboardShortcut(revealed ? nil : KeyboardShortcut(idx == 0 ? "1" : "2", modifiers: []))
+                    }
+                }
+                .padding(.top, 4)
+
+                Button("跳过微题，直接整词默写") {
+                    microDrillDone = true
                     spellingFocused = true
-                }.buttonStyle(MemoButtonStyle(compact: true))
-                Button("直接看答案") {
-                    autoFlipTask?.cancel()
-                    spellingFeedback = ""
-                    flip()
-                }.buttonStyle(MemoButtonStyle(compact: true))
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11.5))
+                .foregroundStyle(Palette.muted)
+                .padding(.top, 2)
+            } else {
+                Text("第 \(practice.groupNumber) 组 · 拼写默写")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(Palette.deep)
+                    .padding(.horizontal, 11).padding(.vertical, 4)
+                    .background(Palette.paper.opacity(0.88), in: Capsule())
+                    .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.8))
+
+                if !microDrillFeedback.isEmpty {
+                    Text(microDrillFeedback)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(microDrillWasCorrect ? Color(red: 0.06, green: 0.54, blue: 0.36) : Color(red: 0.71, green: 0.34, blue: 0.04))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background((microDrillWasCorrect ? Color(red: 0.08, green: 0.72, blue: 0.48) : Color(red: 0.98, green: 0.62, blue: 0.09)).opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+
+                Text(localMeaning.isEmpty ? "请听发音并拼写该单词" : localMeaning)
+                    .font(.system(size: 18, weight: .semibold))
+                    .lineSpacing(4)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .padding(.horizontal, 12)
+
+                if let ctx {
+                    Text(blankOutWord(ctx["sentence"].text, word: word, matchedForm: ctx["matchedForm"].text))
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Palette.muted)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Palette.paper.opacity(0.85), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
+                }
+
+                if !phonetic.isEmpty {
+                    Text("/\(phonetic.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/")
+                        .font(.system(size: 14.5)).foregroundStyle(Palette.muted)
+                }
+
+                TextField("输入英文拼写…", text: $typedSpelling)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 20, weight: .medium))
+                    .multilineTextAlignment(.center)
+                    .focused($spellingFocused)
+                    .onSubmit { submitSpelling(word) }
+                    .onChange(of: typedSpelling) { newValue in
+                        handleSpellingChanged(newValue, word: word)
+                    }
+                    .padding(.horizontal, 14).frame(width: 330, height: 44)
+                    .controlSurface()
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .strokeBorder(spellingBorderColor, lineWidth: spellingBorderColor == .clear ? 0 : 1.4)
+                    )
+
+                if !spellingClue.isEmpty {
+                    Text(spellingClue)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(spellingClueForeground)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background(spellingClueBackground, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(spellingClueBorder, lineWidth: 0.9))
+                }
+
+                HStack(spacing: 8) {
+                    Button("核对拼写") { submitSpelling(word) }
+                        .buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                    Button("提示字母") {
+                        let maxReveal = max(1, word.count - 1)
+                        spellingHintLevel = min(maxReveal, spellingHintLevel + 1)
+                        let mask = maskSpellingWord(word, revealCount: spellingHintLevel)
+                        spellingClue = "提示：\(mask)（共 \(word.count) 字母）"
+                        spellingClueTone = "info"
+                        spellingFocused = true
+                    }.buttonStyle(MemoButtonStyle(compact: true))
+                    Button("直接看答案") {
+                        autoFlipTask?.cancel()
+                        spellingFeedback = ""
+                        flip()
+                    }.buttonStyle(MemoButtonStyle(compact: true))
+                }
             }
         }
         .padding(24)
@@ -360,11 +560,13 @@ struct StubbornFlashcardView: View {
             spellingFeedback = "✓ 拼写正确"
             spellingClue = "✓ 拼写正确，自动翻面…"
             spellingClueTone = "success"
+            let cleanPass = !hadMistakeOnCurrentWord && spellingHintLevel == 0
             autoFlipTask = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 140_000_000)
                 guard !Task.isCancelled, spellingMode, !revealed, !flipping, !swiping,
                       practice.current == word,
                       typedSpelling.trimmed.caseInsensitiveCompare(word) == .orderedSame else { return }
+                if cleanPass { _ = try? await core.request("spelling.recordSuccess", ["word": .string(word)]) }
                 flip()
             }
         } else if spellingClueTone == "warn" || spellingClueTone == "success" {
@@ -376,16 +578,29 @@ struct StubbornFlashcardView: View {
         autoFlipTask?.cancel()
         let trimmed = typedSpelling.trimmed
         if trimmed.caseInsensitiveCompare(word) == .orderedSame {
+            if !hadMistakeOnCurrentWord && spellingHintLevel == 0 {
+                Task { _ = try? await core.request("spelling.recordSuccess", ["word": .string(word)]) }
+            }
             spellingCorrect = true
             spellingFeedback = "✓ 拼写正确"
             flip()
             return
         }
 
+        hadMistakeOnCurrentWord = true
         let (message, isProgress) = buildSpellingHint(word: word, typed: trimmed)
         spellingClue = message
         spellingClueTone = isProgress ? "info" : "warn"
         spellingFocused = true
+        if !trimmed.isEmpty {
+            Task { @MainActor in
+                if let rec = try? await core.request("spelling.recordMistake", ["word": .string(word), "typed": .string(trimmed)]),
+                   rec != .null, practice.current == word, !revealed,
+                   !spellingClue.contains("已记住此错点") {
+                    spellingClue += " · 已记住此错点，下次针对练"
+                }
+            }
+        }
     }
 
     private func maskSpellingWord(_ word: String, revealCount: Int) -> String {
@@ -449,11 +664,16 @@ struct StubbornFlashcardView: View {
         spellingClue = ""
         spellingClueTone = "info"
         spellingHintLevel = 0
+        hadMistakeOnCurrentWord = false
+        microDrillFeedback = ""
+        microDrillWasCorrect = false
+        microDrillDone = false
     }
 
     private func face(word: String, data: J?, back: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 15, style: .continuous)
         let phonetic = data?["entry"]["phonetic"].text ?? ""
+        let ctx = contextItem(for: word)
         return Group {
             if back {
                 VStack(alignment: .leading, spacing: 11) {
@@ -486,6 +706,29 @@ struct StubbornFlashcardView: View {
                             WordListMeaning(core: core, word: word, local: data?["entry"]["translation"].text, concealed: !revealed, fontSize: 16.5) { _ in }
                                 .lineSpacing(4)
                                 .id(word)
+                            if let ctx {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text("读过的原句 · \(ctx["source"].text)")
+                                        .font(.system(size: 11.5, weight: .semibold))
+                                        .foregroundStyle(Palette.deep)
+                                    Text(highlightedSentence(ctx["sentence"].text, word: word, matchedForm: ctx["matchedForm"].text, fontSize: 14.5))
+                                        .font(.system(size: 14.5))
+                                        .lineSpacing(4)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    if !ctx["translation"].text.isEmpty {
+                                        Text(ctx["translation"].text)
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(Palette.muted)
+                                            .lineSpacing(3)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                .padding(11)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Palette.paper.opacity(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.accent.opacity(0.35)))
+                                .padding(.top, 4)
+                            }
                             if let firstNote = data?["notes"].list.first {
                                 let breakdowns = firstNote["breakdowns"].list
                                 if !breakdowns.isEmpty {
@@ -514,6 +757,35 @@ struct StubbornFlashcardView: View {
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+            } else if contextMode, let ctx {
+                VStack(spacing: 12) {
+                    Text("第 \(practice.groupNumber) 组 · 原句自测（\(ctx["source"].text)）")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Palette.deep)
+                        .padding(.horizontal, 11).padding(.vertical, 4)
+                        .background(Palette.paper.opacity(0.88), in: Capsule())
+                        .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.8))
+                    Text("这里的「\(word)」是什么意思？")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Palette.deep)
+                    Text(highlightedSentence(ctx["sentence"].text, word: word, matchedForm: ctx["matchedForm"].text, fontSize: 17.5))
+                        .font(.system(size: 17.5))
+                        .lineSpacing(5)
+                        .multilineTextAlignment(.center)
+                        .padding(14)
+                        .frame(maxWidth: .infinity)
+                        .background(Palette.paper.opacity(0.92), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.accent.opacity(0.32), lineWidth: 0.9))
+                    if !phonetic.isEmpty {
+                        Text("/\(phonetic.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/")
+                            .font(.system(size: 14.5)).foregroundStyle(Palette.muted)
+                    }
+                    Label("点击翻卡核对释义与整句译文", systemImage: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.deep)
+                        .padding(.horizontal, 13).padding(.vertical, 6)
+                        .background(Palette.paper.opacity(0.88), in: Capsule())
+                }
             } else {
                 VStack(spacing: 12) {
                     Text("第 \(practice.groupNumber) 组 · 点击翻面")
@@ -526,6 +798,20 @@ struct StubbornFlashcardView: View {
                     if !phonetic.isEmpty {
                         Text("/\(phonetic.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/")
                             .font(.system(size: 15.5)).foregroundStyle(Palette.muted)
+                    }
+                    if let ctx {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("你读过的原句 · \(ctx["source"].text)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Palette.deep)
+                            Text(highlightedSentence(ctx["sentence"].text, word: word, matchedForm: ctx["matchedForm"].text, fontSize: 13.5))
+                                .font(.system(size: 13.5))
+                                .lineLimit(2)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Palette.paper.opacity(0.88), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
                     }
                     Label("点击翻卡核对释义", systemImage: "arrow.clockwise")
                         .font(.system(size: 13, weight: .semibold))
@@ -574,6 +860,9 @@ struct StubbornFlashcardView: View {
 
     private func answer(_ value: FlashcardPractice.Answer) {
         guard revealed, !flipping, !swiping else { return }
+        if let current = practice.current, let ctx = contextItem(for: current), !ctx["id"].text.isEmpty {
+            onContextReviewed?(ctx["id"].text)
+        }
         autoFlipTask?.cancel()
         if reduceMotion {
             practice.answer(value)

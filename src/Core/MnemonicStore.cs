@@ -88,6 +88,115 @@ public sealed class MnemonicStore(string? userPath=null,string? bundledPath=null
         }
         return results;
     }
+    public IReadOnlyList<MorphemePracticeMember> FindMorphemePracticeMembers(
+        string form,
+        string meaning,
+        string currentWord,
+        Func<string,string?> lookupMeaning,
+        IReadOnlySet<string>? priorityWords=null,
+        int maxCount=6)
+    {
+        var key=MnemonicParts.NormalizeFormKey(form);
+        if(key.Length<2||maxCount<2)return [];
+        Dictionary<string,(string Word,string Meaning)[]> index;
+        lock(_gate)
+        {
+            index=_morphemeIndex??=BuildMorphemeIndex(_bundled);
+        }
+        if(!index.TryGetValue(key,out var entries))return [];
+
+        var targetChars=MeaningCharacters(meaning);
+        var isAffix=key.StartsWith('-')||key.EndsWith('-');
+        var matched=new List<(string Word,string MorphemeMeaning)>();
+        var fallback=new List<(string Word,string MorphemeMeaning)>();
+
+        foreach(var (candidate,candidateMeaning) in entries)
+        {
+            var isCurrent=candidate.Equals(currentWord,StringComparison.OrdinalIgnoreCase);
+            var sharesMeaning=isCurrent||(targetChars.Count>0&&SharesMeaning(targetChars,candidateMeaning));
+            if(sharesMeaning)
+                matched.Add((candidate,candidateMeaning));
+            else if(isAffix)
+                fallback.Add((candidate,candidateMeaning));
+        }
+        var pool=matched.Count>=2||!isAffix?matched:fallback;
+        if(pool.Count<2)return [];
+
+        // Ensure currentWord is represented if it has a matching breakdown even when not in bundled index.
+        var seenWords=new HashSet<string>(pool.Select(p=>p.Word),StringComparer.OrdinalIgnoreCase);
+        if(!string.IsNullOrWhiteSpace(currentWord)&&seenWords.Add(currentWord.Trim()))
+            pool.Add((currentWord.Trim(),meaning));
+
+        var candidates=new List<(MorphemePracticeMember Member,int Score)>();
+        foreach(var (candidateWord,morphemeMeaning) in pool)
+        {
+            var rawMeaning=lookupMeaning(candidateWord);
+            var gloss=CompactMeaning(rawMeaning);
+            if(gloss.Length==0)continue;
+
+            var breakdown=FindBreakdownForMorpheme(candidateWord,key);
+            IReadOnlyList<MorphemeSegment> segments;
+            string explanation;
+            if(breakdown!=null)
+            {
+                segments=breakdown.Parts.Select(p=>new MorphemeSegment(
+                    p.Form,
+                    p.Meaning,
+                    MnemonicParts.NormalizeFormKey(p.Form).Equals(key,StringComparison.OrdinalIgnoreCase))).ToArray();
+                explanation=breakdown.Explanation;
+            }
+            else
+            {
+                segments=BuildFallbackSegments(candidateWord,key,morphemeMeaning);
+                explanation=gloss;
+            }
+
+            var isCurrent=candidateWord.Equals(currentWord,StringComparison.OrdinalIgnoreCase);
+            var isUser=priorityWords?.Contains(candidateWord)==true;
+            var hasDistinctAffix=segments.Count>=2&&segments.Any(s=>!s.IsTargetRoot);
+            var score=(isCurrent?1000:0)+(isUser?500:0)+(hasDistinctAffix?120:0)+(breakdown!=null?60:0)-candidateWord.Length*2;
+            var prompt=MorphemeGroupPractice.BuildPromptMeaning(rawMeaning??gloss,explanation,candidateWord);
+            if(prompt.Length<2)continue;
+
+            candidates.Add((new MorphemePracticeMember(candidateWord,gloss,prompt,explanation,segments,isUser),score));
+        }
+
+        // Prefer diverse non-duplicate prompt meanings and distinct affix structures.
+        var chosen=new List<MorphemePracticeMember>(maxCount);
+        var usedPrompts=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach(var (member,_) in candidates.OrderByDescending(c=>c.Score).ThenBy(c=>c.Member.Word,StringComparer.OrdinalIgnoreCase))
+        {
+            if(chosen.Count>=maxCount)break;
+            if(!usedPrompts.Add(member.PromptMeaning))continue;
+            chosen.Add(member);
+        }
+        return chosen;
+    }
+    private MnemonicBreakdown? FindBreakdownForMorpheme(string word,string normalizedKey)
+    {
+        var notes=Get(word);
+        foreach(var note in notes)
+        {
+            if(MnemonicTypes.Normalize(note.NoteType) is not ("词根词缀" or "派生"))continue;
+            foreach(var b in MnemonicParts.Parse(word,note.NoteType,note.Text))
+            {
+                if(b.Parts.Any(p=>MnemonicParts.NormalizeFormKey(p.Form).Equals(normalizedKey,StringComparison.OrdinalIgnoreCase)))
+                    return b;
+            }
+        }
+        return null;
+    }
+    private static IReadOnlyList<MorphemeSegment> BuildFallbackSegments(string word,string normalizedKey,string rootMeaning)
+    {
+        var core=normalizedKey.Trim('-');
+        var idx=core.Length>0?word.IndexOf(core,StringComparison.OrdinalIgnoreCase):-1;
+        if(idx<0)return [new(word,rootMeaning,true)];
+        var list=new List<MorphemeSegment>(3);
+        if(idx>0)list.Add(new(word[..idx]+"-","",false));
+        list.Add(new(word.Substring(idx,core.Length),rootMeaning,true));
+        if(idx+core.Length<word.Length)list.Add(new("-"+word[(idx+core.Length)..],"",false));
+        return list;
+    }
     private static string CompactMeaning(string? meaning)
     {
         if(string.IsNullOrWhiteSpace(meaning))return "";

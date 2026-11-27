@@ -106,6 +106,36 @@ struct LearningDashboardView: View {
                     .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
 
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("原句复习 & 拼写错点记忆")
+                                .font(.system(size: 13.5, weight: .semibold))
+                            let mistakeSummary: String = {
+                                if model.activeSpellingMistakes.isEmpty {
+                                    return "拼写练习会自动记住具体错点，连续 2 次拼对后自动清除"
+                                }
+                                let sample = model.activeSpellingMistakes.prefix(3).map {
+                                    "\($0["word"].text)（\($0["correctOption"].text)/\($0["wrongOption"].text)）"
+                                }.joined(separator: "、")
+                                return "待巩固拼写错点 \(model.activeSpellingMistakes.count) 词：\(sample)"
+                            }()
+                            Text("已保存 \(model.contextSentences.count) 条阅读原句 · \(mistakeSummary)")
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(Palette.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        Button(model.contextSentences.isEmpty ? "暂无原句" : "原句自测（\(model.contextSentences.count)）") {
+                            model.openContextReview()
+                        }
+                        .buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                        .disabled(model.contextSentences.isEmpty)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.wash.opacity(0.65), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.accent.opacity(0.28), lineWidth: 0.85))
+
                     if model.preferences.showCountdown {
                         let cal = Calendar.current
                         let daysLeft = max(0, cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: model.preferences.examDate)).day ?? 0)
@@ -125,11 +155,15 @@ struct LearningDashboardView: View {
                 .padding(22)
             }
         }
-        .frame(width: 650, height: 530)
+        .frame(width: 650, height: 590)
         .background(Palette.paper)
         .foregroundStyle(Palette.ink)
         .font(.system(size: 13))
         .noFocusRing()
+        .task {
+            await model.refreshContextSentences()
+            await model.refreshActiveSpellingMistakes()
+        }
     }
 
     private func kpiCard(_ title: String, value: String, hint: String, tint: Color) -> some View {

@@ -31,7 +31,7 @@ public partial class MainWindow
             if(_desktopIntegration)RestoreWindow();
             if(string.IsNullOrWhiteSpace(text)){StatusText.Text="没有识别到清晰英文，请重新框选文字区域。";return;}
             if(HoverWords.Normalize(text) is {} word){await LoadWordAsync(word);return;}
-            await TranslateClipboardAsync(text,"en|zh-CN");
+            await TranslateClipboardAsync(text,"en|zh-CN","截图翻译");
         }
         catch(Exception error){if(_desktopIntegration)RestoreWindow();StatusText.Text=error is ArgumentException or InvalidOperationException?error.Message:"截图翻译未完成，请重新框选。";}
         finally{_screenTranslating=false;if(_hover!=null)_hover.Enabled=originalHover;}

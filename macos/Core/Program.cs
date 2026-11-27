@@ -96,6 +96,8 @@ internal sealed class CoreService : IDisposable
     private readonly RelatedWords _related;
     private readonly ChineseReverseSearch _chinese;
     private readonly MnemonicStore _notes;
+    private readonly ContextSentenceStore _contextSentences;
+    private readonly SpellingMistakeStore _spellingMistakes;
     private readonly TokenStore _tokens = new();
     private readonly MaiMemoClient _api;
     private readonly ExampleSentenceClient _examples = new();
@@ -112,6 +114,8 @@ internal sealed class CoreService : IDisposable
         _dictionary = new(data);
         _related = new(_dictionary, data); _chinese = new(_dictionary, data);
         _notes = new(Path.Combine(profile, "mnemonics.user.json"), Path.Combine(data, "mnemonics.json"));
+        _contextSentences = new(Path.Combine(profile, "context-sentences.json"));
+        _spellingMistakes = new(Path.Combine(profile, "spelling-mistakes.json"));
         _api = new(_tokens);
         _onlineDictionary = new(_translation);
         _ready = new(async () => { await _dictionary.LoadAsync(); await Task.WhenAll(_related.LoadAsync(), _chinese.LoadAsync(), _notes.LoadAsync()); });
@@ -175,6 +179,53 @@ internal sealed class CoreService : IDisposable
                     T(p, "form"), T(p, "meaning"), T(p, "excludeWord"),
                     candidate => _dictionary.Lookup(candidate)?.DisplayMeaning,
                     Number(p, "limit", 18, 1, 40));
+            case "mnemonic.practiceGroup":
+            {
+                HashSet<string>? priority = null;
+                if (p.ValueKind == JsonValueKind.Object && p.TryGetProperty("priorityWords", out var pw) && pw.ValueKind == JsonValueKind.Array)
+                    priority = pw.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).Where(s => !string.IsNullOrWhiteSpace(s)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                return MorphemeGroupPractice.Build(
+                    _notes,
+                    T(p, "form"), T(p, "meaning"), T(p, "currentWord"),
+                    candidate => _dictionary.Lookup(candidate)?.DisplayMeaning,
+                    priority,
+                    Number(p, "limit", 6, 2, 8));
+            }
+            case "contextSentences.list":
+                return _contextSentences.List(Null(T(p, "word")));
+            case "contextSentences.extract":
+            {
+                var paragraph = T(p, "paragraph");
+                var matchedForm = Null(T(p, "matchedForm"));
+                var extracted = ContextSentenceHelper.ExtractSentenceForWord(paragraph, word, matchedForm);
+                var trans = ContextSentenceHelper.ExtractTranslationHint(paragraph, T(p, "translation"), extracted);
+                return new { sentence = extracted, translation = trans, saved = _contextSentences.Contains(word, extracted) };
+            }
+            case "contextSentences.save":
+            {
+                var sentence = T(p, "sentence");
+                var paragraph = T(p, "paragraph");
+                var matchedForm = Null(T(p, "matchedForm"));
+                if (string.IsNullOrWhiteSpace(sentence) && !string.IsNullOrWhiteSpace(paragraph))
+                    sentence = ContextSentenceHelper.ExtractSentenceForWord(paragraph, word, matchedForm);
+                var translation = T(p, "translation");
+                if (!string.IsNullOrWhiteSpace(paragraph) && !string.IsNullOrWhiteSpace(translation))
+                    translation = ContextSentenceHelper.ExtractTranslationHint(paragraph, translation, sentence);
+                return _contextSentences.Save(word, sentence, translation, T(p, "source", "查词保存"), matchedForm);
+            }
+            case "contextSentences.remove":
+                return new { removed = _contextSentences.Remove(T(p, "id")) };
+            case "contextSentences.review":
+                return _contextSentences.RecordReview(T(p, "id"));
+            case "spelling.getDrill":
+                return _spellingMistakes.GetActiveDrill(word);
+            case "spelling.recordMistake":
+                return _spellingMistakes.RecordMistake(word, T(p, "typed"));
+            case "spelling.recordSuccess":
+                _spellingMistakes.RecordCleanSuccess(word);
+                return new { ok = true };
+            case "spelling.active":
+                return _spellingMistakes.ListActive();
             case "translation.extract":
                 return VocabularyExtractor.Extract(T(p, "text"), _dictionary, Number(p, "limit", 24, 1, 60));
             case "dictionary.online":

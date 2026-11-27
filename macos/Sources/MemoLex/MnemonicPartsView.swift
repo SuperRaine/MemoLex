@@ -4,6 +4,7 @@ struct MnemonicPartsView: View {
     let breakdowns: [J]
     var lookupWord: ((String) -> Void)? = nil
     var loadFamily: ((String, String) async -> [J])? = nil
+    var practiceGroup: ((String, String) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -11,7 +12,8 @@ struct MnemonicPartsView: View {
                 MnemonicBreakdownView(
                     breakdown: breakdowns[index],
                     lookupWord: lookupWord,
-                    loadFamily: loadFamily
+                    loadFamily: loadFamily,
+                    practiceGroup: practiceGroup
                 )
             }
         }
@@ -22,9 +24,11 @@ private struct MnemonicBreakdownView: View {
     let breakdown: J
     let lookupWord: ((String) -> Void)?
     let loadFamily: ((String, String) async -> [J])?
+    let practiceGroup: ((String, String) -> Void)?
     @State private var selected: Set<Int> = []
     @State private var familyKey: String? = nil
     @State private var familyTitle = ""
+    @State private var familyPart: (form: String, meaning: String)? = nil
     @State private var familyMembers: [J] = []
     @State private var loadingFamily = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -165,6 +169,7 @@ private struct MnemonicBreakdownView: View {
                                 Button(familyKey == key ? "收起家族" : (loadingFamily ? "加载中…" : "同根词家族 →")) {
                                     if familyKey == key {
                                         familyKey = nil
+                                        familyPart = nil
                                         familyMembers = []
                                     } else {
                                         loadingFamily = true
@@ -173,6 +178,7 @@ private struct MnemonicBreakdownView: View {
                                             loadingFamily = false
                                             if !items.isEmpty {
                                                 familyTitle = "「\(form)（\(meaning)）」同根词家族 · 共 \(items.count) 词"
+                                                familyPart = (form, meaning)
                                                 familyMembers = items
                                                 familyKey = key
                                             }
@@ -181,6 +187,11 @@ private struct MnemonicBreakdownView: View {
                                 }
                                 .buttonStyle(PillButtonStyle())
                                 .disabled(loadingFamily)
+                                if let practiceGroup {
+                                    Button("练这组") { practiceGroup(form, meaning) }
+                                        .buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                                        .help("把这组同根词放在一起对比词缀并做辨析小测")
+                                }
                             }
                         }
                     }
@@ -205,9 +216,17 @@ private struct MnemonicBreakdownView: View {
 
             if familyKey != nil, !familyMembers.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(familyTitle)
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(Palette.deep)
+                    HStack {
+                        Text(familyTitle)
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(Palette.deep)
+                        Spacer()
+                        if let practiceGroup, let part = familyPart {
+                            Button("练这组") { practiceGroup(part.form, part.meaning) }
+                                .buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                                .help("把这组同根词放在一起对比词缀并做辨析小测")
+                        }
+                    }
                     MorphemeFlowLayout(spacing: 7, lineSpacing: 7, expandLast: false) {
                         ForEach(Array(familyMembers.enumerated()), id: \.offset) { _, member in
                             let memberWord = member["word"].text

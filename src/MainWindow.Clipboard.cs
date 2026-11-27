@@ -57,9 +57,9 @@ public partial class MainWindow
             default:StatusText.Text="剪贴板中没有可查询的文字。";break;
         }
     }
-    private async Task TranslateClipboardAsync(string text,string direction)
+    private async Task TranslateClipboardAsync(string text,string direction,string sourceLabel="段落翻译")
     {
-        CancelTranslation();TranslationModeButton_Click(this,new RoutedEventArgs());
+        CancelTranslation();_lastTranslationSourceLabel=sourceLabel;TranslationModeButton_Click(this,new RoutedEventArgs());
         TranslationInput.Text=text;TranslationDirectionCombo.SelectedIndex=direction=="zh-CN|en"?1:0;
         await TranslateParagraphAsync();
     }

@@ -3,6 +3,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -26,9 +27,19 @@ internal static class StubbornFlashcards
         Func<string, EnglishAccent, Task>? speak = null,
         Func<string, IReadOnlyList<StoredMnemonic>>? getMnemonics = null,
         MnemonicStore? mnemonicStore = null,
-        Preferences? preferences = null)
+        Preferences? preferences = null,
+        SpellingMistakeStore? spellingMistakes = null,
+        ContextSentenceStore? contextSentences = null,
+        IReadOnlyList<ContextSentenceItem>? contextDeck = null)
     {
         var freshWords = words.ToArray();
+        var contextDeckMap = contextDeck == null
+            ? null
+            : contextDeck
+                .Where(item => !string.IsNullOrWhiteSpace(item.Word))
+                .GroupBy(item => item.Word.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var isContextMode = contextDeckMap != null;
         var practice = new FlashcardPractice(freshWords, persistProgress ? savedProgress : null);
         var dialog = InputDialog.Shell(owner, title, out var body);
         dialog.Width = 660;
@@ -271,6 +282,78 @@ internal static class StubbornFlashcards
         TextBox? activeSpellingBox = null;
         System.Windows.Threading.DispatcherTimer? autoFlipTimer = null;
         DictionaryEntry? entry = null;
+        ContextSentenceItem? currentContext = null;
+        SpellingMicroDrill? activeDrill = null;
+        var microDrillDone = false;
+        var hadMistakeOnCurrentWord = false;
+        string? microDrillFeedback = null;
+        var microDrillWasCorrect = false;
+        string[] activeMicroChoices = [];
+        Action<int>? pickMicroChoice = null;
+        var drillRng = new Random();
+
+        ContextSentenceItem? ResolveContext(string word) =>
+            contextDeckMap != null
+                ? contextDeckMap.GetValueOrDefault(word)
+                : contextSentences?.FindLatestForWord(word);
+
+        void PrepareSpellingDrill(string? word)
+        {
+            activeDrill = word != null ? spellingMistakes?.GetActiveDrill(word) : null;
+            microDrillDone = false;
+            hadMistakeOnCurrentWord = false;
+            microDrillFeedback = null;
+            microDrillWasCorrect = false;
+            pickMicroChoice = null;
+            if (activeDrill != null)
+            {
+                activeMicroChoices = drillRng.Next(2) == 0
+                    ? [activeDrill.CorrectOption, activeDrill.WrongOption]
+                    : [activeDrill.WrongOption, activeDrill.CorrectOption];
+            }
+            else
+            {
+                activeMicroChoices = [];
+            }
+        }
+
+        TextBlock BuildHighlightedSentence(string sentence, string word, string? matchedForm, double fontSize, TextAlignment alignment = TextAlignment.Left)
+        {
+            var block = new TextBlock
+            {
+                FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
+                FontSize = fontSize,
+                LineHeight = fontSize * 1.55,
+                TextWrapping = TextWrapping.Wrap,
+                TextAlignment = alignment
+            };
+            block.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
+            var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ExampleText.NormalizeLookup(word) };
+            if (!string.IsNullOrWhiteSpace(matchedForm)) targets.Add(ExampleText.NormalizeLookup(matchedForm));
+            var stem = word.Trim().ToLowerInvariant();
+            if (stem.Length > 4 && stem.EndsWith('e')) stem = stem[..^1];
+            var dark = ThemeManager.IsDark;
+            var anyExact = ExampleText.Tokenize(sentence).Any(p => p.LookupWord != null && targets.Contains(p.LookupWord));
+            foreach (var part in ExampleText.Tokenize(sentence))
+            {
+                var hit = part.LookupWord != null && (targets.Contains(part.LookupWord)
+                    || (!anyExact && stem.Length >= 4 && part.LookupWord.StartsWith(stem, StringComparison.OrdinalIgnoreCase)));
+                if (hit)
+                {
+                    block.Inlines.Add(new Run(part.Text)
+                    {
+                        Background = ThemeManager.Hex(dark ? "#1B4A68" : "#D2EFFE"),
+                        Foreground = ThemeManager.Hex(dark ? "#8BD9FF" : "#085680"),
+                        FontWeight = FontWeights.Bold
+                    });
+                }
+                else
+                {
+                    block.Inlines.Add(new Run(part.Text));
+                }
+            }
+            return block;
+        }
 
         void CancelAutoFlip()
         {
@@ -365,6 +448,68 @@ internal static class StubbornFlashcards
                     return;
                 }
 
+                if (isContextMode && currentContext != null)
+                {
+                    var ctxBadgeText = new TextBlock { Text = $"第 {practice.GroupNumber} 组 · 原句自测（{currentContext.Source}）", FontSize = 12, FontWeight = FontWeights.SemiBold };
+                    ctxBadgeText.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+                    var ctxBadge = new Border
+                    {
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Margin = new Thickness(0, 0, 0, 12),
+                        Padding = new Thickness(11, 3.5, 11, 3.5),
+                        CornerRadius = new CornerRadius(11),
+                        Child = ctxBadgeText
+                    };
+                    ctxBadge.SetResourceReference(Border.BackgroundProperty, "PillBgBrush");
+                    face.Children.Add(ctxBadge);
+
+                    var promptLbl = new TextBlock
+                    {
+                        Text = $"这里的「{word}」是什么意思？",
+                        FontSize = 15,
+                        FontWeight = FontWeights.SemiBold,
+                        TextAlignment = TextAlignment.Center,
+                        Margin = new Thickness(0, 0, 0, 12)
+                    };
+                    promptLbl.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+                    face.Children.Add(promptLbl);
+
+                    var sentenceBox = new Border
+                    {
+                        Padding = new Thickness(16, 13, 16, 13),
+                        CornerRadius = new CornerRadius(11),
+                        BorderThickness = new Thickness(1),
+                        Margin = new Thickness(4, 0, 4, 8),
+                        Child = BuildHighlightedSentence(currentContext.Sentence, word, currentContext.MatchedForm, 18, TextAlignment.Center)
+                    };
+                    sentenceBox.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
+                    sentenceBox.SetResourceReference(Border.BorderBrushProperty, "PillBorderBrush");
+                    face.Children.Add(sentenceBox);
+
+                    if (!string.IsNullOrWhiteSpace(entry?.phonetic))
+                    {
+                        var phonetic = InputDialog.Text($"/{entry.phonetic.Trim('/')}/");
+                        phonetic.FontSize = 14.5;
+                        phonetic.TextAlignment = TextAlignment.Center;
+                        phonetic.Margin = new Thickness(0, 2, 0, 0);
+                        face.Children.Add(phonetic);
+                    }
+
+                    var ctxCueText = new TextBlock { Text = "↻ 点击翻卡核对释义与整句译文", FontSize = 13, FontWeight = FontWeights.SemiBold };
+                    ctxCueText.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+                    var ctxCuePill = new Border
+                    {
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Margin = new Thickness(0, 16, 0, 0),
+                        Padding = new Thickness(14, 6, 14, 6),
+                        CornerRadius = new CornerRadius(13),
+                        Child = ctxCueText
+                    };
+                    ctxCuePill.SetResourceReference(Border.BackgroundProperty, "PillBgBrush");
+                    face.Children.Add(ctxCuePill);
+                    return;
+                }
+
                 var badgeText = new TextBlock { Text = $"第 {practice.GroupNumber} 组 · 点击翻面", FontSize = 12, FontWeight = FontWeights.SemiBold };
                 badgeText.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
                 var badge = new Border
@@ -396,6 +541,32 @@ internal static class StubbornFlashcards
                     phonetic.TextAlignment = TextAlignment.Center;
                     phonetic.Margin = new Thickness(0, 6, 0, 0);
                     face.Children.Add(phonetic);
+                }
+
+                if (currentContext != null)
+                {
+                    var ctxHintStack = new StackPanel();
+                    var ctxHintTitle = new TextBlock
+                    {
+                        Text = $"你读过的原句 · {currentContext.Source}",
+                        FontSize = 11,
+                        FontWeight = FontWeights.SemiBold,
+                        Margin = new Thickness(0, 0, 0, 4)
+                    };
+                    ctxHintTitle.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+                    ctxHintStack.Children.Add(ctxHintTitle);
+                    ctxHintStack.Children.Add(BuildHighlightedSentence(currentContext.Sentence, word, currentContext.MatchedForm, 13.5));
+                    var ctxCallout = new Border
+                    {
+                        Margin = new Thickness(8, 14, 8, 0),
+                        Padding = new Thickness(12, 8, 12, 8),
+                        CornerRadius = new CornerRadius(9),
+                        BorderThickness = new Thickness(1),
+                        Child = ctxHintStack
+                    };
+                    ctxCallout.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
+                    ctxCallout.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+                    face.Children.Add(ctxCallout);
                 }
 
                 var cueText = new TextBlock { Text = "↻ 点击翻卡核对释义", FontSize = 13, FontWeight = FontWeights.SemiBold };
@@ -488,23 +659,227 @@ internal static class StubbornFlashcards
             definition.SetBinding(TextBlock.TextProperty, new Binding(nameof(WordListRow.DisplayMeaning)));
             face.Children.Add(definition);
 
+            if (currentContext != null)
+            {
+                var ctxBackStack = new StackPanel();
+                var ctxBackTitle = new TextBlock
+                {
+                    Text = $"读过的原句 · {currentContext.Source}",
+                    FontSize = 11.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(0, 0, 0, 5)
+                };
+                ctxBackTitle.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+                ctxBackStack.Children.Add(ctxBackTitle);
+                ctxBackStack.Children.Add(BuildHighlightedSentence(currentContext.Sentence, word, currentContext.MatchedForm, 14.5));
+                if (!string.IsNullOrWhiteSpace(currentContext.Translation))
+                {
+                    var zhTb = new TextBlock
+                    {
+                        Text = currentContext.Translation,
+                        FontSize = 13,
+                        LineHeight = 20,
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 5, 0, 0)
+                    };
+                    zhTb.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+                    ctxBackStack.Children.Add(zhTb);
+                }
+                var ctxBackCard = new Border
+                {
+                    Margin = new Thickness(0, 12, 0, 0),
+                    Padding = new Thickness(12, 9, 12, 9),
+                    CornerRadius = new CornerRadius(10),
+                    BorderThickness = new Thickness(1),
+                    Child = ctxBackStack
+                };
+                ctxBackCard.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
+                ctxBackCard.SetResourceReference(Border.BorderBrushProperty, "PillBorderBrush");
+                face.Children.Add(ctxBackCard);
+            }
+
             RenderBackMnemonic(word);
         }
 
         void RenderSpellingFront(string word)
         {
+            pickMicroChoice = null;
+
+            if (activeDrill != null && !microDrillDone && activeMicroChoices.Length == 2)
+            {
+                var drill = activeDrill;
+                var drillBadge = new Border
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 10),
+                    Padding = new Thickness(12, 4, 12, 4),
+                    CornerRadius = new CornerRadius(11),
+                    Background = ThemeManager.Res("WarnBgBrush", "#FFF7E6", "#332614"),
+                    BorderBrush = ThemeManager.Res("WarnBorderBrush", "#F4CF86", "#6E4F1D"),
+                    BorderThickness = new Thickness(1),
+                    Child = new TextBlock
+                    {
+                        Text = $"针对错点微题 · 曾错 {drill.MistakeCount} 次",
+                        FontSize = 12,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = ThemeManager.Res("WarnFgBrush", "#9A5207", "#F8C76A")
+                    }
+                };
+                face.Children.Add(drillBadge);
+
+                var meaningHint = new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(entry?.DisplayMeaning)
+                        ? $"上次你写成了「{drill.LastWrongInput}」"
+                        : $"{entry.DisplayMeaning}（上次写成了 {drill.LastWrongInput}）",
+                    FontSize = 13,
+                    TextAlignment = TextAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(8, 0, 8, 12)
+                };
+                meaningHint.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+                face.Children.Add(meaningHint);
+
+                var maskText = new TextBlock
+                {
+                    Text = drill.ContextMask,
+                    FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
+                    FontSize = 30,
+                    FontWeight = FontWeights.Bold,
+                    TextAlignment = TextAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 10)
+                };
+                maskText.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
+                face.Children.Add(maskText);
+
+                var questionText = new TextBlock
+                {
+                    Text = drill.Question,
+                    FontSize = 15.5,
+                    FontWeight = FontWeights.SemiBold,
+                    TextAlignment = TextAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 16)
+                };
+                questionText.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+                face.Children.Add(questionText);
+
+                void HandlePick(int optionIdx)
+                {
+                    if (optionIdx < 0 || optionIdx >= activeMicroChoices.Length) return;
+                    var picked = activeMicroChoices[optionIdx];
+                    var right = picked.Equals(drill.CorrectOption, StringComparison.OrdinalIgnoreCase);
+                    microDrillWasCorrect = right;
+                    if (!right) hadMistakeOnCurrentWord = true;
+                    microDrillFeedback = right
+                        ? $"✓ 选对了！{drill.Explanation} — 现在完整默写一遍："
+                        : $"✗ 差点又写错！{drill.Explanation} — 记住它，再完整默写一遍：";
+                    microDrillDone = true;
+                    Render();
+                }
+                pickMicroChoice = HandlePick;
+
+                var choicesRow = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 12)
+                };
+                for (var i = 0; i < 2; i++)
+                {
+                    var idx = i;
+                    var opt = activeMicroChoices[i];
+                    var optStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                    var keyBadge = new Border
+                    {
+                        Width = 20, Height = 20, CornerRadius = new CornerRadius(10),
+                        Margin = new Thickness(0, 0, 8, 0),
+                        Child = new TextBlock
+                        {
+                            Text = (i + 1).ToString(), FontSize = 11, FontWeight = FontWeights.Bold,
+                            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+                        }
+                    };
+                    keyBadge.SetResourceReference(Border.BackgroundProperty, "PillBgBrush");
+                    ((TextBlock)keyBadge.Child).SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+                    optStack.Children.Add(keyBadge);
+                    optStack.Children.Add(new TextBlock
+                    {
+                        Text = opt,
+                        FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
+                        FontSize = 19,
+                        FontWeight = FontWeights.Bold,
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+                    var optBtn = new Button
+                    {
+                        Content = optStack,
+                        MinWidth = 130,
+                        Padding = new Thickness(18, 10, 20, 10),
+                        Margin = new Thickness(6, 0, 6, 0)
+                    };
+                    optBtn.Click += (_, e) => { e.Handled = true; HandlePick(idx); };
+                    choicesRow.Children.Add(optBtn);
+                }
+                face.Children.Add(choicesRow);
+
+                var skipBtn = new Button
+                {
+                    Content = "跳过微题，直接整词默写",
+                    FontSize = 11.5,
+                    Padding = new Thickness(10, 4, 10, 4),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0)
+                };
+                skipBtn.SetResourceReference(Control.ForegroundProperty, "MutedBrush");
+                skipBtn.Click += (_, e) => { e.Handled = true; microDrillDone = true; Render(); };
+                face.Children.Add(skipBtn);
+                return;
+            }
+
             var badgeText = new TextBlock { Text = $"第 {practice.GroupNumber} 组 · 拼写默写", FontSize = 12, FontWeight = FontWeights.SemiBold };
             badgeText.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
             var badge = new Border
             {
                 HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 0, 0, 12),
+                Margin = new Thickness(0, 0, 0, 10),
                 Padding = new Thickness(11, 3.5, 11, 3.5),
                 CornerRadius = new CornerRadius(11),
                 Child = badgeText
             };
             badge.SetResourceReference(Border.BackgroundProperty, "PillBgBrush");
             face.Children.Add(badge);
+
+            if (!string.IsNullOrEmpty(microDrillFeedback))
+            {
+                var drillNote = new Border
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Padding = new Thickness(12, 5, 12, 5),
+                    Margin = new Thickness(4, 0, 4, 10),
+                    CornerRadius = new CornerRadius(9),
+                    BorderThickness = new Thickness(1),
+                    Background = ThemeManager.Hex(microDrillWasCorrect
+                        ? (ThemeManager.IsDark ? "#123528" : "#E6FAF1")
+                        : (ThemeManager.IsDark ? "#382714" : "#FFF7ED")),
+                    BorderBrush = ThemeManager.Hex(microDrillWasCorrect
+                        ? (ThemeManager.IsDark ? "#1E6F50" : "#A7E8CC")
+                        : (ThemeManager.IsDark ? "#784C1E" : "#FBD3A5")),
+                    Child = new TextBlock
+                    {
+                        Text = microDrillFeedback,
+                        FontSize = 12,
+                        FontWeight = FontWeights.SemiBold,
+                        TextAlignment = TextAlignment.Center,
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = ThemeManager.Hex(microDrillWasCorrect
+                            ? (ThemeManager.IsDark ? "#34D399" : "#0E7C55")
+                            : (ThemeManager.IsDark ? "#FBBF24" : "#B45309"))
+                    }
+                };
+                face.Children.Add(drillNote);
+            }
 
             var meaningText = new TextBlock
             {
@@ -518,6 +893,31 @@ internal static class StubbornFlashcards
             };
             meaningText.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
             face.Children.Add(meaningText);
+
+            if (currentContext != null)
+            {
+                var blanked = ContextSentenceHelper.BlankOutWord(currentContext.Sentence, word, currentContext.MatchedForm);
+                var blankBox = new Border
+                {
+                    Margin = new Thickness(8, 2, 8, 10),
+                    Padding = new Thickness(12, 8, 12, 8),
+                    CornerRadius = new CornerRadius(9),
+                    BorderThickness = new Thickness(1),
+                    Child = new TextBlock
+                    {
+                        Text = blanked,
+                        FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
+                        FontSize = 13.5,
+                        LineHeight = 20,
+                        TextAlignment = TextAlignment.Center,
+                        TextWrapping = TextWrapping.Wrap
+                    }
+                };
+                blankBox.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
+                blankBox.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+                ((TextBlock)blankBox.Child).SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+                face.Children.Add(blankBox);
+            }
 
             if (!string.IsNullOrWhiteSpace(entry?.phonetic))
             {
@@ -605,6 +1005,8 @@ internal static class StubbornFlashcards
             {
                 CancelAutoFlip();
                 if (revealed || flipping || swiping || !string.Equals(practice.Current, word, StringComparison.Ordinal)) return;
+                if (!hadMistakeOnCurrentWord && hintLevel == 0)
+                    spellingMistakes?.RecordCleanSuccess(word);
                 spellingCorrect = true;
                 spellingFeedback = "✓ 拼写正确";
                 Flip();
@@ -620,7 +1022,11 @@ internal static class StubbornFlashcards
                     return;
                 }
 
+                hadMistakeOnCurrentWord = true;
+                var recorded = spellingMistakes?.RecordMistake(word, typed);
                 var (message, isProgress) = BuildSpellingHint(word, typed, ref hintLevel);
+                if (recorded != null)
+                    message += " · 已记住此错点，下次针对练";
                 ShowSpellingHint(message, isProgress ? "info" : "warn");
                 inputBox.Focus();
                 inputBox.CaretIndex = inputBox.Text.Length;
@@ -860,6 +1266,8 @@ internal static class StubbornFlashcards
             spellingFeedback = "";
             spellingCorrect = false;
             entry = practice.Current is { } word ? dictionary.Lookup(word) : null;
+            currentContext = practice.Current is { } cw ? ResolveContext(cw) : null;
+            PrepareSpellingDrill(practice.Current);
             Render();
             if (animateEntrance)
                 UiMotion.Reveal(card, distance: 10);
@@ -934,6 +1342,7 @@ internal static class StubbornFlashcards
         void Answer(FlashcardAnswer answer)
         {
             if (!revealed || flipping || swiping || practice.Current == null) return;
+            if (currentContext != null) contextSentences?.RecordReview(currentContext.Id);
             swiping = true;
             var toX = answer == FlashcardAnswer.Forgotten ? -115.0 : 115.0;
             var tilt = answer == FlashcardAnswer.Forgotten ? -6.5 : 6.5;
@@ -975,6 +1384,7 @@ internal static class StubbornFlashcards
             spellingMode = true;
             revealed = false;
             spellingFeedback = "";
+            PrepareSpellingDrill(practice.Current);
             UpdateModeButtons();
             Render();
         };
@@ -1011,6 +1421,26 @@ internal static class StubbornFlashcards
         dialog.PreviewKeyDown += (_, args) =>
         {
             if (activeSpellingBox != null && activeSpellingBox.IsKeyboardFocusWithin && !revealed) return;
+            if (spellingMode && !revealed && activeDrill != null && !microDrillDone && pickMicroChoice != null && Keyboard.Modifiers == ModifierKeys.None)
+            {
+                if (args.Key is Key.D1 or Key.NumPad1)
+                {
+                    args.Handled = true;
+                    if (!args.IsRepeat) pickMicroChoice(0);
+                    return;
+                }
+                if (args.Key is Key.D2 or Key.NumPad2)
+                {
+                    args.Handled = true;
+                    if (!args.IsRepeat) pickMicroChoice(1);
+                    return;
+                }
+                if (args.Key == Key.Space)
+                {
+                    args.Handled = true;
+                    return;
+                }
+            }
             if (args.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None && (card.IsKeyboardFocusWithin || !revealed))
             {
                 args.Handled = true;

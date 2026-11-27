@@ -12,7 +12,10 @@ internal static class LearningDashboardDialog
         Preferences preferences,
         FlashcardProgressSnapshot? stubbornProgress,
         int stubbornTotal,
-        Action<string> lookupWord)
+        Action<string> lookupWord,
+        ContextSentenceStore? contextSentences = null,
+        SpellingMistakeStore? spellingMistakes = null,
+        Action? startContextReview = null)
     {
         var dialog = InputDialog.Shell(owner, "学习统计看板", out var body);
         dialog.Width = 660;
@@ -179,6 +182,82 @@ internal static class LearningDashboardDialog
         }
         topCard.Child = topStack;
         body.Children.Add(topCard);
+
+        // Saved context sentences & active spelling mistakes card
+        if (contextSentences != null || spellingMistakes != null)
+        {
+            var savedSentences = contextSentences?.List() ?? [];
+            var activeMistakes = spellingMistakes?.ListActive() ?? [];
+            var practiceCard = new Border
+            {
+                CornerRadius = new CornerRadius(12),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(16, 13, 16, 13),
+                Margin = new Thickness(0, 0, 0, 12)
+            };
+            practiceCard.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
+            practiceCard.SetResourceReference(Border.BorderBrushProperty, "PillBorderBrush");
+            var practiceDock = new DockPanel();
+
+            if (startContextReview != null)
+            {
+                var reviewBtn = new Button
+                {
+                    Content = savedSentences.Count > 0 ? $"原句自测（{savedSentences.Count}）" : "暂无原句",
+                    IsEnabled = savedSentences.Count > 0,
+                    FontSize = 12,
+                    Padding = new Thickness(14, 7, 14, 7),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(12, 0, 0, 0),
+                    ToolTip = "用你保存过的原句做离线语境自测"
+                };
+                if (Application.Current.TryFindResource("AccentButton") is Style accentStyle) reviewBtn.Style = accentStyle;
+                reviewBtn.Click += (_, _) =>
+                {
+                    dialog.Close();
+                    startContextReview();
+                };
+                DockPanel.SetDock(reviewBtn, Dock.Right);
+                practiceDock.Children.Add(reviewBtn);
+            }
+
+            var practiceInfo = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            var practiceTitle = new TextBlock
+            {
+                Text = "原句复习 & 拼写错点记忆",
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold
+            };
+            practiceTitle.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
+            practiceInfo.Children.Add(practiceTitle);
+
+            var detailParts = new List<string>
+            {
+                $"已保存 {savedSentences.Count} 条阅读原句"
+            };
+            if (activeMistakes.Count > 0)
+            {
+                var sample = string.Join("、", activeMistakes.Take(3).Select(m => $"{m.Word}（{m.CorrectOption}/{m.WrongOption}）"));
+                detailParts.Add($"待巩固拼写错点 {activeMistakes.Count} 词：{sample}");
+            }
+            else
+            {
+                detailParts.Add("拼写练习会自动记住具体错点，连续 2 次拼对后自动清除");
+            }
+            var practiceDesc = new TextBlock
+            {
+                Text = string.Join(" · ", detailParts),
+                FontSize = 11.5,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+            practiceDesc.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            practiceInfo.Children.Add(practiceDesc);
+            practiceDock.Children.Add(practiceInfo);
+
+            practiceCard.Child = practiceDock;
+            body.Children.Add(practiceCard);
+        }
 
         // Exam countdown card if enabled
         if (preferences.ShowExamCountdown && preferences.ExamDate is { } examDate)

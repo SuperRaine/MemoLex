@@ -211,7 +211,9 @@ public partial class MainWindow
                 speak:(w,accent)=>PlaySpeechAsync(w,accent),
                 getMnemonics:w=>_mnemonics.Get(w,MnemonicAccountKey),
                 mnemonicStore:_mnemonics,
-                preferences:_preferences);
+                preferences:_preferences,
+                spellingMistakes:_spellingMistakes,
+                contextSentences:_contextSentences);
             practice.ShowDialog();
         };
         sort.SelectionChanged+=(_,_)=>

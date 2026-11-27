@@ -73,6 +73,13 @@ struct MainView: View {
             case .notepad: NotebookView(model: model)
             case .todayPlan: TodayStudyView(model: model)
             case .dashboard: LearningDashboardView(model: model)
+            case .contextReview: ContextReviewSheet(model: model)
+            case .morphemePractice:
+                if let group = model.morphemePracticeGroup {
+                    MorphemeGroupPracticeView(model: model, group: group)
+                } else {
+                    EmptyView()
+                }
             }
         }
         .onAppear { model.focusSearch = { searchFocused = true } }
@@ -104,10 +111,11 @@ struct MainView: View {
                     HStack(spacing: 7) {
                         Image(systemName: "magnifyingglass").font(.system(size: 12.5)).foregroundStyle(Palette.muted)
                         TextField("输入英文或中文", text: $model.search).textFieldStyle(.plain)
-                            .help("输入英文查释义，或用中文找单词")
+                            .help("输入英文查释义，或用中文找单词；按 Tab 先回想")
                             .focused($searchFocused).onSubmit { model.lookup(model.search) }
                             .onChange(of: model.search) { _ in model.suggest() }
                     }.padding(.horizontal, 10).frame(height: 36).controlSurface()
+                        .background(SearchTabMonitor(active: { searchFocused }, onTab: { model.triggerSearchTabRecall() }))
                     Button { model.lookup(model.search) } label: {
                         Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .semibold))
                     }
@@ -129,9 +137,27 @@ struct MainView: View {
                     Text("单词建议").sectionLabel()
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 1) {
-                            ForEach(model.suggestions, id: \.self) { word in
-                                Button { model.lookup(word) } label: { Text(word).font(.system(size: 14)).lineLimit(1) }
-                                    .buttonStyle(SidebarRowStyle(selected: word == model.word))
+                            ForEach(model.suggestions, id: \.self) { w in
+                                let count = model.lookupCount(for: w)
+                                HStack(spacing: 4) {
+                                    Button { model.lookup(w) } label: {
+                                        Text(w).font(.system(size: 14)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .buttonStyle(SidebarRowStyle(selected: w == model.word))
+                                    if count >= 2 {
+                                        Button("查过\(count)次·回想") {
+                                            model.lookup(w, recallMode: true)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .noFocusRing()
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(Color(red: 0.65, green: 0.34, blue: 0.03))
+                                        .padding(.horizontal, 6).padding(.vertical, 2.5)
+                                        .background(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.16), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35), lineWidth: 0.7))
+                                        .help("你已查过 \(count) 次，按 Tab 或点这里先花 2 秒回想意思")
+                                    }
+                                }
                             }
                         }.background(SidebarWheelPaging())
                     }
@@ -272,6 +298,47 @@ private struct SidebarWheelPaging: NSViewRepresentable {
             clip.scroll(to: clip.constrainBoundsRect(target).origin)
             scroll.reflectScrolledClipView(clip)
             return true
+        }
+    }
+}
+
+private struct SearchTabMonitor: NSViewRepresentable {
+    var active: () -> Bool
+    var onTab: () -> Bool
+
+    func makeNSView(context: Context) -> MonitorView {
+        let view = MonitorView()
+        view.active = active
+        view.onTab = onTab
+        return view
+    }
+    func updateNSView(_ view: MonitorView, context: Context) {
+        view.active = active
+        view.onTab = onTab
+    }
+    static func dismantleNSView(_ view: MonitorView, coordinator: ()) { view.removeMonitor() }
+
+    final class MonitorView: NSView {
+        var active: (() -> Bool)?
+        var onTab: (() -> Bool)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            removeMonitor()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, event.window === self.window, event.keyCode == 48,
+                      event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+                      self.active?() == true,
+                      self.onTab?() == true else { return event }
+                return nil
+            }
+        }
+
+        func removeMonitor() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
         }
     }
 }
@@ -464,13 +531,16 @@ private struct WordPage: View {
                         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.accent.opacity(0.28), lineWidth: 0.8))
                         .padding(.top, 12)
                     }
-                    if !model.word.isEmpty && model.currentWordLookupCount >= 3 && !model.membership {
-                        HStack(spacing: 10) {
+                    if !model.recallMode && !model.word.isEmpty && model.currentWordLookupCount >= 3 && !model.membership {
+                        HStack(spacing: 8) {
                             Text("「\(model.word)」你已查询 \(model.currentWordLookupCount) 次，疑似隐形顽固词，建议收藏到云词本巩固记忆。")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Color(red: 0.65, green: 0.34, blue: 0.03))
                                 .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 8)
+                            Button("先回想") { model.startRecallMode() }
+                                .buttonStyle(MemoButtonStyle(compact: true))
+                                .help("遮住释义，花 2 秒回想这个词的意思")
                             Button("＋ 加入云词本") { Task { await model.toggleMembership() } }
                                 .buttonStyle(MemoButtonStyle(compact: true))
                             Button("＋ 今日新学") { model.addToday() }
@@ -482,7 +552,48 @@ private struct WordPage: View {
                         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35), lineWidth: 0.85))
                         .padding(.top, 12)
                     }
+                    if let ctx = model.pendingContext,
+                       !model.word.isEmpty,
+                       ctx.word.caseInsensitiveCompare(model.word) == .orderedSame {
+                        let saved = model.isContextSentenceSaved(word: model.word, sentence: ctx.sentence)
+                        HStack(alignment: .center, spacing: 10) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("来自刚读过的「\(ctx.source)」原句：")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Palette.deep)
+                                Text(ctx.sentence)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Palette.ink)
+                                    .lineLimit(3)
+                            }
+                            Spacer(minLength: 8)
+                            Button(saved ? "✓ 已保存 · 原句自测" : "＋ 保存这句，稍后考我") {
+                                if saved {
+                                    model.openContextReview(focusWord: model.word)
+                                } else {
+                                    Task {
+                                        await model.saveContextSentence(
+                                            word: model.word,
+                                            sentence: ctx.sentence,
+                                            translation: ctx.translation,
+                                            source: ctx.source,
+                                            matchedForm: ctx.matchedForm
+                                        )
+                                    }
+                                }
+                            }
+                            .buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                        }
+                        .padding(.horizontal, 13).padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Palette.wash.opacity(0.72), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.accent.opacity(0.3), lineWidth: 0.85))
+                        .padding(.top, 12)
+                    }
                     rule
+                    if model.recallMode {
+                        recallMaskCard
+                    } else {
                     Text("中文释义").sectionLabel().padding(.bottom, 8)
                     LinkedText(text: definitionText, size: 17, highlightPartOfSpeech: !model.word.isEmpty)
                     if !model.entry["exchange"].text.isEmpty { ExchangeView(exchange: model.entry["exchange"].text, word: model.word).padding(.top, 20) }
@@ -523,6 +634,9 @@ private struct WordPage: View {
                                     lookupWord: { model.lookup($0) },
                                     loadFamily: { form, meaning in
                                         await model.lookupMorphemeFamily(form: form, meaning: meaning, excludeWord: model.word)
+                                    },
+                                    practiceGroup: { form, meaning in
+                                        model.openMorphemePractice(form: form, meaning: meaning, currentWord: model.word)
                                     }
                                 )
                                     .id("\(model.word)\n\(note["text"].text)")
@@ -545,6 +659,7 @@ private struct WordPage: View {
                             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
                             .padding(.bottom, 8)
                     }
+                    savedContextsSection
                     rule
                     HStack {
                         HStack(spacing: 10) {
@@ -561,6 +676,7 @@ private struct WordPage: View {
                     }.onChange(of: model.examplePaper) { _ in Task { await model.loadExamples(reset: true) } }
                     Text("点击例句里的英文单词查看释义。").font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.top, 8).padding(.bottom, 12)
                     ExamplesView(model: model)
+                    }
                 }
             }.padding(.trailing, 5)
         }
@@ -644,6 +760,105 @@ private struct WordPage: View {
         case "SyncRequired": return "核对学习记录"
         case "PendingVerification": return "核对今日新学"
         default: return "＋ 今日新学"
+        }
+    }
+    @ViewBuilder private var savedContextsSection: some View {
+        let wordContexts = model.contextSentences(for: model.word)
+        if !wordContexts.isEmpty {
+            rule
+            HStack {
+                HStack(spacing: 10) {
+                    Text("句").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28)
+                        .background(Palette.wash, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
+                    Text("我的原句").font(.system(size: 17, weight: .semibold))
+                }
+                Spacer()
+                Button("原句自测 (\(model.contextSentences.count))") {
+                    model.openContextReview(focusWord: model.word)
+                }.buttonStyle(PillButtonStyle())
+            }
+            Text("当前单词已保存 \(wordContexts.count) 条原句 · 全部共 \(model.contextSentences.count) 条，离线也能原句自测")
+                .font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.top, 8).padding(.bottom, 10)
+            ForEach(Array(wordContexts.enumerated()), id: \.offset) { _, ctx in
+                let ctxId = ctx["id"].text
+                let sentence = ctx["sentence"].text
+                let trans = ctx["translation"].text
+                let reviews = ctx["reviewCount"].integer
+                let sourceMeta = reviews > 0 ? "\(ctx["source"].text) · 已自测 \(reviews) 次" : ctx["source"].text
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(sourceMeta)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Palette.deep)
+                            .padding(.horizontal, 8).padding(.vertical, 2.5)
+                            .background(Palette.paper, in: Capsule())
+                            .overlay(Capsule().strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
+                        Spacer()
+                        Button("删除") {
+                            Task { await model.removeContextSentence(id: ctxId) }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.muted)
+                    }
+                    LinkedText(text: sentence, highlights: [model.word, ctx["matchedForm"].text].filter { !$0.isEmpty }, size: 14.5, color: Palette.ink)
+                    if !trans.isEmpty {
+                        Text(trans).font(.system(size: 13)).foregroundStyle(Palette.muted).lineSpacing(4)
+                    }
+                }
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.wash.opacity(0.7), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.85))
+                .padding(.bottom, 8)
+            }
+        }
+    }
+    @ViewBuilder private var recallMaskCard: some View {
+        let count = model.currentWordLookupCount
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(count >= 2
+                     ? "这是你第 \(count) 次查「\(model.word)」，先回想 2 秒？"
+                     : "先别急着看释义，回想 2 秒「\(model.word)」的意思？")
+                    .font(.system(size: 16, weight: .bold))
+                Spacer()
+                Text(model.recallReady ? "回想完成 · 可揭晓" : "回想中 · 2s")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.65, green: 0.34, blue: 0.03))
+                    .padding(.horizontal, 9).padding(.vertical, 3)
+                    .background(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.15), in: Capsule())
+            }
+            Text("在脑海里快速回忆它的含义或常见用法，随时可以按空格 / 回车或点击下方按钮揭晓。")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Palette.muted)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Palette.paper)
+                    Capsule().fill(Palette.accent)
+                        .frame(width: max(0, geo.size.width * CGFloat(model.recallProgress)))
+                }
+            }
+            .frame(height: 5)
+            HStack(spacing: 10) {
+                Button("✓ 想起来了 · 核对答案") { model.revealFromRecall(remembered: true) }
+                    .buttonStyle(MemoButtonStyle(accent: true))
+                    .keyboardShortcut(.return, modifiers: [])
+                Button("没想起来 · 直接看释义") { model.revealFromRecall(remembered: false) }
+                    .buttonStyle(MemoButtonStyle())
+                Text("快捷键：空格 / 回车 立即揭晓")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.muted)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.wash.opacity(0.78), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Palette.accent.opacity(0.32), lineWidth: 0.9))
+        .overlay {
+            Button("") { model.revealFromRecall(remembered: nil) }
+                .keyboardShortcut(.space, modifiers: [])
+                .opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
         }
     }
     private var rule: some View { Divider().overlay(Palette.border).padding(.vertical, 23) }
@@ -774,6 +989,25 @@ private struct ExamplesView: View {
                         .background(Palette.wash, in: Capsule())
                         .overlay(Capsule().strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
                     Spacer(minLength: 0)
+                    let eng = item["english"].text
+                    let saved = model.isContextSentenceSaved(word: model.word, sentence: eng)
+                    Button(saved ? "✓ 已保存原句" : "保存原句") {
+                        if saved {
+                            model.openContextReview(focusWord: model.word)
+                        } else {
+                            let src = item["source"].text.trimmed.isEmpty ? "真题例句" : item["source"].text
+                            Task {
+                                await model.saveContextSentence(
+                                    word: model.word,
+                                    sentence: eng,
+                                    translation: item["translation"].text,
+                                    source: src,
+                                    matchedForm: item["matchedWords"].list.first?.text
+                                )
+                            }
+                        }
+                    }.buttonStyle(PillButtonStyle())
+                        .help("保存这条原句到本机，离线也能自测")
                     let loading = model.loadingExampleIndex == index
                     Button { model.speakExample(at: index) } label: {
                         HStack(spacing: 5) {
@@ -863,9 +1097,17 @@ private struct TranslationPage: View {
             HStack(spacing: 9) {
                 Text("段落翻译").font(.system(size: 23, weight: .semibold))
                 Spacer()
+                Button(model.contextSentences.isEmpty ? "原句复习" : "原句复习 (\(model.contextSentences.count))") {
+                    model.openContextReview()
+                }
+                .buttonStyle(PillButtonStyle())
+                .help("用你保存的阅读原句做离线自测")
                 MemoPicker(title: "翻译方向", selection: $model.translationDirection,
                            options: [("en|zh-CN", "英译中"), ("zh-CN|en", "中译英")]).frame(width: 104)
-                Button(model.translating ? "翻译中…" : "翻译") { Task { await model.translate() } }
+                Button(model.translating ? "翻译中…" : "翻译") {
+                    model.lastTranslationSourceLabel = "段落翻译"
+                    Task { await model.translate() }
+                }
                     .buttonStyle(MemoButtonStyle(accent: true)).disabled(model.translating)
             }
             TextEditor(text: $model.translationInput).font(.system(size: 15)).padding(8).frame(height: 140).background(Palette.paper, in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.border)).tourTarget("translation")
@@ -876,12 +1118,26 @@ private struct TranslationPage: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("原文").sectionLabel()
                             LinkedText(text: model.translationSource.isEmpty ? "在上方输入或粘贴原文。" : model.translationSource, size: 16)
+                                .environment(\.openURL, OpenURLAction { url in
+                                    if url.scheme == "memolex", let query = url.path.removingPercentEncoding {
+                                        model.lookupFromTranslation(String(query.dropFirst()))
+                                        return .handled
+                                    }
+                                    return .systemAction
+                                })
                         }
                     }
                     VStack(alignment: .leading, spacing: 12) {
                         Text("译文").sectionLabel()
                         if !model.translationOutput.isEmpty {
                             LinkedText(text: model.translationOutput, size: 16).transition(.opacity)
+                                .environment(\.openURL, OpenURLAction { url in
+                                    if url.scheme == "memolex", let query = url.path.removingPercentEncoding {
+                                        model.lookupFromTranslation(String(query.dropFirst()))
+                                        return .handled
+                                    }
+                                    return .systemAction
+                                })
                                 .help(model.translationProvider.isEmpty ? "" : "翻译来源 " + model.translationProvider)
                         }
                     }
@@ -947,7 +1203,13 @@ private struct TranslationPage: View {
                                         .noFocusRing()
                                         .help("\(w)\(ipa.isEmpty ? "" : " /\(ipa)/")\n\(meaning)")
                                         .contextMenu {
-                                            Button("查看「\(w)」释义") { model.lookup(w) }
+                                            Button("查看「\(w)」释义") { model.lookupFromTranslation(w) }
+                                            Button("保存原句，稍后考我") {
+                                                Task {
+                                                    await model.saveFromTranslation(word: w)
+                                                    batchStatus = "✓ 已保存「\(w)」所在原句，可点击右上角「原句复习」离线自测。"
+                                                }
+                                            }
                                         }
                                     }
                                 }
