@@ -223,7 +223,7 @@ public partial class MainWindow : Window
     }
 
     private static bool ValidWord(string word) => word.Length is > 0 and <= 100 && Regex.IsMatch(word, @"^[a-zA-Z][a-zA-Z .’'\-]*$");
-    private async Task LoadWordAsync(string raw, bool recordHistory = true, bool addNavigationEntry = true, ViewState? restore = null, bool recallMode = false, bool keepPendingContext = false)
+    private async Task LoadWordAsync(string raw, bool recordHistory = true, bool addNavigationEntry = true, ViewState? restore = null, bool recallMode = false, bool keepPendingContext = false, bool updateSearchBox = true)
     {
         if (!_ready) return;
         var word = ExampleText.NormalizeLookup(raw).Trim();
@@ -254,7 +254,7 @@ public partial class MainWindow : Window
             _preferences.ExamplePaperType = SelectedPaperType;
             _preferences.Save();
         }
-        SearchBox.Text = word;
+        if (updateSearchBox) SearchBox.Text = word;
         UpdateHeader();
         _vocabulary = null;
         AddButton.Content = "＋ 加入云词本";
@@ -281,16 +281,28 @@ public partial class MainWindow : Window
         ResultScroll.ScrollToTop();
         UiMotion.Reveal(DefinitionSection);
         ResetExampleView();
+        var resolvedWord = entry?.word ?? word;
+        var previouslyLookedUp = _preferences.SearchHistory.Any(h =>
+            h.Word.Equals(resolvedWord, StringComparison.OrdinalIgnoreCase)
+            || h.Word.Equals(word, StringComparison.OrdinalIgnoreCase));
         if (recordHistory)
         {
-            _preferences.RecordLookup(entry?.word ?? word);
+            _preferences.RecordLookup(resolvedWord);
             _preferences.Save();
             UpdateHistory();
+            if (!updateSearchBox && SuggestionList.ItemsSource is IEnumerable<WordSuggestionItem> currentSuggestions)
+            {
+                var updatedCount = _preferences.SearchHistory
+                    .FirstOrDefault(h => h.Word.Equals(resolvedWord, StringComparison.OrdinalIgnoreCase))?.LookupCount ?? 1;
+                foreach (var suggestion in currentSuggestions)
+                    if (suggestion.Word.Equals(resolvedWord, StringComparison.OrdinalIgnoreCase))
+                        suggestion.LookupCount = updatedCount;
+            }
         }
-        UpdateContextCaptureBanner(entry?.word ?? word);
-        RenderSavedContexts(entry?.word ?? word);
-        var shouldRecall = recallMode || (_preferences.RecallModeEnabled && recordHistory && restore == null && hasLocalMeaning);
-        if (shouldRecall) EnterRecallMode(entry?.word ?? word);
+        UpdateContextCaptureBanner(resolvedWord);
+        RenderSavedContexts(resolvedWord);
+        var shouldRecall = recallMode || (_preferences.RecallModeEnabled && recordHistory && restore == null && hasLocalMeaning && previouslyLookedUp);
+        if (shouldRecall) EnterRecallMode(resolvedWord);
         else UpdateRepeatedWordBanner();
         _navigating = false;
         if (addNavigationEntry) _navigation.Navigate(CaptureView());
@@ -716,8 +728,7 @@ public partial class MainWindow : Window
         if (_changingLists) return;
         var word=SuggestionList.SelectedItem switch {WordSuggestionItem item=>item.Word,string spelling=>spelling,ChineseSearchResult result=>result.Word,_=>null};
         if(word==null)return;
-        SearchBox.Text = word;
-        await SearchAsync(word);
+        await LoadWordAsync(word, updateSearchBox: false);
     }
     private async void HistoryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

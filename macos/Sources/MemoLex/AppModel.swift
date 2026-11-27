@@ -197,7 +197,7 @@ enum EnglishAccent: String, CaseIterable {
             if let result = try? await core.request("dictionary.suggest", ["word": .string(query)]), query == search.trimmed { suggestions = result.list.map(\.text) }
         }
     }
-    func lookup(_ raw: String, navigate: Bool = true, recallMode enterRecall: Bool = false, keepPendingContext: Bool = false) {
+    func lookup(_ raw: String, navigate: Bool = true, recallMode enterRecall: Bool = false, keepPendingContext: Bool = false, keepSearchQuery: Bool = false) {
         let query = raw.trimmed
         guard ready, !query.isEmpty, query.count <= 100 else { return }
         stopPronunciation()
@@ -206,7 +206,7 @@ enum EnglishAccent: String, CaseIterable {
         if page == .translation { cancelTranslation() }
         lookupTask?.cancel(); cancelCloudWordLookup(); wordVersion += 1
         let version = wordVersion; let account = accountVersion
-        search = query
+        if !keepSearchQuery { search = query }
         showWindow?()
         lookupTask = Task {
             do {
@@ -238,11 +238,12 @@ enum EnglishAccent: String, CaseIterable {
                     }
                     entry = result["entry"]
                     if account == accountVersion { notes = result["notes"].list }
-                    suggestions = result["suggestions"].list.map(\.text)
+                    if !keepSearchQuery { suggestions = result["suggestions"].list.map(\.text) }
                     spellingSuggestions = entry["translation"].text.trimmed.isEmpty ? result["spellingSuggestions"].list.map(\.text) : []
                     definitionLoading = entry["translation"].text.trimmed.isEmpty
+                    let previouslyLookedUp = lookupCount(for: word) >= 1 || lookupCount(for: query) >= 1
                     recordHistory(word); status = definitionLoading ? "正在查找释义…" : "查词完成。"
-                    let shouldRecall = enterRecall || (preferences.recallModeEnabled && navigate && !definitionLoading)
+                    let shouldRecall = enterRecall || (preferences.recallModeEnabled && navigate && !definitionLoading && previouslyLookedUp)
                     if shouldRecall { startRecallMode() }
                     Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }
                     Task { await loadExamples(reset: true) }
@@ -499,7 +500,7 @@ enum EnglishAccent: String, CaseIterable {
             stopRecallMode()
         }
         status = preferences.recallModeEnabled
-            ? "已开启「先回想」模式，后续查词将先遮住释义 2 秒。"
+            ? "已开启「先回想」模式，再次查询已查过的单词将先遮住释义 2 秒。"
             : "已关闭「先回想」模式。"
     }
 

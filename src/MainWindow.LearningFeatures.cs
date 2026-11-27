@@ -112,8 +112,8 @@ public partial class MainWindow
         if (RecallModeToggle == null) return;
         RecallModeToggle.IsChecked = _preferences.RecallModeEnabled;
         RecallModeToggle.ToolTip = _preferences.RecallModeEnabled
-            ? "先回想模式（已开启）：查词时会先遮住释义 2 秒，点击可关闭"
-            : "先回想模式（已关闭）：开启后，查词时会先遮住释义 2 秒，帮你主动回忆";
+            ? "先回想模式（已开启）：再次查询已查过的单词时会先遮住释义 2 秒，点击可关闭"
+            : "先回想模式（已关闭）：开启后，再次查询已查过的单词时会先遮住释义 2 秒，帮你主动回忆";
     }
 
     private void RecallModeToggle_Click(object sender, RoutedEventArgs e)
@@ -125,7 +125,7 @@ public partial class MainWindow
         if (!enabled && _recallModeActive)
             StopRecallMode();
         StatusText.Text = enabled
-            ? "已开启「先回想」模式，后续查词将先遮住释义 2 秒。"
+            ? "已开启「先回想」模式，再次查询已查过的单词将先遮住释义 2 秒。"
             : "已关闭「先回想」模式。";
     }
 

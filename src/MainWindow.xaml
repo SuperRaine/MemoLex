@@ -93,7 +93,7 @@
                                     </Border>
                                 </StackPanel>
                                 <ToggleButton x:Name="RecallModeToggle" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Click="RecallModeToggle_Click" Cursor="Hand" FocusVisualStyle="{x:Null}"
-                                              ToolTip="先回想模式：开启后，查词时会先遮住释义 2 秒，帮你主动回忆" AutomationProperties.Name="先回想模式开关">
+                                              ToolTip="先回想模式：开启后，再次查询已查过的单词时会先遮住释义 2 秒，帮你主动回忆" AutomationProperties.Name="先回想模式开关">
                                     <ToggleButton.Template>
                                         <ControlTemplate TargetType="ToggleButton">
                                             <Border x:Name="Pill" Background="Transparent" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="7,2">

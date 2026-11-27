@@ -122,8 +122,8 @@ struct MainView: View {
                     .buttonStyle(.plain)
                     .noFocusRing()
                     .help(preferences.recallModeEnabled
-                          ? "先回想模式（已开启）：查词时会先遮住释义 2 秒，点击可关闭"
-                          : "先回想模式（已关闭）：开启后，查词时会先遮住释义 2 秒，帮你主动回忆")
+                          ? "先回想模式（已开启）：再次查询已查过的单词时会先遮住释义 2 秒，点击可关闭"
+                          : "先回想模式（已关闭）：开启后，再次查询已查过的单词时会先遮住释义 2 秒，帮你主动回忆")
                 }
                 HStack(spacing: 6) {
                     HStack(spacing: 7) {
@@ -156,7 +156,7 @@ struct MainView: View {
                         LazyVStack(alignment: .leading, spacing: 1) {
                             ForEach(model.suggestions, id: \.self) { w in
                                 let count = model.lookupCount(for: w)
-                                Button { model.lookup(w) } label: {
+                                Button { model.lookup(w, keepSearchQuery: true) } label: {
                                     HStack(spacing: 6) {
                                         Text(w).font(.system(size: 14)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                                         if count >= 2 {

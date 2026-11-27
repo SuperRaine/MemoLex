@@ -22,7 +22,7 @@ internal static class SettingsDialog
     internal const string BugReportUrl=RepositoryUrl+"/issues/new?template=bug_report.yml";
     internal const string FeatureRequestUrl=RepositoryUrl+"/issues/new?template=feature_request.yml";
     internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
-    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.4.1";
+    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.4.2";
     [Flags]
     private enum SettingsArea { None=0, General=1, Hover=2, Shortcuts=4 }
     public static void Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null,CacheMaintenanceHost? cacheMaintenance=null)
@@ -121,8 +121,8 @@ internal static class SettingsDialog
         launchCard.Children.Add(autoStart);if(startupReadError!=null)launchCard.Children.Add(InputDialog.Text(startupReadError));
         var doubleCopy=new CheckBox {Content=new TextBlock{Text="连按两次 Ctrl+C 查词或翻译",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.DoubleCopyEnabled,Margin=new Thickness(0,4,0,6)};
         dialog.RegisterName("DoubleCopyEnabled",doubleCopy);launchCard.Children.Add(doubleCopy);launchCard.Children.Add(InputDialog.Text("选中文字后，在 750 毫秒内连按两次 Ctrl+C。"));
-        var recallMode=new CheckBox {Content=new TextBlock{Text="查词时开启「先回想」模式",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.RecallModeEnabled,Margin=new Thickness(0,8,0,6)};
-        dialog.RegisterName("RecallModeEnabled",recallMode);launchCard.Children.Add(recallMode);launchCard.Children.Add(InputDialog.Text("开启后，查词时会先遮住释义 2 秒，按空格或回车随时揭晓。"));
+        var recallMode=new CheckBox {Content=new TextBlock{Text="再次查词时开启「先回想」模式",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.RecallModeEnabled,Margin=new Thickness(0,8,0,6)};
+        dialog.RegisterName("RecallModeEnabled",recallMode);launchCard.Children.Add(recallMode);launchCard.Children.Add(InputDialog.Text("开启后，再次查询已查过的单词会先遮住释义 2 秒，按空格或回车随时揭晓。"));
         var guide=new Button{Content="查看新手引导",HorizontalAlignment=HorizontalAlignment.Left,IsEnabled=startOnboarding!=null};guide.Click+=(_,_)=>{dialog.Close();owner.Dispatcher.BeginInvoke(startOnboarding!);};general.Children.Add(guide);dialog.RegisterName("OpenOnboarding",guide);
 
         var shortcutsPage=Page("快捷键","点击输入框后按下组合键，按 Delete 清除。");

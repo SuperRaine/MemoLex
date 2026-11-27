@@ -358,7 +358,10 @@ struct StubbornFlashcardView: View {
     private func spellingFront(word: String, data: J?) -> some View {
         let shape = RoundedRectangle(cornerRadius: 15, style: .continuous)
         let phonetic = data?["entry"]["phonetic"].text ?? ""
-        let localMeaning = data?["entry"]["translation"].text.decodedLines ?? ""
+        let rawTestMeaning = data?["testMeaning"].text.decodedLines ?? ""
+        let localMeaning = rawTestMeaning.isEmpty
+            ? fallbackSanitizeTestMeaning(data?["entry"]["translation"].text.decodedLines ?? "")
+            : rawTestMeaning
         let ctx = contextItem(for: word)
         return VStack(spacing: 12) {
             if let drill = activeDrill, !microDrillDone, microChoices.count == 2 {
@@ -510,12 +513,21 @@ struct StubbornFlashcardView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(colors: [Palette.paper, Palette.wash], startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: shape
-        )
+        .background {
+            shape
+                .fill(LinearGradient(colors: [Palette.paper, Palette.wash], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .shadow(color: Color(red: 0.06, green: 0.25, blue: 0.40).opacity(0.09), radius: 12, y: 4)
+        }
         .overlay(shape.stroke(Palette.border, lineWidth: 0.9))
-        .shadow(color: Color(red: 0.06, green: 0.25, blue: 0.40).opacity(0.09), radius: 14, y: 5)
+    }
+
+    private func fallbackSanitizeTestMeaning(_ text: String) -> String {
+        guard !text.isEmpty else { return "" }
+        return text.replacingOccurrences(
+            of: #"[（(\[【][^（）()\[\]【】]*[A-Za-z]{2,}[^（）()\[\]【】]*[）)\]】]"#,
+            with: "",
+            options: .regularExpression
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var spellingBorderColor: Color {
@@ -824,12 +836,12 @@ struct StubbornFlashcardView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(colors: [Palette.paper, Palette.wash], startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: shape
-        )
+        .background {
+            shape
+                .fill(LinearGradient(colors: [Palette.paper, Palette.wash], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .shadow(color: Color(red: 0.06, green: 0.25, blue: 0.40).opacity(0.09), radius: 12, y: 4)
+        }
         .overlay(shape.stroke(back ? Palette.accent.opacity(0.65) : Palette.border, lineWidth: back ? 1.1 : 0.9))
-        .shadow(color: Color(red: 0.06, green: 0.25, blue: 0.40).opacity(0.09), radius: 14, y: 5)
     }
 
     private func flip() {
@@ -848,9 +860,9 @@ struct StubbornFlashcardView: View {
             return
         }
         flipping = true
-        withAnimation(.easeInOut(duration: 0.32)) { revealed.toggle() }
+        withAnimation(.easeInOut(duration: 0.26)) { revealed.toggle() }
         flipTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 340_000_000)
+            try? await Task.sleep(nanoseconds: 270_000_000)
             if !Task.isCancelled {
                 flipping = false
                 if !willReveal && spellingMode { spellingFocused = true }
@@ -874,13 +886,13 @@ struct StubbornFlashcardView: View {
         }
         swiping = true
         let direction: CGFloat = value == .forgotten ? -1 : 1
-        withAnimation(.easeIn(duration: 0.19)) {
+        withAnimation(.easeIn(duration: 0.16)) {
             swipeOffset = direction * 110
-            swipeAngle = Double(direction) * 6.5
+            swipeAngle = Double(direction) * 5.5
             swipeOpacity = 0
         }
         flipTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            try? await Task.sleep(nanoseconds: 170_000_000)
             guard !Task.isCancelled else { return }
             practice.answer(value)
             persistProgress()
@@ -888,7 +900,7 @@ struct StubbornFlashcardView: View {
             resetSpellingInput()
             swipeOffset = 0
             swipeAngle = 0
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.88)) {
                 swipeOpacity = 1
             }
             swiping = false

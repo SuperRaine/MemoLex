@@ -57,10 +57,12 @@ public static partial class MorphemeGroupPractice
     private static string CleanForPrompt(string? text, string word)
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
-        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n')
+        var sanitized = QuizMeaningSanitizer.Sanitize(text, word);
+        if (string.IsNullOrWhiteSpace(sanitized)) return "";
+        var lines = sanitized.Replace("\r\n", "\n").Replace('\r', '\n')
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var chosen = lines.FirstOrDefault() ?? "";
-        // Remove POS prefixes like "v. " and any English leakage (including the answer word itself).
+        // Remove POS prefixes like "v. " and any remaining English leakage.
         chosen = PosTagPattern().Replace(chosen, "").Trim();
         chosen = LatinWordPattern().Replace(chosen, match =>
             match.Value.Equals(word, StringComparison.OrdinalIgnoreCase) ? "" : match.Value).Trim();

@@ -170,9 +170,10 @@ internal sealed class CoreService : IDisposable
             {
                 word = ExampleText.ResolveLookupWord(word, candidate => _dictionary.Lookup(candidate) != null);
                 var entry = _dictionary.Lookup(word);
+                var testMeaning = entry == null ? "" : QuizMeaningSanitizer.Sanitize(entry.DisplayMeaning, entry.word, entry.exchange);
                 if (entry != null) entry.translation = entry.DisplayMeaning;
                 var spellingSuggestions = string.IsNullOrWhiteSpace(entry?.translation) ? _dictionary.SuggestSpellingCorrections(word, 5) : Array.Empty<string>();
-                return new { entry, word, notes = DisplayNotes(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24), spellingSuggestions };
+                return new { entry, word, testMeaning, notes = DisplayNotes(word, _tokens.CredentialKey), suggestions = _dictionary.Suggest(word, 24), spellingSuggestions };
             }
             case "mnemonic.family":
                 return _notes.FindMorphemeFamily(

@@ -6,10 +6,6 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Media.Effects;
-using System.Windows.Media.Imaging;
-using System.Windows.Media.Media3D;
 using MemoLex.Core;
 using MemoLex.Services;
 
@@ -154,14 +150,28 @@ internal static class StubbornFlashcards
             MaxHeight = 385,
             Focusable = false
         };
+        var cardChromeFactory = new FrameworkElementFactory(typeof(Border));
+        cardChromeFactory.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+        cardChromeFactory.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Control.BorderBrushProperty));
+        cardChromeFactory.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Control.BorderThicknessProperty));
+        cardChromeFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(13));
+        cardChromeFactory.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Control.PaddingProperty));
+        var cardContentFactory = new FrameworkElementFactory(typeof(ContentPresenter));
+        cardContentFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, new TemplateBindingExtension(Control.HorizontalContentAlignmentProperty));
+        cardContentFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, new TemplateBindingExtension(Control.VerticalContentAlignmentProperty));
+        cardChromeFactory.AppendChild(cardContentFactory);
+        var cardTemplate = new ControlTemplate(typeof(Button)) { VisualTree = cardChromeFactory };
         var card = new Button
         {
             Content = cardScroll,
+            Template = cardTemplate,
+            BorderThickness = new Thickness(1),
+            Cursor = Cursors.Hand,
+            FocusVisualStyle = null,
             MinHeight = 325,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             VerticalContentAlignment = VerticalAlignment.Center,
-            Padding = new Thickness(26, 20, 26, 20),
-            Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 5, Opacity = 0.09, Color = Color.FromRgb(0x10, 0x42, 0x66) }
+            Padding = new Thickness(26, 20, 26, 20)
         };
         card.SetResourceReference(Control.BackgroundProperty, "SurfaceBrush");
         card.SetResourceReference(Control.BorderBrushProperty, "BorderBrush");
@@ -192,25 +202,6 @@ internal static class StubbornFlashcards
         stage.Children.Add(stackBack2);
         stage.Children.Add(stackBack1);
         stage.Children.Add(card);
-
-        var turn = new AxisAngleRotation3D(new Vector3D(0, 1, 0), 0);
-        var image = new ImageBrush();
-        var surface = new MeshGeometry3D
-        {
-            TriangleIndices = new Int32Collection([0, 1, 2, 0, 2, 3]),
-            TextureCoordinates = new PointCollection([new(0, 1), new(1, 1), new(1, 0), new(0, 0)])
-        };
-        var viewport = new Viewport3D
-        {
-            Camera = new PerspectiveCamera(new Point3D(0, 0, 2.42), new Vector3D(0, 0, -1), new Vector3D(0, 1, 0), 45),
-            IsHitTestVisible = false,
-            Visibility = Visibility.Hidden
-        };
-        viewport.Children.Add(new ModelVisual3D
-        {
-            Content = new GeometryModel3D(surface, new EmissiveMaterial(image)) { Transform = new RotateTransform3D(turn) }
-        });
-        stage.Children.Add(viewport);
         body.Children.Add(stage);
 
         var actionSlot = new Grid { MinHeight = 38 };
@@ -282,6 +273,9 @@ internal static class StubbornFlashcards
         TextBox? activeSpellingBox = null;
         System.Windows.Threading.DispatcherTimer? autoFlipTimer = null;
         DictionaryEntry? entry = null;
+        string? cachedMnemonicWord = null;
+        string? cachedMnemonicText = null;
+        MnemonicAnalysis? cachedMnemonicAnalysis = null;
         ContextSentenceItem? currentContext = null;
         SpellingMicroDrill? activeDrill = null;
         var microDrillDone = false;
@@ -727,11 +721,12 @@ internal static class StubbornFlashcards
                 };
                 face.Children.Add(drillBadge);
 
+                var sanitizedHint = QuizMeaningSanitizer.Sanitize(entry?.DisplayMeaning, word, entry?.exchange);
                 var meaningHint = new TextBlock
                 {
-                    Text = string.IsNullOrWhiteSpace(entry?.DisplayMeaning)
+                    Text = string.IsNullOrWhiteSpace(sanitizedHint)
                         ? $"上次你写成了「{drill.LastWrongInput}」"
-                        : $"{entry.DisplayMeaning}（上次写成了 {drill.LastWrongInput}）",
+                        : $"{sanitizedHint}（上次写成了 {drill.LastWrongInput}）",
                     FontSize = 13,
                     TextAlignment = TextAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
@@ -881,9 +876,10 @@ internal static class StubbornFlashcards
                 face.Children.Add(drillNote);
             }
 
+            var testPromptMeaning = QuizMeaningSanitizer.Sanitize(entry?.DisplayMeaning, word, entry?.exchange);
             var meaningText = new TextBlock
             {
-                Text = string.IsNullOrWhiteSpace(entry?.DisplayMeaning) ? "请听发音并拼写该单词" : entry.DisplayMeaning,
+                Text = string.IsNullOrWhiteSpace(testPromptMeaning) ? "请听发音并拼写该单词" : testPromptMeaning,
                 FontSize = 19,
                 LineHeight = 28,
                 FontWeight = FontWeights.SemiBold,
@@ -1086,15 +1082,28 @@ internal static class StubbornFlashcards
             dialog.Dispatcher.BeginInvoke(new Action(() => inputBox.Focus()));
         }
 
-        void RenderBackMnemonic(string word)
+        void PrecomputeBackMnemonic(string? word)
         {
+            cachedMnemonicWord = word;
+            cachedMnemonicText = null;
+            cachedMnemonicAnalysis = null;
+            if (string.IsNullOrWhiteSpace(word)) return;
             var stored = getMnemonics?.Invoke(word).FirstOrDefault();
             var noteText = stored?.Text ?? mnemonic(word);
             if (string.IsNullOrWhiteSpace(noteText)) return;
-
-            var analysis = stored != null && mnemonicStore != null
+            cachedMnemonicText = noteText;
+            cachedMnemonicAnalysis = stored != null && mnemonicStore != null
                 ? MnemonicParts.Analyze(word, stored.NoteType, stored.Text, (f, m, c) => mnemonicStore.FindMorphemeExamples(f, m, c))
                 : MnemonicParts.Analyze(word, "词根词缀", noteText);
+        }
+
+        void RenderBackMnemonic(string word)
+        {
+            if (!string.Equals(cachedMnemonicWord, word, StringComparison.OrdinalIgnoreCase))
+                PrecomputeBackMnemonic(word);
+            var noteText = cachedMnemonicText;
+            var analysis = cachedMnemonicAnalysis;
+            if (string.IsNullOrWhiteSpace(noteText) || analysis == null) return;
 
             var noteBox = new Border
             {
@@ -1138,8 +1147,7 @@ internal static class StubbornFlashcards
                         var emphasized = !allLit && selectedChips.Contains(pos);
                         pair.Button.SetResourceReference(Control.BackgroundProperty, lit ? (emphasized ? "SelectedBgBrush" : "PillBgBrush") : "SurfaceBrush");
                         pair.Button.BorderBrush = ThemeManager.Hex(emphasized ? "#19ACF2" : lit ? "#38B8F6" : (ThemeManager.IsDark ? "#345068" : "#C6E4F7"));
-                        pair.Button.BorderThickness = new Thickness(1.5);
-                        pair.Button.Effect = lit ? new DropShadowEffect { BlurRadius = 10, ShadowDepth = 2, Opacity = emphasized ? 0.22 : 0.13, Color = Color.FromRgb(18, 134, 196) } : null;
+                        pair.Button.BorderThickness = new Thickness(emphasized ? 1.8 : 1.3);
                     }
                 }
 
@@ -1268,9 +1276,10 @@ internal static class StubbornFlashcards
             entry = practice.Current is { } word ? dictionary.Lookup(word) : null;
             currentContext = practice.Current is { } cw ? ResolveContext(cw) : null;
             PrepareSpellingDrill(practice.Current);
+            PrecomputeBackMnemonic(practice.Current);
             Render();
             if (animateEntrance)
-                UiMotion.Reveal(card, distance: 10);
+                UiMotion.Reveal(card, distance: 8);
             if (practice.Current == null) next.Focus();
             else if (!spellingMode) card.Focus();
         }
@@ -1280,19 +1289,6 @@ internal static class StubbornFlashcards
             var autoMode = autoSpeakCombo.SelectedValue as string ?? "off";
             if (revealed && practice.Current != null && autoMode is "en-GB" or "en-US")
                 SpeakCurrentWord(autoMode == "en-GB" ? EnglishAccent.British : EnglishAccent.American);
-        }
-
-        void SnapshotFace()
-        {
-            var dpi = VisualTreeHelper.GetDpi(card);
-            var width = Math.Max(1, (int)Math.Ceiling(card.ActualWidth * dpi.DpiScaleX));
-            var height = Math.Max(1, (int)Math.Ceiling(card.ActualHeight * dpi.DpiScaleY));
-            var bitmap = new RenderTargetBitmap(width, height, dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
-            bitmap.Render(card);
-            bitmap.Freeze();
-            image.ImageSource = bitmap;
-            var aspect = card.ActualHeight / Math.Max(1, card.ActualWidth);
-            surface.Positions = new Point3DCollection([new(-1, -aspect, 0), new(1, -aspect, 0), new(1, aspect, 0), new(-1, aspect, 0)]);
         }
 
         void Flip()
@@ -1308,35 +1304,20 @@ internal static class StubbornFlashcards
             if (!UiMotion.Enabled) { SwitchFace(false); return; }
             flipping = true;
             var restoreFocus = card.IsKeyboardFocusWithin && activeSpellingBox == null;
-            void Finish()
-            {
-                viewport.Visibility = Visibility.Hidden;
-                image.ImageSource = null;
-                card.Visibility = Visibility.Visible;
-                flipping = false;
-                if (revealed) UiMotion.Reveal(actions, distance: 6);
-                if (restoreFocus && dialog.IsVisible) card.Focus();
-            }
-
-            SnapshotFace();
-            card.Visibility = Visibility.Hidden;
-            viewport.Visibility = Visibility.Visible;
-            var frontTurn = new DoubleAnimation(0, 90, TimeSpan.FromMilliseconds(125))
-            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } };
-            frontTurn.Completed += (_, _) =>
-            {
-                if (!dialog.IsVisible) return;
-                card.Visibility = Visibility.Visible;
-                SwitchFace(false);
-                card.UpdateLayout();
-                SnapshotFace();
-                card.Visibility = Visibility.Hidden;
-                var backTurn = new DoubleAnimation(-90, 0, TimeSpan.FromMilliseconds(165))
-                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-                backTurn.Completed += (_, _) => Finish();
-                turn.BeginAnimation(AxisAngleRotation3D.AngleProperty, backTurn);
-            };
-            turn.BeginAnimation(AxisAngleRotation3D.AngleProperty, frontTurn);
+            UiMotion.Flip(
+                card,
+                onMidpoint: () =>
+                {
+                    if (!dialog.IsVisible) return;
+                    SwitchFace(false);
+                },
+                onCompleted: () =>
+                {
+                    flipping = false;
+                    if (!dialog.IsVisible) return;
+                    if (revealed) UiMotion.Reveal(actions, distance: 5);
+                    if (restoreFocus) card.Focus();
+                });
         }
 
         void Answer(FlashcardAnswer answer)
@@ -1344,9 +1325,9 @@ internal static class StubbornFlashcards
             if (!revealed || flipping || swiping || practice.Current == null) return;
             if (currentContext != null) contextSentences?.RecordReview(currentContext.Id);
             swiping = true;
-            var toX = answer == FlashcardAnswer.Forgotten ? -115.0 : 115.0;
-            var tilt = answer == FlashcardAnswer.Forgotten ? -6.5 : 6.5;
-            UiMotion.SwipeOut(card, toX, tilt, 190, () =>
+            var toX = answer == FlashcardAnswer.Forgotten ? -110.0 : 110.0;
+            var tilt = answer == FlashcardAnswer.Forgotten ? -5.5 : 5.5;
+            UiMotion.SwipeOut(card, toX, tilt, 160, () =>
             {
                 swiping = false;
                 if (!dialog.IsVisible) return;

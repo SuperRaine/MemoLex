@@ -10,6 +10,7 @@ internal static class UiMotion
     private static readonly QuinticEase EaseOut = CreateQuinticEase();
     private static readonly CubicEase CubicEaseOut = CreateCubicEase(EasingMode.EaseOut);
     private static readonly CubicEase CubicEaseIn = CreateCubicEase(EasingMode.EaseIn);
+    private static readonly SineEase SineEaseIn = CreateSineEase(EasingMode.EaseIn);
 
     public static bool Enabled => SystemParameters.ClientAreaAnimation && !SystemParameters.HighContrast;
 
@@ -70,6 +71,65 @@ internal static class UiMotion
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, upY);
     }
 
+    public static void Flip(FrameworkElement element, Action onMidpoint, Action onCompleted, int firstHalfMs = 95, int secondHalfMs = 135)
+    {
+        if (!element.IsVisible || !Enabled)
+        {
+            onMidpoint();
+            onCompleted();
+            return;
+        }
+
+        element.RenderTransformOrigin = new Point(0.5, 0.5);
+        var scale = new ScaleTransform(1, 1);
+        element.RenderTransform = scale;
+        var previousCache = element.CacheMode;
+        element.CacheMode = new BitmapCache { RenderAtScale = 1 };
+
+        var firstDuration = TimeSpan.FromMilliseconds(firstHalfMs);
+        var shrinkX = new DoubleAnimation(1.0, 0.02, firstDuration) { EasingFunction = SineEaseIn };
+        var shrinkY = new DoubleAnimation(1.0, 0.975, firstDuration) { EasingFunction = SineEaseIn };
+        var dim = new DoubleAnimation(1.0, 0.86, firstDuration) { EasingFunction = SineEaseIn };
+
+        shrinkX.Completed += (_, _) =>
+        {
+            element.CacheMode = previousCache;
+            onMidpoint();
+            if (!element.IsVisible || !element.IsLoaded)
+            {
+                element.BeginAnimation(UIElement.OpacityProperty, null);
+                element.Opacity = 1;
+                element.RenderTransform = Transform.Identity;
+                onCompleted();
+                return;
+            }
+            element.UpdateLayout();
+            element.CacheMode = new BitmapCache { RenderAtScale = 1 };
+
+            var secondDuration = TimeSpan.FromMilliseconds(secondHalfMs);
+            var expandX = new DoubleAnimation(0.02, 1.0, secondDuration) { EasingFunction = CubicEaseOut };
+            var expandY = new DoubleAnimation(0.975, 1.0, secondDuration) { EasingFunction = CubicEaseOut };
+            var brighten = new DoubleAnimation(0.86, 1.0, secondDuration) { EasingFunction = CubicEaseOut };
+
+            expandX.Completed += (_, _) =>
+            {
+                element.BeginAnimation(UIElement.OpacityProperty, null);
+                element.Opacity = 1;
+                element.RenderTransform = Transform.Identity;
+                element.CacheMode = previousCache;
+                onCompleted();
+            };
+
+            element.BeginAnimation(UIElement.OpacityProperty, brighten);
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, expandX);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, expandY);
+        };
+
+        element.BeginAnimation(UIElement.OpacityProperty, dim);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, shrinkX);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, shrinkY);
+    }
+
     public static void SwipeOut(FrameworkElement element, double toX, double tiltDegrees, int durationMs, Action onCompleted)
     {
         if (!element.IsVisible || !Enabled)
@@ -85,6 +145,8 @@ internal static class UiMotion
         group.Children.Add(rotate);
         group.Children.Add(translate);
         element.RenderTransform = group;
+        var previousCache = element.CacheMode;
+        element.CacheMode = new BitmapCache { RenderAtScale = 1 };
 
         var duration = TimeSpan.FromMilliseconds(durationMs);
         var moveX = new DoubleAnimation(0, toX, duration) { EasingFunction = CubicEaseIn };
@@ -95,6 +157,7 @@ internal static class UiMotion
             element.BeginAnimation(UIElement.OpacityProperty, null);
             element.Opacity = 1;
             element.RenderTransform = Transform.Identity;
+            element.CacheMode = previousCache;
             onCompleted();
         };
         element.BeginAnimation(UIElement.OpacityProperty, fade);
@@ -113,6 +176,12 @@ internal static class UiMotion
         }
 
         var from = double.IsNaN(element.Width) ? element.ActualWidth : element.Width;
+        if (Math.Abs(from - target) < 0.5)
+        {
+            element.BeginAnimation(FrameworkElement.WidthProperty, null);
+            element.Width = target;
+            return;
+        }
         var anim = new DoubleAnimation(from, target, TimeSpan.FromMilliseconds(durationMs))
         {
             EasingFunction = EaseOut
@@ -182,6 +251,13 @@ internal static class UiMotion
     private static CubicEase CreateCubicEase(EasingMode mode)
     {
         var easing = new CubicEase { EasingMode = mode };
+        easing.Freeze();
+        return easing;
+    }
+
+    private static SineEase CreateSineEase(EasingMode mode)
+    {
+        var easing = new SineEase { EasingMode = mode };
         easing.Freeze();
         return easing;
     }

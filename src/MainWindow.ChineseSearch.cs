@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -9,11 +10,27 @@ using MemoLex.Desktop;
 
 namespace MemoLex;
 
-public sealed record WordSuggestionItem(string Word, int LookupCount)
+public sealed class WordSuggestionItem(string word, int lookupCount) : INotifyPropertyChanged
 {
-    public bool IsRepeated => LookupCount >= 2;
+    private int _lookupCount = lookupCount;
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public string Word { get; } = word;
+    public int LookupCount
+    {
+        get => _lookupCount;
+        set
+        {
+            if (_lookupCount == value) return;
+            _lookupCount = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LookupCount)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRepeated)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RepeatBadgeVisibility)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RepeatBadge)));
+        }
+    }
+    public bool IsRepeated => _lookupCount >= 2;
     public Visibility RepeatBadgeVisibility => IsRepeated ? Visibility.Visible : Visibility.Collapsed;
-    public string RepeatBadge => $"{LookupCount}次";
+    public string RepeatBadge => $"{_lookupCount}次";
 }
 
 public partial class MainWindow

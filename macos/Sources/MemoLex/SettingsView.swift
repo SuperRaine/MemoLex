@@ -146,11 +146,11 @@ private struct GeneralSettings: View {
             Toggle("登录 Mac 时自动启动", isOn: $preferences.startAtLogin)
             Toggle("连按两次 ⌘C 查词或翻译", isOn: $preferences.doubleCopy).tourTarget("clipboard")
             Text("选中文字后，在 750 毫秒内连按两次 ⌘C。").font(.system(size: 11)).foregroundStyle(Palette.muted)
-            Toggle("查词时开启「先回想」模式", isOn: $preferences.recallModeEnabled)
+            Toggle("再次查词时开启「先回想」模式", isOn: $preferences.recallModeEnabled)
                 .onChange(of: preferences.recallModeEnabled) { enabled in
                     if !enabled && model.recallMode { model.stopRecallMode() }
                 }
-            Text("开启后，查词时会先遮住释义 2 秒，按空格或回车随时揭晓。").font(.system(size: 11)).foregroundStyle(Palette.muted)
+            Text("开启后，再次查询已查过的单词会先遮住释义 2 秒，按空格或回车随时揭晓。").font(.system(size: 11)).foregroundStyle(Palette.muted)
         }.frame(minWidth: 195)
     }
 }

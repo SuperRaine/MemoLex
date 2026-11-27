@@ -288,7 +288,6 @@
                                 <GradientStop Color="#129969" Offset="1"/>
                             </LinearGradientBrush>
                         </Border.Background>
-                        <Border.Effect><DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.18" Color="#11865B"/></Border.Effect>
                         <Border.RenderTransform><ScaleTransform x:Name="ChromeScale" ScaleX="1" ScaleY="1"/></Border.RenderTransform>
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
