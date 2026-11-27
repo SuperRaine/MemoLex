@@ -36,12 +36,12 @@ struct ContextReviewSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DialogHeader(title: "我的原句 · 离线自测") { model.sheet = nil }
+            DialogHeader(title: "我的例句 · 卡片自测") { model.sheet = nil }
             if uniqueWords.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "text.quote").font(.system(size: 34)).foregroundStyle(Palette.muted)
-                    Text("还没有保存的阅读原句").font(.title3.weight(.semibold))
-                    Text("在段落翻译、截图翻译或真题例句中点击「保存原句」，即可在此离线自测。")
+                    Text("还没有收藏例句").font(.title3.weight(.semibold))
+                    Text("在段落翻译、截图翻译或真题例句中点击「收藏例句」，即可在这里复习。")
                         .font(.callout).foregroundStyle(Palette.muted)
                     Button("知道了") { model.sheet = nil }
                         .buttonStyle(MemoButtonStyle(accent: true))
@@ -52,7 +52,7 @@ struct ContextReviewSheet: View {
                 StubbornFlashcardView(
                     core: model.core,
                     words: uniqueWords,
-                    title: "我的原句 · 离线自测",
+                    title: "我的例句 · 卡片自测",
                     savedProgress: nil,
                     persistsProgress: false,
                     preferences: model.preferences,

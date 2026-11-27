@@ -248,7 +248,7 @@ internal static class SettingsDialog
         var cacheSafetyNote=new Border{CornerRadius=new CornerRadius(9),BorderThickness=new Thickness(1),Padding=new Thickness(12,9,12,9),Margin=new Thickness(0,4,0,6)};
         cacheSafetyNote.SetResourceReference(Border.BackgroundProperty,"CardSoftBrush");
         cacheSafetyNote.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");
-        var cacheSafetyText=new TextBlock{Text="安全说明：以上清理仅作用于本机缓存与学习记录，不会退出已登录的墨墨账号，也不会删除你手动编辑的本地助记或云端云词本。",FontSize=11.5,TextWrapping=TextWrapping.Wrap,LineHeight=19};
+        var cacheSafetyText=new TextBlock{Text="安全说明：以上清理仅影响本机缓存与记录，不会退出墨墨账号，也不会删除本地助记和云词本。",FontSize=11.5,TextWrapping=TextWrapping.Wrap,LineHeight=19};
         cacheSafetyText.SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");
         cacheSafetyNote.Child=cacheSafetyText;
         cachePage.Children.Add(cacheSafetyNote);
@@ -258,8 +258,8 @@ internal static class SettingsDialog
             var items=cacheMaintenance?.LoadCategories()??[];
             var activeCount=items.Count(item=>item.HasData);
             cacheOverviewText.Text=items.Count==0
-                ?"当前窗口未连接缓存管理器。"
-                :activeCount>0?$"共 {items.Count} 类本机数据，其中 {activeCount} 类可清理":"所有分类均已清空，本机很干净。";
+                ?"当前无法读取缓存信息。"
+                :activeCount>0?$"当前有 {activeCount} 类数据可清理":"当前没有可清理的缓存。";
             clearAllCacheButton.IsEnabled=cacheMaintenance!=null&&activeCount>0;
             foreach(var item in items)
             {

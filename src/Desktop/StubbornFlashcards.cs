@@ -444,7 +444,7 @@ internal static class StubbornFlashcards
 
                 if (isContextMode && currentContext != null)
                 {
-                    var ctxBadgeText = new TextBlock { Text = $"第 {practice.GroupNumber} 组 · 原句自测（{currentContext.Source}）", FontSize = 12, FontWeight = FontWeights.SemiBold };
+                    var ctxBadgeText = new TextBlock { Text = $"第 {practice.GroupNumber} 组 · 例句自测（{currentContext.Source}）", FontSize = 12, FontWeight = FontWeights.SemiBold };
                     ctxBadgeText.SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
                     var ctxBadge = new Border
                     {
@@ -542,7 +542,7 @@ internal static class StubbornFlashcards
                     var ctxHintStack = new StackPanel();
                     var ctxHintTitle = new TextBlock
                     {
-                        Text = $"你读过的原句 · {currentContext.Source}",
+                        Text = $"收藏例句 · {currentContext.Source}",
                         FontSize = 11,
                         FontWeight = FontWeights.SemiBold,
                         Margin = new Thickness(0, 0, 0, 4)
@@ -658,7 +658,7 @@ internal static class StubbornFlashcards
                 var ctxBackStack = new StackPanel();
                 var ctxBackTitle = new TextBlock
                 {
-                    Text = $"读过的原句 · {currentContext.Source}",
+                    Text = $"收藏例句 · {currentContext.Source}",
                     FontSize = 11.5,
                     FontWeight = FontWeights.SemiBold,
                     Margin = new Thickness(0, 0, 0, 5)
@@ -713,7 +713,7 @@ internal static class StubbornFlashcards
                     BorderThickness = new Thickness(1),
                     Child = new TextBlock
                     {
-                        Text = $"针对错点微题 · 曾错 {drill.MistakeCount} 次",
+                        Text = $"拼写易错点 · 曾错 {drill.MistakeCount} 次",
                         FontSize = 12,
                         FontWeight = FontWeights.SemiBold,
                         Foreground = ThemeManager.Res("WarnFgBrush", "#9A5207", "#F8C76A")
@@ -820,7 +820,7 @@ internal static class StubbornFlashcards
 
                 var skipBtn = new Button
                 {
-                    Content = "跳过微题，直接整词默写",
+                    Content = "跳过，直接默写",
                     FontSize = 11.5,
                     Padding = new Thickness(10, 4, 10, 4),
                     HorizontalAlignment = HorizontalAlignment.Center,
@@ -1022,7 +1022,7 @@ internal static class StubbornFlashcards
                 var recorded = spellingMistakes?.RecordMistake(word, typed);
                 var (message, isProgress) = BuildSpellingHint(word, typed, ref hintLevel);
                 if (recorded != null)
-                    message += " · 已记住此错点，下次针对练";
+                    message += " · 已记下易错点";
                 ShowSpellingHint(message, isProgress ? "info" : "warn");
                 inputBox.Focus();
                 inputBox.CaretIndex = inputBox.Text.Length;

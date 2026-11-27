@@ -245,14 +245,14 @@
                                     </WrapPanel>
                                     <Border x:Name="SpellingSuggestionBanner" Background="{DynamicResource CardSoftBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="9" Padding="11,7" Margin="0,8,0,0" Visibility="Collapsed">
                                         <StackPanel>
-                                            <TextBlock Text="离线词库未找到精确匹配，你是不是要查：" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource AccentDeepBrush}" Margin="0,0,0,5"/>
+                                            <TextBlock Text="未找到精确匹配，你是不是要查：" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource AccentDeepBrush}" Margin="0,0,0,5"/>
                                             <WrapPanel x:Name="SpellingSuggestionPanel"/>
                                         </StackPanel>
                                     </Border>
                                     <Border x:Name="RepeatedWordBanner" Background="{DynamicResource WarnBgBrush}" BorderBrush="{DynamicResource WarnBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="11,5" Margin="0,6,0,0" Visibility="Collapsed">
                                         <DockPanel>
                                             <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
-                                                <Button x:Name="RepeatedRecallButton" Content="先回想" Click="RepeatedRecallButton_Click" FontSize="11" Padding="9,2.5" Margin="8,0,0,0" ToolTip="遮住释义，花 2 秒回想这个词的意思"/>
+                                                <Button x:Name="RepeatedRecallButton" Content="先回想" Click="RepeatedRecallButton_Click" FontSize="11" Padding="9,2.5" Margin="8,0,0,0" ToolTip="先遮住释义，回想 2 秒再看答案"/>
                                             </StackPanel>
                                             <TextBlock x:Name="RepeatedWordText" Foreground="{DynamicResource WarnFgBrush}" FontSize="11.5" FontWeight="Medium" VerticalAlignment="Center" TextWrapping="Wrap"/>
                                         </DockPanel>
@@ -260,10 +260,10 @@
                                     <Border x:Name="ContextCaptureBanner" Background="{DynamicResource CardSoftBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="9" Padding="11,7" Margin="0,8,0,0" Visibility="Collapsed">
                                         <DockPanel>
                                             <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="10,0,0,0">
-                                                <Button x:Name="SavePendingContextButton" Content="＋ 保存这句，稍后考我" Style="{StaticResource AccentButton}" Click="SavePendingContextButton_Click" FontSize="11" Padding="10,4"/>
+                                                <Button x:Name="SavePendingContextButton" Content="＋ 收藏例句" Style="{StaticResource AccentButton}" Click="SavePendingContextButton_Click" FontSize="11" Padding="10,4"/>
                                             </StackPanel>
                                             <StackPanel>
-                                                <TextBlock x:Name="ContextCaptureSourceText" Text="来自刚读过的原句" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource AccentDeepBrush}" Margin="0,0,0,2"/>
+                                                <TextBlock x:Name="ContextCaptureSourceText" Text="来自刚读过的句子" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource AccentDeepBrush}" Margin="0,0,0,2"/>
                                                 <TextBlock x:Name="ContextCaptureSentenceText" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="12.5" LineHeight="19" Foreground="{DynamicResource InkBrush}" TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </DockPanel>
@@ -273,17 +273,17 @@
                                         <StackPanel>
                                             <DockPanel Margin="0,0,0,6">
                                                 <Border DockPanel.Dock="Right" Background="{DynamicResource WarnBgBrush}" BorderBrush="{DynamicResource WarnBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="8,2" VerticalAlignment="Center">
-                                                    <TextBlock x:Name="RecallCountdownText" Text="2 秒回想" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource WarnFgBrush}"/>
+                                                    <TextBlock x:Name="RecallCountdownText" Text="回想 2 秒" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource WarnFgBrush}"/>
                                                 </Border>
-                                                <TextBlock x:Name="RecallPromptTitle" Text="先别急着看释义，回想 2 秒看看？" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource InkStrongBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="RecallPromptTitle" Text="先回想 2 秒这个词的意思" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource InkStrongBrush}" VerticalAlignment="Center"/>
                                             </DockPanel>
-                                            <TextBlock x:Name="RecallPromptSubtitle" Text="在脑海里快速回忆它的常见意思或使用场景，随时可点击或按空格揭晓。" FontSize="12" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                            <TextBlock x:Name="RecallPromptSubtitle" Text="先在脑海里想一想它的释义或用法，随时按空格 / 回车查看答案。" FontSize="12" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,10"/>
                                             <Border x:Name="RecallProgressTrack" Height="5" CornerRadius="2.5" Background="{DynamicResource AccentWashBrush}" ClipToBounds="True" Margin="0,0,0,12">
                                                 <Border x:Name="RecallProgressFill" Height="5" Width="0" HorizontalAlignment="Left" CornerRadius="2.5" Background="{DynamicResource AccentBrush}"/>
                                             </Border>
                                             <WrapPanel>
                                                 <Button x:Name="RecallRevealButton" Content="查看释义" Style="{StaticResource AccentButton}" Click="RecallRevealButton_Click" Padding="16,6" FontSize="12" Margin="0,0,10,2"/>
-                                                <TextBlock Text="快捷键：空格 / 回车 立即揭晓" FontSize="11" Foreground="{DynamicResource SubtleBrush}" VerticalAlignment="Center" Margin="2,0,0,2"/>
+                                                <TextBlock Text="按空格 / 回车立即查看" FontSize="11" Foreground="{DynamicResource SubtleBrush}" VerticalAlignment="Center" Margin="2,0,0,2"/>
                                             </WrapPanel>
                                         </StackPanel>
                                     </Border>
@@ -322,12 +322,12 @@
                                 <Border x:Name="SavedContextDivider" Background="{DynamicResource RuleBrush}" Height="1" Margin="0,12,0,11" Visibility="Collapsed"/>
                                 <StackPanel x:Name="SavedContextSection" Visibility="Collapsed">
                                     <DockPanel Margin="0,0,0,6">
-                                        <Button x:Name="WordContextReviewButton" Content="原句自测" Style="{StaticResource PillButton}" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="WordContextReviewButton_Click" FontSize="11" Padding="10,4"/>
+                                        <Button x:Name="WordContextReviewButton" Content="例句自测" Style="{StaticResource PillButton}" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="WordContextReviewButton_Click" FontSize="11" Padding="10,4"/>
                                         <Border DockPanel.Dock="Left" Background="{DynamicResource PillBgBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="7" Width="24" Height="24" Margin="0,0,8,0" VerticalAlignment="Center">
                                             <TextBlock Text="句" Foreground="{DynamicResource AccentDeepBrush}" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
-                                        <TextBlock DockPanel.Dock="Left" Text="我的原句" FontSize="15.5" FontWeight="SemiBold" Foreground="{DynamicResource InkStrongBrush}" VerticalAlignment="Center"/>
-                                        <TextBlock x:Name="SavedContextHintText" Text="离线也能随时自测" FontSize="11.5" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="9,1,10,0" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock DockPanel.Dock="Left" Text="我的例句" FontSize="15.5" FontWeight="SemiBold" Foreground="{DynamicResource InkStrongBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="SavedContextHintText" Text="可随时例句自测" FontSize="11.5" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="9,1,10,0" TextTrimming="CharacterEllipsis"/>
                                     </DockPanel>
                                     <StackPanel x:Name="SavedContextPanel"/>
                                 </StackPanel>
@@ -352,7 +352,7 @@
                     </ScrollViewer>
                     <Grid x:Name="TranslationView" Visibility="Collapsed">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                        <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="段落翻译" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource InkStrongBrush}" VerticalAlignment="Center"/><Button x:Name="TranslationContextReviewButton" Grid.Column="1" Content="原句复习" Style="{StaticResource PillButton}" Height="36" VerticalAlignment="Center" Margin="0,0,10,0" Padding="13,6" Click="ContextReviewButton_Click" ToolTip="用你保存的阅读原句做离线自测"/><ComboBox x:Name="TranslationDirectionCombo" Grid.Column="2" Width="116" Height="36" VerticalAlignment="Center" Margin="0,0,10,0" SelectedIndex="0"><ComboBoxItem Content="英译中" Tag="en|zh-CN"/><ComboBoxItem Content="中译英" Tag="zh-CN|en"/></ComboBox><Button x:Name="TranslateButton" Grid.Column="3" Content="翻译" Height="36" VerticalAlignment="Center" Style="{StaticResource AccentButton}" Click="TranslateButton_Click" Padding="20,6"/></Grid>
+                        <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="段落翻译" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource InkStrongBrush}" VerticalAlignment="Center"/><Button x:Name="TranslationContextReviewButton" Grid.Column="1" Content="例句自测" Style="{StaticResource PillButton}" Height="36" VerticalAlignment="Center" Margin="0,0,10,0" Padding="13,6" Click="ContextReviewButton_Click" ToolTip="用收藏的例句进行卡片自测"/><ComboBox x:Name="TranslationDirectionCombo" Grid.Column="2" Width="116" Height="36" VerticalAlignment="Center" Margin="0,0,10,0" SelectedIndex="0"><ComboBoxItem Content="英译中" Tag="en|zh-CN"/><ComboBoxItem Content="中译英" Tag="zh-CN|en"/></ComboBox><Button x:Name="TranslateButton" Grid.Column="3" Content="翻译" Height="36" VerticalAlignment="Center" Style="{StaticResource AccentButton}" Click="TranslateButton_Click" Padding="20,6"/></Grid>
                         <StackPanel Grid.Row="1" Margin="0,0,0,16"><TextBox x:Name="TranslationInput" AcceptsReturn="True" VerticalContentAlignment="Top" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="142" FontSize="15" MaxLength="5000" ToolTip="输入待翻译段落，最多 5000 个字符"/><TextBlock x:Name="TranslationHintText" Text="点击英文单词查看释义。" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource MutedBrush}" Margin="2,8,0,0"/></StackPanel>
                         <ScrollViewer x:Name="TranslationScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" ScrollChanged="TranslationScroll_ScrollChanged"><StackPanel>
                             <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="13" Padding="20,18" Margin="0,0,6,14"><StackPanel><TextBlock Text="原文" Style="{StaticResource SectionLabel}"/><TextBlock x:Name="TranslationSourceText" Text="在上方输入或粘贴原文。" TextWrapping="Wrap" FontSize="15.5" LineHeight="28" Foreground="{DynamicResource InkBrush}"/></StackPanel></Border>

@@ -91,7 +91,7 @@ internal sealed class QuickLookupBar : Window
         var inputHost = new Grid { VerticalAlignment = VerticalAlignment.Center };
         _placeholder = new TextBlock
         {
-            Text = "输入英文查词，或输入中文反查…",
+            Text = "输入英文或中文查词…",
             FontSize = 17.5,
             VerticalAlignment = VerticalAlignment.Center,
             IsHitTestVisible = false,
@@ -491,12 +491,12 @@ internal sealed class QuickLookupBar : Window
             var fuzzy = _dictionary.SuggestSpellingCorrections(raw, 6);
             if (fuzzy.Count > 0)
             {
-                _meaningText.Text = "离线词库未找到精确匹配，你是不是要查：";
+                _meaningText.Text = "未找到精确匹配，你是不是要查：";
                 AddSuggestionPills(fuzzy);
             }
             else
             {
-                _meaningText.Text = "按 Enter 在主窗口中联网查词或进行中文反查。";
+                _meaningText.Text = "按 Enter 在主窗口中继续查词。";
             }
         }
     }

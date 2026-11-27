@@ -29,7 +29,7 @@ struct MorphemeGroupPracticeView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("词根 \(rootForm)（\(rootMeaning)）· 练这组")
+                        Text("词根 \(rootForm)（\(rootMeaning)）· 同根辨析")
                             .font(.system(size: 19, weight: .bold))
                         Text("共 \(members.count) 个同源词并排对比，优先挑选你查过或收藏过的词。")
                             .font(.system(size: 11.5))
@@ -43,7 +43,7 @@ struct MorphemeGroupPracticeView: View {
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(Palette.wash, in: Capsule())
                         .overlay(Capsule().strokeBorder(Palette.accent.opacity(0.28), lineWidth: 0.8))
-                    Button("重新洗牌") { startQuiz() }
+                    Button("重新出题") { startQuiz() }
                         .buttonStyle(MemoButtonStyle(compact: true))
                 }
 

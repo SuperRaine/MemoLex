@@ -348,6 +348,7 @@ public partial class MainWindow : Window
         _displayedPaperType = SelectedPaperType;
         _shownExamples.Clear();
         ExamplesPanel.Children.Clear();
+        _exampleSaveButtons.Clear();
         _exampleOffset = _exampleTotal = 0;
         _examplesHaveMore = _examplesLoaded = _examplesError = false;
         MoreExamplesButton.Visibility = RetryExamplesButton.Visibility = Visibility.Collapsed;
@@ -438,13 +439,14 @@ public partial class MainWindow : Window
         var alreadySavedSentence = _contextSentences.Contains(sourceWord, sentence.English);
         var saveSentenceBtn = new Button
         {
-            Content = alreadySavedSentence ? "✓ 已保存原句" : "保存原句",
+            Content = alreadySavedSentence ? "✓ 已收藏" : "收藏例句",
             Style = (Style)FindResource("PillButton"),
-            ToolTip = "保存这条原句到本机，离线也能自测",
+            ToolTip = "收藏到「我的例句」，方便随时自测",
             FontSize = 11,
             Padding = new Thickness(9, 3, 9, 3),
             Margin = new Thickness(6, 0, 0, 0)
         };
+        _exampleSaveButtons.Add((saveSentenceBtn, sourceWord, sentence.English));
         saveSentenceBtn.Click += (_, _) =>
         {
             if (_contextSentences.Contains(sourceWord, sentence.English))
@@ -454,10 +456,10 @@ public partial class MainWindow : Window
             }
             var srcLabel = string.IsNullOrWhiteSpace(sentence.Source) ? "真题例句" : sentence.Source;
             _contextSentences.Save(sourceWord, sentence.English, sentence.Translation, srcLabel, sentence.MatchedWords.FirstOrDefault());
-            saveSentenceBtn.Content = "✓ 已保存原句";
+            RefreshExampleSaveButtons();
             RenderSavedContexts(_word);
             UpdateContextReviewButtons();
-            StatusText.Text = $"已保存「{sourceWord}」的原句，点击「原句自测」即可离线复习。";
+            StatusText.Text = $"已收藏「{sourceWord}」的例句，可随时例句自测";
         };
         var headingActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         headingActions.Children.Add(saveSentenceBtn);
@@ -613,6 +615,7 @@ public partial class MainWindow : Window
         _examplesLoaded = snapshot.Ready;
         _examplesError = snapshot.CanRetry;
         ExamplesPanel.Children.Clear();
+        _exampleSaveButtons.Clear();
         foreach (var sentence in snapshot.Items) RenderExample(sentence, _word);
         ExamplesHintText.Text = snapshot.Hint;
         MoreExamplesButton.Visibility = snapshot.HaveMore && !snapshot.CanRetry ? Visibility.Visible : Visibility.Collapsed;
@@ -994,7 +997,7 @@ public partial class MainWindow : Window
         var alreadyInPad = _membershipWord.Equals(_word, StringComparison.OrdinalIgnoreCase) && _isMember;
         if (count >= 3 && !alreadyInPad)
         {
-            RepeatedWordText.Text = $"已查询 {count} 次 · 疑似隐形顽固词，建议加入云词本巩固";
+            RepeatedWordText.Text = $"已查 {count} 次 · 容易忘记，建议加入云词本巩固";
             RepeatedWordBanner.Visibility = Visibility.Visible;
         }
         else

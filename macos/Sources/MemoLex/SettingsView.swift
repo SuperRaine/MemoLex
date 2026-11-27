@@ -208,8 +208,8 @@ private struct CacheSettings: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Text(activeItems.isEmpty
-                     ? "所有分类均已清空，本机很干净。"
-                     : "共 \(items.count) 类本机数据，其中 \(activeItems.count) 类可清理")
+                     ? "当前没有可清理的缓存。"
+                     : "当前有 \(activeItems.count) 类数据可清理")
                     .font(.system(size: 12.5))
                     .foregroundStyle(Palette.muted)
                 Spacer()
@@ -274,7 +274,7 @@ private struct CacheSettings: View {
                 .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.75))
             }
 
-            Text("安全说明：以上清理仅作用于本机缓存与学习记录，不会退出已登录的墨墨账号，也不会删除你手动编辑的本地助记或云端云词本。")
+            Text("安全说明：以上清理仅影响本机缓存与记录，不会退出墨墨账号，也不会删除本地助记和云词本。")
                 .font(.system(size: 11.5))
                 .foregroundStyle(Palette.muted)
                 .padding(12)

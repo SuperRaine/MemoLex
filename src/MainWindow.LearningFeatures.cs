@@ -15,7 +15,17 @@ public partial class MainWindow
 
     private readonly ContextSentenceStore _contextSentences = new();
     private readonly SpellingMistakeStore _spellingMistakes = new();
+    private readonly List<(Button Button, string Word, string Sentence)> _exampleSaveButtons = [];
     private PendingWordContext? _pendingContext;
+
+    private void RefreshExampleSaveButtons()
+    {
+        foreach (var (button, word, sentence) in _exampleSaveButtons)
+        {
+            var saved = _contextSentences.Contains(word, sentence);
+            button.Content = saved ? "✓ 已收藏" : "收藏例句";
+        }
+    }
     private bool _recallModeActive;
     private DispatcherTimer? _recallTimer;
     private DateTime _recallStartedAt;
@@ -27,10 +37,10 @@ public partial class MainWindow
         var count = _preferences.SearchHistory
             .FirstOrDefault(h => h.Word.Equals(word, StringComparison.OrdinalIgnoreCase))?.LookupCount ?? 1;
         RecallPromptTitle.Text = count >= 2
-            ? $"这是你第 {count} 次查「{word}」，先回想 2 秒？"
-            : $"先别急着看释义，回想 2 秒「{word}」的意思？";
-        RecallPromptSubtitle.Text = "在脑海里快速回忆它的含义或常见用法，随时可以按空格 / 回车或点击下方按钮揭晓。";
-        RecallCountdownText.Text = "回想中 · 2s";
+            ? $"第 {count} 次查「{word}」，先回想 2 秒"
+            : $"先回想 2 秒「{word}」的意思";
+        RecallPromptSubtitle.Text = "先在脑海里想一想它的释义或用法，随时按空格 / 回车查看答案。";
+        RecallCountdownText.Text = "回想 2 秒";
         RecallProgressFill.Width = 0;
 
         RecallMaskCard.Visibility = Visibility.Visible;
@@ -54,13 +64,13 @@ public partial class MainWindow
                 RecallProgressFill.Width = RecallProgressTrack.ActualWidth * ratio;
             if (ratio >= 1.0)
             {
-                RecallCountdownText.Text = "回想完成 · 可揭晓";
+                RecallCountdownText.Text = "可以查看了";
                 _recallTimer?.Stop();
             }
             else
             {
                 var remainSec = Math.Max(1, (int)Math.Ceiling((2000.0 - elapsed) / 1000.0));
-                RecallCountdownText.Text = $"回想中 · {remainSec}s";
+                RecallCountdownText.Text = $"回想 {remainSec} 秒";
             }
         };
         _recallTimer.Start();
@@ -134,10 +144,10 @@ public partial class MainWindow
         if (ContextCaptureBanner == null) return;
         if (_pendingContext is { } ctx && ctx.Word.Equals(word, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(ctx.Sentence))
         {
-            ContextCaptureSourceText.Text = $"来自刚读过的「{ctx.Source}」原句：";
+            ContextCaptureSourceText.Text = $"来自「{ctx.Source}」";
             ContextCaptureSentenceText.Text = ctx.Sentence;
             var alreadySaved = _contextSentences.Contains(ctx.Word, ctx.Sentence);
-            SavePendingContextButton.Content = alreadySaved ? "✓ 已保存 · 原句自测" : "＋ 保存这句，稍后考我";
+            SavePendingContextButton.Content = alreadySaved ? "✓ 已收藏 · 去自测" : "＋ 收藏例句";
             ContextCaptureBanner.Visibility = Visibility.Visible;
         }
         else
@@ -155,10 +165,11 @@ public partial class MainWindow
             return;
         }
         _contextSentences.Save(ctx.Word, ctx.Sentence, ctx.Translation, ctx.Source, ctx.MatchedForm);
-        SavePendingContextButton.Content = "✓ 已保存 · 原句自测";
+        SavePendingContextButton.Content = "✓ 已收藏 · 去自测";
         RenderSavedContexts(_word);
+        RefreshExampleSaveButtons();
         UpdateContextReviewButtons();
-        StatusText.Text = $"已保存「{ctx.Word}」的原句，离线也能随时自测。";
+        StatusText.Text = $"已收藏「{ctx.Word}」的例句";
     }
 
     private void UpdateSavedContextVisibility(string word)
@@ -184,7 +195,7 @@ public partial class MainWindow
             return;
         }
 
-        SavedContextHintText.Text = $"当前单词已保存 {items.Count} 条原句 · 全部共 {_contextSentences.Count} 条，离线也能原句自测";
+        SavedContextHintText.Text = $"本词 {items.Count} 条 · 共 {_contextSentences.Count} 条";
         var pillStyle = TryFindResource("PillButton") as Style;
         foreach (var item in items)
         {
@@ -201,29 +212,30 @@ public partial class MainWindow
                 FontSize = 11,
                 Padding = new Thickness(9, 3, 9, 3),
                 Margin = new Thickness(6, 0, 0, 0),
-                ToolTip = "朗读这条原句"
+                ToolTip = "朗读例句"
             };
             if (pillStyle != null) speakBtn.Style = pillStyle;
             speakBtn.Click += async (_, _) => await SpeakExampleAsync(speakBtn, captured.Sentence);
 
             var removeBtn = new Button
             {
-                Content = "删除",
+                Content = "移除",
                 FontSize = 11,
                 Padding = new Thickness(8, 3, 8, 3),
                 Margin = new Thickness(6, 0, 0, 0),
                 Background = System.Windows.Media.Brushes.Transparent,
                 BorderThickness = new Thickness(0),
-                ToolTip = "删除这条原句"
+                ToolTip = "移除这条收藏例句"
             };
             removeBtn.SetResourceReference(Control.ForegroundProperty, "MutedBrush");
             removeBtn.Click += (_, _) =>
             {
                 _contextSentences.Remove(captured.Id);
                 RenderSavedContexts(_word);
+                RefreshExampleSaveButtons();
                 UpdateContextCaptureBanner(_word);
                 UpdateContextReviewButtons();
-                StatusText.Text = "已删除该条原句。";
+                StatusText.Text = "已移除例句";
             };
             actions.Children.Add(speakBtn);
             actions.Children.Add(removeBtn);
@@ -290,9 +302,9 @@ public partial class MainWindow
     {
         var count = _contextSentences.Count;
         if (TranslationContextReviewButton != null)
-            TranslationContextReviewButton.Content = count > 0 ? $"原句复习 ({count})" : "原句复习";
+            TranslationContextReviewButton.Content = count > 0 ? $"例句自测 ({count})" : "例句自测";
         if (WordContextReviewButton != null)
-            WordContextReviewButton.Content = count > 0 ? $"原句自测 ({count})" : "原句自测";
+            WordContextReviewButton.Content = count > 0 ? $"例句自测 ({count})" : "例句自测";
     }
 
     private void ContextReviewButton_Click(object sender, RoutedEventArgs e) => OpenContextSentenceReview();
@@ -303,7 +315,7 @@ public partial class MainWindow
         var all = _contextSentences.List();
         if (all.Count == 0)
         {
-            StatusText.Text = "还没有保存的原句。在段落翻译、截图翻译或真题例句中点击「保存原句」即可积累。";
+            StatusText.Text = "还没有收藏例句，可在翻译或真题例句中点击「收藏例句」";
             return;
         }
 
@@ -327,7 +339,7 @@ public partial class MainWindow
             _onlineDictionary,
             word => _mnemonics.Get(word, MnemonicAccountKey).FirstOrDefault()?.Text,
             persistProgress: false,
-            title: "我的原句 · 离线自测",
+            title: "我的例句 · 卡片自测",
             speak: (w, accent) => PlaySpeechAsync(w, accent),
             getMnemonics: w => _mnemonics.Get(w, MnemonicAccountKey),
             mnemonicStore: _mnemonics,
@@ -362,9 +374,9 @@ public partial class MainWindow
             var networkSummary = !hasNetwork
                 ? "暂无缓存"
                 : memoryCount > 0 && networkTotalBytes > 0
-                    ? $"{memoryCount} 项内存缓存 · {CacheMaintenanceHost.FormatBytes(networkTotalBytes)}"
+                    ? $"{memoryCount} 项缓存 · {CacheMaintenanceHost.FormatBytes(networkTotalBytes)}"
                     : memoryCount > 0
-                        ? $"{memoryCount} 项内存缓存"
+                        ? $"{memoryCount} 项缓存"
                         : CacheMaintenanceHost.FormatBytes(networkTotalBytes);
 
             return
@@ -372,45 +384,45 @@ public partial class MainWindow
                 new CacheCategoryItem(
                     "history",
                     "查词历史与次数",
-                    "本机查词记录及「查过 N 次」计数，清除后「最近查词」与建议角标会重置。",
+                    "本机查词记录及查词次数，清除后「最近查词」和重复次数标记会重置。",
                     historyCount > 0 ? $"{historyCount} 条记录" : "暂无记录",
                     historyCount > 0,
-                    "将清空本机的全部查词历史与查词次数统计，不会影响云词本和账号登录。"),
+                    "将清空本机的全部查词历史与次数统计，不影响云词本和账号登录。"),
                 new CacheCategoryItem(
                     "contexts",
-                    "已保存的原句",
-                    "从段落翻译、截图翻译与真题例句保存的离线原句及复习计数。",
-                    contextCount > 0 ? $"{contextCount} 条原句 · {CacheMaintenanceHost.FormatBytes(contextBytes)}" : "暂无数据",
+                    "收藏的例句",
+                    "在翻译和真题例句中收藏的例句及自测次数。",
+                    contextCount > 0 ? $"{contextCount} 条例句 · {CacheMaintenanceHost.FormatBytes(contextBytes)}" : "暂无数据",
                     contextCount > 0,
-                    "将清空所有保存在本机的阅读原句，离线原句自测列表将变为空。"),
+                    "将清空本机收藏的全部例句，例句自测列表将变为空。"),
                 new CacheCategoryItem(
                     "spelling",
-                    "拼写错点记录",
-                    "卡片默写中记住的具体易错点与 2 选 1 错点微题记录。",
-                    spellingCount > 0 ? $"{spellingCount} 个易错词 · {CacheMaintenanceHost.FormatBytes(spellingBytes)}" : "暂无记录",
+                    "拼写易错记录",
+                    "拼写默写中记住的易错位置与针对练习记录。",
+                    spellingCount > 0 ? $"{spellingCount} 个单词 · {CacheMaintenanceHost.FormatBytes(spellingBytes)}" : "暂无记录",
                     spellingCount > 0,
-                    "将清空已记录的拼写易错点，后续拼写练习会重新按实际输入记录。"),
+                    "将清空已记录的拼写易错点，后续拼写练习会重新记录。"),
                 new CacheCategoryItem(
                     "flashcards",
                     "卡片自测进度",
-                    "顽固单词与各个云词本的本地卡片自测续接进度。",
+                    "顽固单词与云词本的卡片自测进度。",
                     flashcardCount > 0 ? $"{flashcardCount} 份进度 · {CacheMaintenanceHost.FormatBytes(flashcardBytes)}" : "暂无进度",
                     flashcardCount > 0,
-                    "将清除所有本地保存的卡片自测进度，下次打开自测将从第 1 组重新开始。"),
+                    "将清除所有本地卡片自测进度，下次打开将从第 1 组开始。"),
                 new CacheCategoryItem(
                     "stubborn",
-                    "顽固单词本地缓存",
-                    "用于离线浏览顽固单词列表的本机快照，清除后联网可重新同步。",
+                    "顽固单词缓存",
+                    "保存在本机的顽固单词列表，清除后联网会自动重新同步。",
                     stubbornCount > 0 ? $"{stubbornCount} 份缓存 · {CacheMaintenanceHost.FormatBytes(stubbornBytes)}" : "暂无缓存",
                     stubbornCount > 0,
-                    "将清除本机缓存的顽固单词快照，不会退出墨墨账号，联网后会自动重新同步。"),
+                    "将清除本机缓存的顽固单词列表，不会退出账号，联网后会自动重新同步。"),
                 new CacheCategoryItem(
                     "network",
                     "网络与临时缓存",
-                    "真题例句、联网释义、段落翻译、朗读语音内存缓存，以及更新包和海词浏览临时文件。",
+                    "真题例句、在线释义、翻译、语音缓存及临时文件。",
                     networkSummary,
                     hasNetwork,
-                    "将清除联网查询、翻译与语音缓存及本机临时文件，下次访问时重新获取。")
+                    "将清除在线查询、翻译与语音缓存及临时文件，下次使用时重新获取。")
             ];
         }
 
@@ -424,26 +436,27 @@ public partial class MainWindow
                     UpdateHistory();
                     _ = UpdateSuggestionsAsync(SearchBox.Text);
                     UpdateRepeatedWordBanner();
-                    return "已清除查词历史与查词次数。";
+                    return "已清除查词历史与次数。";
                 case "contexts":
                     _contextSentences.Clear();
                     UpdateContextReviewButtons();
                     if (ValidWord(_word))
                     {
                         RenderSavedContexts(_word);
+                        RefreshExampleSaveButtons();
                         UpdateContextCaptureBanner(_word);
                     }
-                    return "已清除所有已保存的原句。";
+                    return "已清除收藏的例句。";
                 case "spelling":
                     _spellingMistakes.Clear();
-                    return "已清除拼写错点记录。";
+                    return "已清除拼写易错记录。";
                 case "flashcards":
                     FlashcardProgressStore.RemoveAll(profile);
                     return "已清除所有卡片自测进度。";
                 case "stubborn":
                     StubbornWordCache.RemoveAll(profile);
                     ResetStubbornWords();
-                    return "已清除顽固单词本地缓存。";
+                    return "已清除顽固单词缓存。";
                 case "network":
                     _cloudCache.Clear();
                     _examples.ClearCache();

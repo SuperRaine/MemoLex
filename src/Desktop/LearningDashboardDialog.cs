@@ -25,7 +25,7 @@ internal static class LearningDashboardDialog
         title.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
         body.Children.Add(title);
 
-        var sub = InputDialog.Text("基于本机查词历史与自测记录实时汇总，点击高频词可直接复习。");
+        var sub = InputDialog.Text("统计本机查词与自测记录，点击单词可直接复习。");
         sub.FontSize = 12;
         sub.Margin = new Thickness(0, 3, 0, 14);
         body.Children.Add(sub);
@@ -68,9 +68,9 @@ internal static class LearningDashboardDialog
             kpiGrid.Children.Add(card);
         }
 
-        AddKpi(0, "近 7 天查词", $"{weekTotal}", "去重词条数", "#0EA5E9");
+        AddKpi(0, "近 7 天查词", $"{weekTotal}", "查过的词", "#0EA5E9");
         AddKpi(1, "累计查词", $"{totalLookups:N0}", $"共 {history.Count} 个不同词", "#14B8A6");
-        AddKpi(2, "高频复查词", $"{repeatedCount}", "查询 ≥ 3 次", "#D97706");
+        AddKpi(2, "反复查词", $"{repeatedCount}", "查询 ≥ 3 次", "#D97706");
         AddKpi(3, "卡片已掌握", $"{masteredCount}", stubbornTotal > 0 ? $"顽固词共 {stubbornTotal}" : "来自卡片自测", "#10B981");
         body.Children.Add(kpiGrid);
 
@@ -138,7 +138,7 @@ internal static class LearningDashboardDialog
         topCard.SetResourceReference(Border.BackgroundProperty, "CardAltBrush");
         topCard.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         var topStack = new StackPanel();
-        var topTitle = new TextBlock { Text = "高频复查词 Top 5（隐形顽固词）", FontSize = 13, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 10) };
+        var topTitle = new TextBlock { Text = "最常复查的词", FontSize = 13, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 10) };
         topTitle.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
         topStack.Children.Add(topTitle);
 
@@ -203,13 +203,13 @@ internal static class LearningDashboardDialog
             {
                 var reviewBtn = new Button
                 {
-                    Content = savedSentences.Count > 0 ? $"原句自测（{savedSentences.Count}）" : "暂无原句",
+                    Content = savedSentences.Count > 0 ? $"例句自测（{savedSentences.Count}）" : "暂无例句",
                     IsEnabled = savedSentences.Count > 0,
                     FontSize = 12,
                     Padding = new Thickness(14, 7, 14, 7),
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(12, 0, 0, 0),
-                    ToolTip = "用你保存过的原句做离线语境自测"
+                    ToolTip = "用收藏的例句进行卡片自测"
                 };
                 if (Application.Current.TryFindResource("AccentButton") is Style accentStyle) reviewBtn.Style = accentStyle;
                 reviewBtn.Click += (_, _) =>
@@ -224,7 +224,7 @@ internal static class LearningDashboardDialog
             var practiceInfo = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             var practiceTitle = new TextBlock
             {
-                Text = "原句复习 & 拼写错点记忆",
+                Text = "例句自测与拼写巩固",
                 FontSize = 13,
                 FontWeight = FontWeights.SemiBold
             };
@@ -233,16 +233,16 @@ internal static class LearningDashboardDialog
 
             var detailParts = new List<string>
             {
-                $"已保存 {savedSentences.Count} 条阅读原句"
+                $"已收藏 {savedSentences.Count} 条例句"
             };
             if (activeMistakes.Count > 0)
             {
                 var sample = string.Join("、", activeMistakes.Take(3).Select(m => $"{m.Word}（{m.CorrectOption}/{m.WrongOption}）"));
-                detailParts.Add($"待巩固拼写错点 {activeMistakes.Count} 词：{sample}");
+                detailParts.Add($"待巩固拼写 {activeMistakes.Count} 词：{sample}");
             }
             else
             {
-                detailParts.Add("拼写练习会自动记住具体错点，连续 2 次拼对后自动清除");
+                detailParts.Add("拼写出错时会自动记下易错位置，连续拼对 2 次后自动清除");
             }
             var practiceDesc = new TextBlock
             {

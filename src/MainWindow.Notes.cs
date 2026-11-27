@@ -31,7 +31,7 @@ public partial class MainWindow
             var origin=note.Origin=="cloud"?(cloud?"云端助记":"云端助记（离线）"):"本地助记";
             header.Children.Add(new TextBlock
             {
-                Text=hasBreakdowns?$"点击词根拆解 · {origin}":origin,
+                Text=hasBreakdowns?$"词根拆解 · {origin}":origin,
                 FontSize=11,FontWeight=FontWeights.SemiBold,
                 Foreground=Brush("#5B7A91"),VerticalAlignment=VerticalAlignment.Center
             });

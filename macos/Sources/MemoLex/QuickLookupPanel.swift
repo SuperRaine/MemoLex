@@ -203,13 +203,13 @@ private struct QuickLookupView: View {
                             suggestionPills(Array(prefixSuggestions.prefix(5)))
                         }
                     } else if !spellingSuggestions.isEmpty {
-                        Text("离线词库未找到精确匹配，你是不是要查：")
+                        Text("未找到精确匹配，你是不是要查：")
                             .font(.system(size: 12.5, weight: .semibold))
                             .foregroundStyle(Palette.deep)
                         suggestionPills(spellingSuggestions)
                     } else {
                         HStack {
-                            Text("按 Enter 在主窗口中联网查词或中文反查")
+                            Text("按 Enter 在主窗口中继续查词")
                                 .font(.system(size: 13))
                                 .foregroundStyle(Palette.muted)
                             Spacer()

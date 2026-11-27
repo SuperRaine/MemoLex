@@ -110,7 +110,7 @@ public partial class MainWindow
     private void RenderExtractedChips()
     {
         TranslationExtractedPanel.Children.Clear();
-        TranslationExtractedTitle.Text=$"生词一键提取 · 识别到 {_extractedWords.Count} 个重点词（已选 {_selectedExtracted.Count}）";
+        TranslationExtractedTitle.Text=$"重点生词 · 共 {_extractedWords.Count} 个（已选 {_selectedExtracted.Count}）";
         BatchAddExtractedButton.IsEnabled=_selectedExtracted.Count>0;
         SelectAllExtractedButton.Content=_selectedExtracted.Count==_extractedWords.Count?"取消全选":"全选";
 
@@ -138,16 +138,16 @@ public partial class MainWindow
                 _pendingContext=ExtractCurrentTranslationContext(word,word);
                 await LoadWordAsync(word,keepPendingContext:true);
             };
-            var saveSentenceItem=new MenuItem{Header="保存原句，稍后考我"};
+            var saveSentenceItem=new MenuItem{Header="收藏所在例句"};
             saveSentenceItem.Click+=(_, _)=>
             {
                 var ctx=ExtractCurrentTranslationContext(word,word);
                 if(ctx==null)return;
                 _contextSentences.Save(ctx.Word,ctx.Sentence,ctx.Translation,ctx.Source,ctx.MatchedForm);
                 UpdateContextReviewButtons();
-                TranslationExtractedStatus.Text=$"✓ 已保存「{word}」所在原句，可点击右上角「原句复习」离线自测。";
+                TranslationExtractedStatus.Text=$"✓ 已收藏「{word}」的例句，可点击右上角「例句自测」复习。";
                 TranslationExtractedStatus.Visibility=Visibility.Visible;
-                StatusText.Text=$"已保存「{word}」的原句。";
+                StatusText.Text=$"已收藏「{word}」的例句";
             };
             chipMenu.Items.Add(lookupItem);
             chipMenu.Items.Add(saveSentenceItem);
@@ -156,7 +156,7 @@ public partial class MainWindow
             {
                 Content=chipPanel,Padding=new Thickness(10,5,10,5),Margin=new Thickness(0,0,7,7),
                 ContextMenu=chipMenu,
-                ToolTip=$"{item.Word}{(item.Phonetic.Length>0?$" /{item.Phonetic}/":"")}\n{item.Meaning}\n（单击选中/取消，右键查词或保存原句）"
+                ToolTip=$"{item.Word}{(item.Phonetic.Length>0?$" /{item.Phonetic}/":"")}\n{item.Meaning}\n（单击选中/取消，右键查词或收藏例句）"
             };
             chip.SetResourceReference(Control.BackgroundProperty,chosen?"SelectedBgBrush":"ControlBgBrush");
             chip.SetResourceReference(Control.BorderBrushProperty,chosen?"AccentBrush":"BorderBrush");

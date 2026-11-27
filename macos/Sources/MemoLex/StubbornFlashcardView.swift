@@ -365,7 +365,7 @@ struct StubbornFlashcardView: View {
         let ctx = contextItem(for: word)
         return VStack(spacing: 12) {
             if let drill = activeDrill, !microDrillDone, microChoices.count == 2 {
-                Text("针对错点微题 · 曾错 \(drill["mistakeCount"].integer) 次")
+                Text("拼写易错点 · 曾错 \(drill["mistakeCount"].integer) 次")
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(Color(red: 0.65, green: 0.34, blue: 0.03))
                     .padding(.horizontal, 12).padding(.vertical, 4)
@@ -418,7 +418,7 @@ struct StubbornFlashcardView: View {
                 }
                 .padding(.top, 4)
 
-                Button("跳过微题，直接整词默写") {
+                Button("跳过，直接默写") {
                     microDrillDone = true
                     spellingFocused = true
                 }
@@ -608,8 +608,8 @@ struct StubbornFlashcardView: View {
             Task { @MainActor in
                 if let rec = try? await core.request("spelling.recordMistake", ["word": .string(word), "typed": .string(trimmed)]),
                    rec != .null, practice.current == word, !revealed,
-                   !spellingClue.contains("已记住此错点") {
-                    spellingClue += " · 已记住此错点，下次针对练"
+                   !spellingClue.contains("已记下易错点") {
+                    spellingClue += " · 已记下易错点"
                 }
             }
         }
@@ -720,7 +720,7 @@ struct StubbornFlashcardView: View {
                                 .id(word)
                             if let ctx {
                                 VStack(alignment: .leading, spacing: 5) {
-                                    Text("读过的原句 · \(ctx["source"].text)")
+                                    Text("收藏例句 · \(ctx["source"].text)")
                                         .font(.system(size: 11.5, weight: .semibold))
                                         .foregroundStyle(Palette.deep)
                                     Text(highlightedSentence(ctx["sentence"].text, word: word, matchedForm: ctx["matchedForm"].text, fontSize: 14.5))
@@ -771,7 +771,7 @@ struct StubbornFlashcardView: View {
                 }
             } else if contextMode, let ctx {
                 VStack(spacing: 12) {
-                    Text("第 \(practice.groupNumber) 组 · 原句自测（\(ctx["source"].text)）")
+                    Text("第 \(practice.groupNumber) 组 · 例句自测（\(ctx["source"].text)）")
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(Palette.deep)
                         .padding(.horizontal, 11).padding(.vertical, 4)
@@ -813,7 +813,7 @@ struct StubbornFlashcardView: View {
                     }
                     if let ctx {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("你读过的原句 · \(ctx["source"].text)")
+                            Text("收藏例句 · \(ctx["source"].text)")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Palette.deep)
                             Text(highlightedSentence(ctx["sentence"].text, word: word, matchedForm: ctx["matchedForm"].text, fontSize: 13.5))

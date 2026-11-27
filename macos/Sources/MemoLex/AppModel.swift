@@ -401,14 +401,14 @@ enum EnglishAccent: String, CaseIterable {
         if let matchedForm, !matchedForm.isEmpty { params["matchedForm"] = .string(matchedForm) }
         if (try? await core.request("contextSentences.save", params)) != nil {
             await refreshContextSentences()
-            status = "已保存「\(targetWord)」的原句，离线也能随时自测。"
+            status = "已收藏「\(targetWord)」的例句"
         }
     }
 
     func removeContextSentence(id: String) async {
         _ = try? await core.request("contextSentences.remove", ["id": .string(id)])
         await refreshContextSentences()
-        status = "已删除该条原句。"
+        status = "已移除例句"
     }
 
     func recordContextReview(id: String) async {
@@ -418,7 +418,7 @@ enum EnglishAccent: String, CaseIterable {
 
     func openContextReview(focusWord: String? = nil) {
         guard !contextSentences.isEmpty else {
-            status = "还没有保存的原句。在段落翻译、截图翻译或真题例句中点击「保存原句」即可积累。"
+            status = "还没有收藏例句，可在翻译或真题例句中点击「收藏例句」"
             return
         }
         contextReviewFocusWord = focusWord
@@ -459,7 +459,7 @@ enum EnglishAccent: String, CaseIterable {
             "source": .string(lastTranslationSourceLabel)
         ])) != nil {
             await refreshContextSentences()
-            status = "已保存「\(targetWord)」所在原句，可点击「原句复习」离线自测。"
+            status = "已收藏「\(targetWord)」的例句，可随时例句自测"
         }
     }
 
@@ -573,9 +573,9 @@ enum EnglishAccent: String, CaseIterable {
         if !hasNetwork {
             networkSummary = "暂无缓存"
         } else if memoryCount > 0 && networkBytes > 0 {
-            networkSummary = "\(memoryCount) 项内存缓存 · \(formatCacheBytes(networkBytes))"
+            networkSummary = "\(memoryCount) 项缓存 · \(formatCacheBytes(networkBytes))"
         } else if memoryCount > 0 {
-            networkSummary = "\(memoryCount) 项内存缓存"
+            networkSummary = "\(memoryCount) 项缓存"
         } else {
             networkSummary = formatCacheBytes(networkBytes)
         }
@@ -584,50 +584,50 @@ enum EnglishAccent: String, CaseIterable {
             CacheCategoryInfo(
                 id: "history",
                 title: "查词历史与次数",
-                description: "本机查词记录及「查过 N 次」计数，清除后「最近查词」与建议角标会重置。",
+                description: "本机查词记录及查词次数，清除后「最近查词」和重复次数标记会重置。",
                 summary: historyCount > 0 ? "\(historyCount) 条记录" : "暂无记录",
                 hasData: historyCount > 0,
-                confirmMessage: "将清空本机的全部查词历史与查词次数统计，不会影响云词本和账号登录。"
+                confirmMessage: "将清空本机的全部查词历史与次数统计，不影响云词本和账号登录。"
             ),
             CacheCategoryInfo(
                 id: "contexts",
-                title: "已保存的原句",
-                description: "从段落翻译、截图翻译与真题例句保存的离线原句及复习计数。",
-                summary: contextCount > 0 ? "\(contextCount) 条原句 · \(formatCacheBytes(contextBytes))" : "暂无数据",
+                title: "收藏的例句",
+                description: "在翻译和真题例句中收藏的例句及自测次数。",
+                summary: contextCount > 0 ? "\(contextCount) 条例句 · \(formatCacheBytes(contextBytes))" : "暂无数据",
                 hasData: contextCount > 0,
-                confirmMessage: "将清空所有保存在本机的阅读原句，离线原句自测列表将变为空。"
+                confirmMessage: "将清空本机收藏的全部例句，例句自测列表将变为空。"
             ),
             CacheCategoryInfo(
                 id: "spelling",
-                title: "拼写错点记录",
-                description: "卡片默写中记住的具体易错点与 2 选 1 错点微题记录。",
-                summary: spellingCount > 0 ? "\(spellingCount) 个易错词 · \(formatCacheBytes(spellingBytes))" : "暂无记录",
+                title: "拼写易错记录",
+                description: "拼写默写中记住的易错位置与针对练习记录。",
+                summary: spellingCount > 0 ? "\(spellingCount) 个单词 · \(formatCacheBytes(spellingBytes))" : "暂无记录",
                 hasData: spellingCount > 0,
-                confirmMessage: "将清空已记录的拼写易错点，后续拼写练习会重新按实际输入记录。"
+                confirmMessage: "将清空已记录的拼写易错点，后续拼写练习会重新记录。"
             ),
             CacheCategoryInfo(
                 id: "flashcards",
                 title: "卡片自测进度",
-                description: "顽固单词与各个云词本的本地卡片自测续接进度。",
+                description: "顽固单词与云词本的卡片自测进度。",
                 summary: !flashcardFiles.isEmpty ? "\(flashcardFiles.count) 份进度 · \(formatCacheBytes(flashcardBytes))" : "暂无进度",
                 hasData: !flashcardFiles.isEmpty,
-                confirmMessage: "将清除所有本地保存的卡片自测进度，下次打开自测将从第 1 组重新开始。"
+                confirmMessage: "将清除所有本地卡片自测进度，下次打开将从第 1 组开始。"
             ),
             CacheCategoryInfo(
                 id: "stubborn",
-                title: "顽固单词本地缓存",
-                description: "用于离线浏览顽固单词列表的本机快照，清除后联网可重新同步。",
+                title: "顽固单词缓存",
+                description: "保存在本机的顽固单词列表，清除后联网会自动重新同步。",
                 summary: !stubbornFiles.isEmpty ? "\(stubbornFiles.count) 份缓存 · \(formatCacheBytes(stubbornBytes))" : "暂无缓存",
                 hasData: !stubbornFiles.isEmpty,
-                confirmMessage: "将清除本机缓存的顽固单词快照，不会退出墨墨账号，联网后会自动重新同步。"
+                confirmMessage: "将清除本机缓存的顽固单词列表，不会退出账号，联网后会自动重新同步。"
             ),
             CacheCategoryInfo(
                 id: "network",
                 title: "网络与临时缓存",
-                description: "真题例句、联网释义、段落翻译、朗读语音内存缓存及更新安装包临时文件。",
+                description: "真题例句、在线释义、翻译、语音缓存及临时文件。",
                 summary: networkSummary,
                 hasData: hasNetwork,
-                confirmMessage: "将清除联网查询、翻译与语音缓存及本机临时文件，下次访问时重新获取。"
+                confirmMessage: "将清除在线查询、翻译与语音缓存及临时文件，下次使用时重新获取。"
             )
         ]
     }
@@ -636,15 +636,15 @@ enum EnglishAccent: String, CaseIterable {
         switch id {
         case "history":
             clearHistory()
-            return "已清除查词历史与查词次数。"
+            return "已清除查词历史与次数。"
         case "contexts":
             _ = try? await core.request("contextSentences.clear")
             await refreshContextSentences()
-            return "已清除所有已保存的原句。"
+            return "已清除收藏的例句。"
         case "spelling":
             _ = try? await core.request("spelling.clear")
             await refreshActiveSpellingMistakes()
-            return "已清除拼写错点记录。"
+            return "已清除拼写易错记录。"
         case "flashcards":
             for url in matchingProfileFiles(prefix: "flashcards-") {
                 try? FileManager.default.removeItem(at: url)
@@ -661,7 +661,7 @@ enum EnglishAccent: String, CaseIterable {
             stubbornTotal = 0
             stubbornHint = ""
             lastStubbornFetch = nil
-            return "已清除顽固单词本地缓存。"
+            return "已清除顽固单词缓存。"
         case "network":
             _ = try? await core.request("cache.clear")
             let updatesDir = AppPaths.profile.appendingPathComponent("updates", isDirectory: true)

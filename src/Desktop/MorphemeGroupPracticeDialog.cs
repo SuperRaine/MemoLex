@@ -49,7 +49,7 @@ internal static class MorphemeGroupPracticeDialog
         };
         scoreBadge.SetResourceReference(Border.BackgroundProperty, "PillBgBrush");
         scoreBadge.SetResourceReference(Border.BorderBrushProperty, "PillBorderBrush");
-        var restartBtn = new Button { Content = "重新洗牌", FontSize = 11.5, Padding = new Thickness(11, 5, 11, 5) };
+        var restartBtn = new Button { Content = "重新出题", FontSize = 11.5, Padding = new Thickness(11, 5, 11, 5) };
         headerRight.Children.Add(scoreBadge);
         headerRight.Children.Add(restartBtn);
         header.Children.Add(headerRight);
@@ -57,7 +57,7 @@ internal static class MorphemeGroupPracticeDialog
         var titleStack = new StackPanel();
         var titleText = new TextBlock
         {
-            Text = $"词根 {group.RootForm}（{group.RootMeaning}）· 练这组",
+            Text = $"词根 {group.RootForm}（{group.RootMeaning}）· 同根辨析",
             FontSize = 19,
             FontWeight = FontWeights.Bold
         };

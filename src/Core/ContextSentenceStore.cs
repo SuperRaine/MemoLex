@@ -252,7 +252,7 @@ public sealed class ContextSentenceStore
         var cleanWord = word.Trim();
         var cleanSentence = Regex.Replace(sentence.Trim(), @"\s+", " ");
         if (cleanWord.Length is < 1 or > 100 || cleanSentence.Length is < 3 or > 600)
-            throw new ArgumentException("单词或原句内容无效。");
+            throw new ArgumentException("单词或例句内容无效。");
         var cleanTranslation = Regex.Replace((translation ?? "").Trim(), @"\s+", " ");
         if (cleanTranslation.Length > 500) cleanTranslation = cleanTranslation[..497] + "…";
         var cleanSource = string.IsNullOrWhiteSpace(source) ? "查词保存" : source.Trim();

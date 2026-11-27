@@ -42,14 +42,14 @@ struct LearningDashboardView: View {
                 VStack(alignment: .leading, spacing: 15) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("学习统计看板").font(.system(size: 22, weight: .bold))
-                        Text("基于本机查词历史与自测记录实时汇总，点击高频词可直接复习。")
+                        Text("统计本机查词与自测记录，点击单词可直接复习。")
                             .font(.system(size: 12)).foregroundStyle(Palette.muted)
                     }
 
                     HStack(spacing: 10) {
-                        kpiCard("近 7 天查词", value: "\(weekTotal)", hint: "去重词条数", tint: Color(red: 0.05, green: 0.65, blue: 0.91))
+                        kpiCard("近 7 天查词", value: "\(weekTotal)", hint: "查过的词", tint: Color(red: 0.05, green: 0.65, blue: 0.91))
                         kpiCard("累计查词", value: "\(totalLookups)", hint: "共 \(model.history.count) 个不同词", tint: Color(red: 0.08, green: 0.72, blue: 0.65))
-                        kpiCard("高频复查词", value: "\(repeatedCount)", hint: "查询 ≥ 3 次", tint: Color(red: 0.85, green: 0.47, blue: 0.02))
+                        kpiCard("反复查词", value: "\(repeatedCount)", hint: "查询 ≥ 3 次", tint: Color(red: 0.85, green: 0.47, blue: 0.02))
                         kpiCard("卡片已掌握", value: "\(masteredCount)", hint: model.stubbornTotal > 0 ? "顽固词共 \(model.stubbornTotal)" : "来自卡片自测", tint: Color(red: 0.06, green: 0.72, blue: 0.50))
                     }
 
@@ -85,7 +85,7 @@ struct LearningDashboardView: View {
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("高频复查词 Top 5（隐形顽固词）").font(.system(size: 13.5, weight: .semibold))
+                        Text("最常复查的词").font(.system(size: 13.5, weight: .semibold))
                         if topRepeated.isEmpty {
                             Text("暂无重复查询 2 次以上的单词，继续查词积累吧！")
                                 .font(.system(size: 12)).foregroundStyle(Palette.muted)
@@ -108,24 +108,24 @@ struct LearningDashboardView: View {
 
                     HStack(alignment: .center, spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("原句复习 & 拼写错点记忆")
+                            Text("例句自测与拼写巩固")
                                 .font(.system(size: 13.5, weight: .semibold))
                             let mistakeSummary: String = {
                                 if model.activeSpellingMistakes.isEmpty {
-                                    return "拼写练习会自动记住具体错点，连续 2 次拼对后自动清除"
+                                    return "拼写出错时会自动记下易错位置，连续拼对 2 次后自动清除"
                                 }
                                 let sample = model.activeSpellingMistakes.prefix(3).map {
                                     "\($0["word"].text)（\($0["correctOption"].text)/\($0["wrongOption"].text)）"
                                 }.joined(separator: "、")
-                                return "待巩固拼写错点 \(model.activeSpellingMistakes.count) 词：\(sample)"
+                                return "待巩固拼写 \(model.activeSpellingMistakes.count) 词：\(sample)"
                             }()
-                            Text("已保存 \(model.contextSentences.count) 条阅读原句 · \(mistakeSummary)")
+                            Text("已收藏 \(model.contextSentences.count) 条例句 · \(mistakeSummary)")
                                 .font(.system(size: 11.5))
                                 .foregroundStyle(Palette.muted)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8)
-                        Button(model.contextSentences.isEmpty ? "暂无原句" : "原句自测（\(model.contextSentences.count)）") {
+                        Button(model.contextSentences.isEmpty ? "暂无例句" : "例句自测（\(model.contextSentences.count)）") {
                             model.openContextReview()
                         }
                         .buttonStyle(MemoButtonStyle(accent: true, compact: true))
