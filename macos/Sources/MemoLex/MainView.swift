@@ -42,7 +42,7 @@ struct MainView: View {
                         .transition(.opacity)
                     }
                     .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.9), value: model.page)
-                    .padding(compact ? 16 : 25)
+                    .padding(compact ? 12 : 16)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .tourTarget("reading")
                 }.frame(maxHeight: .infinity)
@@ -458,12 +458,12 @@ private struct WordPage: View {
                                    "ky": "考研", "toefl": "TOEFL", "ielts": "IELTS", "gre": "GRE"]
     var body: some View {
         ScrollView {
-            Card(padding: compact ? 20 : 28) {
+            Card(padding: compact ? 16 : 22) {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .center, spacing: 15) {
+                    HStack(alignment: .center, spacing: 14) {
                         ZStack(alignment: .leading) {
                             Text(model.word.isEmpty ? "查词" : model.word)
-                                .font(.system(size: compact ? 32 : 42, weight: .bold))
+                                .font(.system(size: compact ? 29 : 34, weight: .bold))
                                 .lineLimit(2)
                                 .textSelection(.enabled)
                                 .id(model.word)
@@ -471,71 +471,69 @@ private struct WordPage: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9), value: model.word)
-                        if compact { VStack(spacing: 6) { actions } } else { HStack(spacing: 8) { actions } }
+                        if compact { VStack(spacing: 5) { actions } } else { HStack(spacing: 7) { actions } }
                     }
-                    HStack(spacing: 8) {
-                        Text(model.entry["phonetic"].text.isEmpty ? (model.word.isEmpty ? "你的桌面英汉词典" : "") : "/\(model.entry["phonetic"].text)/").font(.system(size: 16)).foregroundStyle(Palette.muted)
+                    HStack(spacing: 7) {
+                        Text(model.entry["phonetic"].text.isEmpty ? (model.word.isEmpty ? "你的桌面英汉词典" : "") : "/\(model.entry["phonetic"].text)/").font(.system(size: 14.5)).foregroundStyle(Palette.muted)
                         ForEach(EnglishAccent.allCases, id: \.self) { accent in
                             Button { model.speak(accent) } label: { Label(accent.label, systemImage: "speaker.wave.2") }
                                 .disabled(model.word.isEmpty)
                                 .help("播放\(accent.label)")
                         }
                         Button("海词词典") { model.openHaici?(model.word) }.disabled(model.word.isEmpty)
-                    }.buttonStyle(PillButtonStyle()).padding(.top, 8).padding(.bottom, 14)
-                    wordTags
-                    definitionSource.font(.caption).padding(.top, 8)
+                    }.buttonStyle(PillButtonStyle()).padding(.top, 6).padding(.bottom, 7)
+                    HStack(alignment: .center, spacing: 8) {
+                        wordTags
+                        definitionSource.font(.system(size: 10.5))
+                    }
                     if model.entry["translation"].text.trimmed.isEmpty && !model.spellingSuggestions.isEmpty {
-                        VStack(alignment: .leading, spacing: 7) {
+                        VStack(alignment: .leading, spacing: 6) {
                             Text("离线词库未找到精确匹配，你是不是要查：")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 11.5, weight: .semibold))
                                 .foregroundStyle(Palette.deep)
-                            MorphemeFlowLayout(spacing: 6, lineSpacing: 6, expandLast: false) {
+                            MorphemeFlowLayout(spacing: 6, lineSpacing: 5, expandLast: false) {
                                 ForEach(model.spellingSuggestions, id: \.self) { candidate in
                                     Button(candidate) { model.lookup(candidate) }
                                         .buttonStyle(PillButtonStyle())
                                 }
                             }
                         }
-                        .padding(12)
+                        .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Palette.wash.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.accent.opacity(0.28), lineWidth: 0.8))
-                        .padding(.top, 12)
+                        .background(Palette.wash.opacity(0.7), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.accent.opacity(0.28), lineWidth: 0.8))
+                        .padding(.top, 8)
                     }
                     if !model.recallMode && !model.word.isEmpty && model.currentWordLookupCount >= 3 && !model.membership {
                         HStack(spacing: 8) {
-                            Text("「\(model.word)」你已查询 \(model.currentWordLookupCount) 次，疑似隐形顽固词，建议收藏到云词本巩固记忆。")
-                                .font(.system(size: 12, weight: .semibold))
+                            Text("已查询 \(model.currentWordLookupCount) 次 · 疑似隐形顽固词，建议加入云词本巩固")
+                                .font(.system(size: 11.5, weight: .medium))
                                 .foregroundStyle(Color(red: 0.65, green: 0.34, blue: 0.03))
                                 .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 8)
                             Button("先回想") { model.startRecallMode() }
                                 .buttonStyle(MemoButtonStyle(compact: true))
                                 .help("遮住释义，花 2 秒回想这个词的意思")
-                            Button("＋ 加入云词本") { Task { await model.toggleMembership() } }
-                                .buttonStyle(MemoButtonStyle(compact: true))
-                            Button("＋ 今日新学") { model.addToday() }
-                                .buttonStyle(MemoButtonStyle(compact: true))
                         }
-                        .padding(.horizontal, 13).padding(.vertical, 9)
+                        .padding(.horizontal, 11).padding(.vertical, 5)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.13), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35), lineWidth: 0.85))
-                        .padding(.top, 12)
+                        .background(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.32), lineWidth: 0.8))
+                        .padding(.top, 7)
                     }
                     if let ctx = model.pendingContext,
                        !model.word.isEmpty,
                        ctx.word.caseInsensitiveCompare(model.word) == .orderedSame {
                         let saved = model.isContextSentenceSaved(word: model.word, sentence: ctx.sentence)
                         HStack(alignment: .center, spacing: 10) {
-                            VStack(alignment: .leading, spacing: 3) {
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text("来自刚读过的「\(ctx.source)」原句：")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.system(size: 10.5, weight: .semibold))
                                     .foregroundStyle(Palette.deep)
                                 Text(ctx.sentence)
-                                    .font(.system(size: 13))
+                                    .font(.system(size: 12.5))
                                     .foregroundStyle(Palette.ink)
-                                    .lineLimit(3)
+                                    .lineLimit(2)
                             }
                             Spacer(minLength: 8)
                             Button(saved ? "✓ 已保存 · 原句自测" : "＋ 保存这句，稍后考我") {
@@ -555,48 +553,48 @@ private struct WordPage: View {
                             }
                             .buttonStyle(MemoButtonStyle(accent: true, compact: true))
                         }
-                        .padding(.horizontal, 13).padding(.vertical, 10)
+                        .padding(.horizontal, 11).padding(.vertical, 7)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Palette.wash.opacity(0.72), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.accent.opacity(0.3), lineWidth: 0.85))
-                        .padding(.top, 12)
+                        .background(Palette.wash.opacity(0.72), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.accent.opacity(0.3), lineWidth: 0.85))
+                        .padding(.top, 8)
                     }
                     rule
                     if model.recallMode {
                         recallMaskCard
                     } else {
-                    Text("中文释义").sectionLabel().padding(.bottom, 8)
-                    LinkedText(text: definitionText, size: 17, highlightPartOfSpeech: !model.word.isEmpty)
-                    if !model.entry["exchange"].text.isEmpty { ExchangeView(exchange: model.entry["exchange"].text, word: model.word).padding(.top, 20) }
-                    RelationsView(model: model).padding(.top, 16)
+                    Text("中文释义").sectionLabel().padding(.bottom, 4)
+                    LinkedText(text: definitionText, size: 16, highlightPartOfSpeech: !model.word.isEmpty)
+                    if !model.entry["exchange"].text.isEmpty { ExchangeView(exchange: model.entry["exchange"].text, word: model.word).padding(.top, 10) }
+                    RelationsView(model: model).padding(.top, 10)
                     rule
                     HStack {
-                        HStack(spacing: 10) {
-                            Text("记").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28)
+                        HStack(spacing: 8) {
+                            Text("记").font(.system(size: 12, weight: .bold)).foregroundStyle(Palette.deep).frame(width: 24, height: 24)
                                 .background(Palette.wash, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
-                            Text("我的助记").font(.system(size: 17, weight: .semibold))
+                            Text("我的助记").font(.system(size: 15.5, weight: .semibold))
+                            Text(noteSummary).font(.system(size: 11.5)).foregroundStyle(Palette.muted).lineLimit(1)
                         }
                         Spacer()
                         Button("编辑助记") { model.sheet = .mnemonic }.buttonStyle(PillButtonStyle()).disabled(model.word.isEmpty)
-                    }
-                    Text(noteSummary).font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.vertical, 10)
+                    }.padding(.bottom, 6)
                     ForEach(Array(model.notes.enumerated()), id: \.offset) { _, note in
                         let breakdowns = note["breakdowns"].list
                         let hasBreakdowns = !breakdowns.isEmpty
                         let remainingText = hasBreakdowns ? note["remainingText"].text : note["text"].text
                         let originText = note["origin"].text == "cloud" ? "云端助记" : "本地助记"
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 7) {
                             HStack(alignment: .center, spacing: 8) {
                                 Text(hasBreakdowns ? "点击词根拆解 · \(originText)" : originText)
-                                    .font(.system(size: 11.5, weight: .semibold))
+                                    .font(.system(size: 11, weight: .semibold))
                                     .foregroundStyle(Palette.muted)
                                 Spacer()
                                 Text(note["noteType"].text)
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.system(size: 10.5, weight: .semibold))
                                     .foregroundStyle(Palette.deep)
-                                    .padding(.horizontal, 9)
-                                    .padding(.vertical, 2.5)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
                                     .background(Palette.accent.opacity(0.18), in: Capsule())
                             }
                             if hasBreakdowns {
@@ -618,34 +616,36 @@ private struct WordPage: View {
                                 }
                                 LinkedText(
                                     text: remainingText,
-                                    size: hasBreakdowns ? 13.5 : 15,
+                                    size: hasBreakdowns ? 13 : 14.5,
                                     color: Palette.ink,
                                     accentLinks: true,
                                     allowedLinks: Set(note["linkableWords"].list.map { $0.text.lowercased() }),
                                     boldWord: model.word
                                 )
                             }
-                        }.padding(.horizontal, 16).padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Palette.wash.opacity(0.75), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
-                            .padding(.bottom, 8)
+                        }.padding(.horizontal, 13).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Palette.wash.opacity(0.75), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
+                            .padding(.bottom, 6)
                     }
                     savedContextsSection
                     rule
                     HStack {
-                        HStack(spacing: 10) {
-                            Text("例").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28)
+                        HStack(spacing: 8) {
+                            Text("例").font(.system(size: 12, weight: .bold)).foregroundStyle(Palette.deep).frame(width: 24, height: 24)
                                 .background(Palette.wash, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
-                            Text("真题例句").font(.system(size: 17, weight: .semibold))
+                            Text("真题例句").font(.system(size: 15.5, weight: .semibold))
+                            if !model.examples.isEmpty {
+                                Text("\(model.examples.count) / \(model.exampleTotal) 条").font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                            }
                         }
                         Spacer()
                         MemoPicker(title: "真题类型", selection: $model.examplePaper, options: [
                             ("ALL", "全部考试"), ("POSTGRADUATE", "考研"), ("CET4", "大学四级"),
                             ("CET6", "大学六级"), ("COLLEGE_ENTRANCE_EXAM", "高考")
-                        ], height: 30).frame(width: 125)
-                    }.onChange(of: model.examplePaper) { _ in Task { await model.loadExamples(reset: true) } }
-                    Text("点击例句里的英文单词查看释义。").font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.top, 8).padding(.bottom, 12)
+                        ], height: 28).frame(width: 120)
+                    }.padding(.bottom, 8).onChange(of: model.examplePaper) { _ in Task { await model.loadExamples(reset: true) } }
                     ExamplesView(model: model)
                     }
                 }
@@ -738,31 +738,31 @@ private struct WordPage: View {
         if !wordContexts.isEmpty {
             rule
             HStack {
-                HStack(spacing: 10) {
-                    Text("句").bold().foregroundStyle(Palette.deep).frame(width: 28, height: 28)
+                HStack(spacing: 8) {
+                    Text("句").font(.system(size: 12, weight: .bold)).foregroundStyle(Palette.deep).frame(width: 24, height: 24)
                         .background(Palette.wash, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
-                    Text("我的原句").font(.system(size: 17, weight: .semibold))
+                    Text("我的原句").font(.system(size: 15.5, weight: .semibold))
+                    Text("\(wordContexts.count) 条 · 全部 \(model.contextSentences.count) 条")
+                        .font(.system(size: 11.5)).foregroundStyle(Palette.muted).lineLimit(1)
                 }
                 Spacer()
                 Button("原句自测 (\(model.contextSentences.count))") {
                     model.openContextReview(focusWord: model.word)
                 }.buttonStyle(PillButtonStyle())
-            }
-            Text("当前单词已保存 \(wordContexts.count) 条原句 · 全部共 \(model.contextSentences.count) 条，离线也能原句自测")
-                .font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.top, 8).padding(.bottom, 10)
+            }.padding(.bottom, 6)
             ForEach(Array(wordContexts.enumerated()), id: \.offset) { _, ctx in
                 let ctxId = ctx["id"].text
                 let sentence = ctx["sentence"].text
                 let trans = ctx["translation"].text
                 let reviews = ctx["reviewCount"].integer
                 let sourceMeta = reviews > 0 ? "\(ctx["source"].text) · 已自测 \(reviews) 次" : ctx["source"].text
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text(sourceMeta)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(Palette.deep)
-                            .padding(.horizontal, 8).padding(.vertical, 2.5)
+                            .padding(.horizontal, 8).padding(.vertical, 2)
                             .background(Palette.paper, in: Capsule())
                             .overlay(Capsule().strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
                         Spacer()
@@ -773,15 +773,15 @@ private struct WordPage: View {
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.muted)
                     }
-                    LinkedText(text: sentence, highlights: [model.word, ctx["matchedForm"].text].filter { !$0.isEmpty }, size: 14.5, color: Palette.ink)
+                    LinkedText(text: sentence, highlights: [model.word, ctx["matchedForm"].text].filter { !$0.isEmpty }, size: 14, color: Palette.ink)
                     if !trans.isEmpty {
-                        Text(trans).font(.system(size: 13)).foregroundStyle(Palette.muted).lineSpacing(4)
+                        Text(trans).font(.system(size: 12.5)).foregroundStyle(Palette.muted).lineSpacing(3)
                     }
                 }
-                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 13).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Palette.wash.opacity(0.7), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.85))
-                .padding(.bottom, 8)
+                .padding(.bottom, 6)
             }
         }
     }
@@ -830,7 +830,7 @@ private struct WordPage: View {
                 .opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
         }
     }
-    private var rule: some View { Divider().overlay(Palette.border).padding(.vertical, 23) }
+    private var rule: some View { Divider().overlay(Palette.border).padding(.vertical, 12) }
 }
 
 private struct ExchangeView: View {
@@ -947,9 +947,8 @@ extension J { var wordText: String { self["word"].text } }
 private struct ExamplesView: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if !model.examples.isEmpty { Text("\(model.examples.count) / \(model.exampleTotal) 条例句").font(.system(size: 11)).foregroundStyle(Palette.muted) }
-            ForEach(Array(model.examples.enumerated()), id: \.offset) { index, item in VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: 9) {
+            ForEach(Array(model.examples.enumerated()), id: \.offset) { index, item in VStack(alignment: .leading, spacing: 7) {
                 HStack(alignment: .center, spacing: 10) {
                     Text(item["source"].text)
                         .font(.system(size: 11, weight: .semibold))
@@ -991,12 +990,12 @@ private struct ExamplesView: View {
                         .help(loading ? "正在加载例句语音" : "朗读整条例句")
                         .accessibilityLabel(loading ? "正在加载例句语音" : "朗读整条例句")
                 }
-                LinkedText(text: item["english"].text, highlights: item["matchedWords"].list.map(\.text), size: 15, color: Palette.ink)
+                LinkedText(text: item["english"].text, highlights: item["matchedWords"].list.map(\.text), size: 14.5, color: Palette.ink)
                 if !item["translation"].text.isEmpty { LinkedText(text: item["translation"].text, chineseHighlights: item["translationTerms"].list.map(\.text), size: 13, color: Palette.muted) }
                 if !item["contextEnglish"].text.isEmpty { DisclosureGroup("查看题目") { LinkedText(text: item["contextEnglish"].text, size: 13); LinkedText(text: item["contextTranslation"].text, size: 12, color: Palette.muted) }.font(.system(size: 11)) }
-            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Palette.chrome, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.85)) }
+            }.padding(.horizontal, 14).padding(.vertical, 11).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.chrome, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.85)) }
             if model.examplesLoading { ProgressView().controlSize(.small).frame(maxWidth: .infinity) }
             else if !model.examplesError.isEmpty { Text(model.examplesError).font(.system(size: 12)).foregroundStyle(Palette.muted); Button("重试") { Task { await model.loadExamples(reset: model.examples.isEmpty) } }.buttonStyle(MemoButtonStyle()) }
             else if model.exampleOffset < model.exampleTotal { Button("加载更多例句") { Task { await model.loadExamples(reset: false) } }.buttonStyle(MemoButtonStyle()).frame(maxWidth: .infinity) }

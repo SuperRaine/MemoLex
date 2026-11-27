@@ -61,12 +61,12 @@ public partial class MainWindow
             ExamCountdownText.MaxWidth = compact ? 92 : 200;
             HeaderCenterGrid.Margin = compact ? new Thickness(6, 0, 6, 0) : new Thickness(10, 0, 10, 0);
             UpdateExamCountdown();
-            MainContentGrid.Margin = compact ? new Thickness(15, 15, 15, 13) : new Thickness(26, 20, 26, 16);
-            WordCard.Padding = compact ? new Thickness(18) : new Thickness(28, 24, 28, 26);
-            WordText.FontSize = compact ? 32 : 40;
+            MainContentGrid.Margin = compact ? new Thickness(12, 11, 12, 10) : new Thickness(18, 14, 18, 12);
+            WordCard.Padding = compact ? new Thickness(16, 14, 16, 14) : new Thickness(24, 18, 24, 18);
+            WordText.FontSize = compact ? 29 : 34;
             WordActions.Orientation = compact ? System.Windows.Controls.Orientation.Vertical : System.Windows.Controls.Orientation.Horizontal;
-            AddTodayButton.Margin = compact ? new Thickness(0, 6, 0, 0) : new Thickness(8, 0, 0, 0);
-            AddTodayButton.Padding = compact ? new Thickness(10, 7, 10, 7) : new Thickness(14, 10, 14, 10);
+            AddTodayButton.Margin = compact ? new Thickness(0, 5, 0, 0) : new Thickness(7, 0, 0, 0);
+            AddTodayButton.Padding = compact ? new Thickness(10, 5, 10, 5) : new Thickness(12, 7, 12, 7);
         }
     }
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);

@@ -129,10 +129,10 @@ private struct MnemonicBreakdownView: View {
                             }
                         }
                     } label: {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 1) {
                             if !word.isEmpty {
                                 Text(word)
-                                    .font(.system(size: 14.5, weight: .bold))
+                                    .font(.system(size: 13.5, weight: .bold))
                                     .foregroundStyle(Palette.ink)
                             }
                             Text(detail)
@@ -196,8 +196,8 @@ private struct MnemonicBreakdownView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 13)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     LinearGradient(
@@ -273,27 +273,27 @@ private struct MorphemeChipCard: View {
 
     var body: some View {
         let highlighted = lit || hovered
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1.5) {
                 Text(form)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Palette.deep)
                 Text(meaning)
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 11))
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
             .background(highlighted ? Palette.wash.opacity(active ? 1.0 : 0.78) : Palette.paper, in: shape)
             .overlay(
                 shape.strokeBorder(
                     active ? Palette.accent : (highlighted ? Palette.accent.opacity(0.78) : Palette.border),
-                    lineWidth: 1.5
+                    lineWidth: 1.3
                 )
             )
-            .shadow(color: highlighted ? Palette.accent.opacity(active ? 0.22 : 0.13) : .clear, radius: active ? 9 : 6, y: 3)
+            .shadow(color: highlighted ? Palette.accent.opacity(active ? 0.20 : 0.11) : .clear, radius: active ? 7 : 4, y: 2)
             .scaleEffect(active && !reduceMotion ? 1.03 : 1)
             .offset(y: (highlighted) && !reduceMotion ? -1.5 : 0)
             .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.78), value: hovered)

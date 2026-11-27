@@ -25,27 +25,27 @@ public partial class MainWindow
             var analysis=MnemonicParts.Analyze(word,note.NoteType,note.Text,(form,meaning,current)=>_mnemonics.FindMorphemeExamples(form,meaning,current));
             var hasBreakdowns=analysis.Breakdowns.Count>0;
 
-            var header=new Grid{Margin=new Thickness(0,0,0,hasBreakdowns?8:6)};
+            var header=new Grid{Margin=new Thickness(0,0,0,hasBreakdowns?6:4)};
             header.ColumnDefinitions.Add(new ColumnDefinition());
             header.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
             var origin=note.Origin=="cloud"?(cloud?"云端助记":"云端助记（离线）"):"本地助记";
             header.Children.Add(new TextBlock
             {
                 Text=hasBreakdowns?$"点击词根拆解 · {origin}":origin,
-                FontSize=11.5,FontWeight=FontWeights.SemiBold,
+                FontSize=11,FontWeight=FontWeights.SemiBold,
                 Foreground=Brush("#5B7A91"),VerticalAlignment=VerticalAlignment.Center
             });
 
             var rightHead=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Center};
             var typeTag=new Border
             {
-                Background=Brush("#DDF2FF"),CornerRadius=new CornerRadius(10),
-                Padding=new Thickness(8,2,8,2),Margin=new Thickness(0,0,6,0),
+                Background=Brush("#DDF2FF"),CornerRadius=new CornerRadius(9),
+                Padding=new Thickness(7,1.5,7,1.5),Margin=new Thickness(0,0,5,0),
                 VerticalAlignment=VerticalAlignment.Center,
-                Child=new TextBlock{Text=note.NoteType,FontSize=11,FontWeight=FontWeights.SemiBold,Foreground=Brush("#0B84BD")}
+                Child=new TextBlock{Text=note.NoteType,FontSize=10.5,FontWeight=FontWeights.SemiBold,Foreground=Brush("#0B84BD")}
             };
             rightHead.Children.Add(typeTag);
-            var edit=new Button{Content="编辑",FontSize=11,Padding=new Thickness(7,3,7,3),Background=Brushes.Transparent,BorderThickness=new Thickness(0),Foreground=Brush("#5B7A91")};
+            var edit=new Button{Content="编辑",FontSize=11,Padding=new Thickness(6,2,6,2),Background=Brushes.Transparent,BorderThickness=new Thickness(0),Foreground=Brush("#5B7A91")};
             edit.Click+=(_,_)=>OpenMnemonicEditor(note);
             rightHead.Children.Add(edit);
             Grid.SetColumn(rightHead,1);header.Children.Add(rightHead);
@@ -54,19 +54,20 @@ public partial class MainWindow
             for(var i=0;i<analysis.Breakdowns.Count;i++)
             {
                 var builder=BuildMnemonicParts(word,analysis.Breakdowns[i]);
-                if(i>0)builder.Margin=new Thickness(0,8,0,0);
+                if(i>0)builder.Margin=new Thickness(0,6,0,0);
                 stack.Children.Add(builder);
             }
 
             if(!string.IsNullOrWhiteSpace(analysis.RemainingText))
             {
-                var text=BuildSentenceText(analysis.RemainingText,EmptyMatches,word,hasBreakdowns?13.5:15,accentLinks:true);
+                var text=BuildSentenceText(analysis.RemainingText,EmptyMatches,word,hasBreakdowns?13:14.5,accentLinks:true);
+                text.LineHeight=hasBreakdowns?21:24;
                 text.FontFamily=FontFamily;
                 if(hasBreakdowns)
                 {
                     var remBorder=new Border
                     {
-                        Margin=new Thickness(0,10,0,0),Padding=new Thickness(0,8,0,0),
+                        Margin=new Thickness(0,7,0,0),Padding=new Thickness(0,6,0,0),
                         BorderThickness=new Thickness(0,1,0,0),
                         Child=text
                     };
@@ -81,8 +82,8 @@ public partial class MainWindow
             }
             var cardBorder=new Border
             {
-                Child=stack,Padding=new Thickness(16,13,16,14),Margin=new Thickness(0,8,0,0),
-                BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(12)
+                Child=stack,Padding=new Thickness(13,10,13,10),Margin=new Thickness(0,6,0,0),
+                BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(11)
             };
             cardBorder.SetResourceReference(Border.BackgroundProperty,"CardSoftBrush");
             cardBorder.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");
@@ -291,17 +292,17 @@ public partial class MainWindow
             }
             var choice=index;
             var body=new StackPanel{Orientation=Orientation.Vertical};
-            var formTb=new TextBlock{Text=part.Form,FontSize=15,FontWeight=FontWeights.Bold};
+            var formTb=new TextBlock{Text=part.Form,FontSize=14,FontWeight=FontWeights.Bold};
             formTb.SetResourceReference(TextBlock.ForegroundProperty,"AccentDeepBrush");
-            var meanTb=new TextBlock{Text=part.Meaning,FontSize=11.5,Margin=new Thickness(0,2,0,0),TextWrapping=TextWrapping.Wrap,MaxWidth=185};
+            var meanTb=new TextBlock{Text=part.Meaning,FontSize=11,Margin=new Thickness(0,1,0,0),TextWrapping=TextWrapping.Wrap,MaxWidth=185};
             meanTb.SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");
             body.Children.Add(formTb);
             body.Children.Add(meanTb);
             var chip=new Button
             {
                 Content=body,Style=chipStyle,
-                BorderBrush=Brush("#38B8F6"),BorderThickness=new Thickness(1.5),
-                Effect=LitShadow(0.15),ToolTip=part.FocusExplanation??part.Meaning,VerticalAlignment=VerticalAlignment.Center
+                BorderBrush=Brush("#38B8F6"),BorderThickness=new Thickness(1.3),
+                Effect=LitShadow(0.11),ToolTip=part.FocusExplanation??part.Meaning,VerticalAlignment=VerticalAlignment.Center
             };
             chip.SetResourceReference(Control.BackgroundProperty,"PillBgBrush");
             AutomationProperties.SetName(chip,$"{part.Form}，点击查看或组合构词含义");
@@ -310,11 +311,11 @@ public partial class MainWindow
             chip.Click+=(_,_)=>ToggleChoice(choice,chip);
         }
 
-        builder.Children.Add(new TextBlock{Text="→",FontSize=14.5,FontWeight=FontWeights.Bold,Foreground=Brush("#6CA9CC"),VerticalAlignment=VerticalAlignment.Center});
+        builder.Children.Add(new TextBlock{Text="→",FontSize=14,FontWeight=FontWeights.Bold,Foreground=Brush("#6CA9CC"),VerticalAlignment=VerticalAlignment.Center});
         var resultStack=new StackPanel{Orientation=Orientation.Vertical};
         if(breakdown.Word is {Length:>0} word)
         {
-            var wordTb=new TextBlock{Text=word,FontSize=14.5,FontWeight=FontWeights.Bold,Margin=new Thickness(0,0,0,2)};
+            var wordTb=new TextBlock{Text=word,FontSize=13.5,FontWeight=FontWeights.Bold,Margin=new Thickness(0,0,0,1)};
             wordTb.SetResourceReference(TextBlock.ForegroundProperty,"InkStrongBrush");
             resultStack.Children.Add(wordTb);
         }
@@ -322,8 +323,8 @@ public partial class MainWindow
         resultStack.Children.Add(cognatesRow);
         var resultCard=new Border
         {
-            Padding=new Thickness(13,8,13,8),
-            CornerRadius=new CornerRadius(10),BorderThickness=new Thickness(1),
+            Padding=new Thickness(11,6,11,6),
+            CornerRadius=new CornerRadius(9),BorderThickness=new Thickness(1),
             VerticalAlignment=VerticalAlignment.Center,Cursor=Cursors.Hand,
             ToolTip="点击还原完整构词解释",
             Child=resultStack

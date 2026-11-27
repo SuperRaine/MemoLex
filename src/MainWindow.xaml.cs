@@ -424,15 +424,15 @@ public partial class MainWindow : Window
         var matches=new HashSet<string>(sentence.MatchedWords,StringComparer.OrdinalIgnoreCase);
         foreach(var part in ExampleText.Tokenize(sourceWord))if(part.LookupWord!=null)matches.Add(part.LookupWord);
         var card = new StackPanel();
-        var heading = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
+        var heading = new DockPanel { Margin = new Thickness(0, 0, 0, 7) };
         var speakContent = new StackPanel { Orientation = Orientation.Horizontal };
-        speakContent.Children.Add(new TextBlock { Text = "\uE767", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
+        speakContent.Children.Add(new TextBlock { Text = "\uE767", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) });
         speakContent.Children.Add(new TextBlock { Text = "朗读", VerticalAlignment = VerticalAlignment.Center });
         var speak = new Button
         {
             Content = speakContent, Style = (Style)FindResource("PillButton"),
             ToolTip = "朗读整条例句", FontSize = 11,
-            MinWidth = 62, Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(6, 0, 0, 0)
+            MinWidth = 58, Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(5, 0, 0, 0)
         };
         speak.Click += async (_, _) => await SpeakExampleAsync(speak, sentence.English);
         var alreadySavedSentence = _contextSentences.Contains(sourceWord, sentence.English);
@@ -442,8 +442,8 @@ public partial class MainWindow : Window
             Style = (Style)FindResource("PillButton"),
             ToolTip = "保存这条原句到本机，离线也能自测",
             FontSize = 11,
-            Padding = new Thickness(9, 4, 9, 4),
-            Margin = new Thickness(8, 0, 0, 0)
+            Padding = new Thickness(9, 3, 9, 3),
+            Margin = new Thickness(6, 0, 0, 0)
         };
         saveSentenceBtn.Click += (_, _) =>
         {
@@ -492,7 +492,7 @@ public partial class MainWindow : Window
                 card.Children.Add(new TextBlock { Text = "选项", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Brush("#7D97AC"), Margin = new Thickness(0, 10, 0, 4) });
             }
         }
-        card.Children.Add(BuildSentenceText(sentence.English, matches, sourceWord, 15.5));
+        card.Children.Add(BuildSentenceText(sentence.English, matches, sourceWord, 14.5));
         if (sentence.Translation.Length > 0)
             card.Children.Add(BuildExampleTranslation(sentence.Translation,sentence.English,sourceWord,matches,sentence.MatchedTranslations,sentence.TranslationAligned));
         if (sentence.IsOption && sentence.ContextTranslation.Length > 0)
@@ -500,7 +500,7 @@ public partial class MainWindow : Window
         var cardBorder = new Border
         {
             Child = card, BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12), Padding = new Thickness(18, 15, 18, 16), Margin = new Thickness(0, 0, 0, 11)
+            CornerRadius = new CornerRadius(11), Padding = new Thickness(14, 10, 14, 11), Margin = new Thickness(0, 0, 0, 9)
         };
         cardBorder.SetResourceReference(Border.BackgroundProperty, "CardAltBrush");
         cardBorder.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
@@ -508,9 +508,9 @@ public partial class MainWindow : Window
         UiMotion.Reveal(cardBorder, distance: 5);
     }
     private static readonly IReadOnlySet<string> EmptyMatches = new HashSet<string>();
-    private TextBlock BuildSentenceText(string text, IReadOnlySet<string> matches, string sourceWord, double fontSize = 16, bool accentLinks = false)
+    private TextBlock BuildSentenceText(string text, IReadOnlySet<string> matches, string sourceWord, double fontSize = 15, bool accentLinks = false)
     {
-        var block = new TextBlock { TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), FontSize = fontSize, LineHeight = 27 };
+        var block = new TextBlock { TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), FontSize = fontSize, LineHeight = fontSize <= 14.5 ? 23 : 25 };
         block.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         FillWordLinks(block, text, matches, sourceWord, accentLinks: accentLinks);
         return block;
@@ -580,7 +580,7 @@ public partial class MainWindow : Window
         }
         var dark = ThemeManager.IsDark;
         var terms=TextHighlights.TranslationTerms(english,text,sourceWord,matches,Meaning,explicitTerms,aligned);
-        var block=new TextBlock { TextWrapping=TextWrapping.Wrap,FontSize=13.5,LineHeight=23,Margin=new Thickness(0,9,0,0) };
+        var block=new TextBlock { TextWrapping=TextWrapping.Wrap,FontSize=13,LineHeight=21,Margin=new Thickness(0,6,0,0) };
         block.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         foreach(var part in TextHighlights.Split(text,terms))
             if(part.Highlighted)block.Inlines.Add(new Run(part.Text){Background=Brush(dark ? "#1B4A68" : "#D2EFFE"),Foreground=Brush(dark ? "#8BD9FF" : "#085680"),FontWeight=FontWeights.SemiBold});
@@ -652,7 +652,7 @@ public partial class MainWindow : Window
             TagsPanel.Children.Add(new Border
             {
                 Background = Brush(bg), BorderBrush = Brush(border), BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(11), Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(0, 0, 6, 5),
+                CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(0, 0, 5, 4),
                 Child = label
             });
         }
@@ -662,7 +662,7 @@ public partial class MainWindow : Window
             {
                 Content = label, Style = (Style)FindResource("PillButton"),
                 Background = Brush(bg), BorderBrush = Brush(border),
-                Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(0, 0, 6, 5),
+                Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(0, 0, 5, 4),
                 ToolTip = $"查看{text}真题例句"
             };
             button.Click += async (_, _) => await OpenExamExamplesAsync(paperType);
@@ -994,7 +994,7 @@ public partial class MainWindow : Window
         var alreadyInPad = _membershipWord.Equals(_word, StringComparison.OrdinalIgnoreCase) && _isMember;
         if (count >= 3 && !alreadyInPad)
         {
-            RepeatedWordText.Text = $"「{_word}」你已查询 {count} 次，疑似隐形顽固词，建议收藏到云词本巩固记忆。";
+            RepeatedWordText.Text = $"已查询 {count} 次 · 疑似隐形顽固词，建议加入云词本巩固";
             RepeatedWordBanner.Visibility = Visibility.Visible;
         }
         else
