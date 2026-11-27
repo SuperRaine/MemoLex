@@ -202,6 +202,36 @@ public sealed class SpellingMistakeStore
             "MemoLex", "spelling-mistakes.json");
     }
 
+    public int ActiveCount
+    {
+        get { lock (_gate) { EnsureLoaded(); return _records.Values.Count(r => r.CleanStreak < MasteredCleanStreak); } }
+    }
+
+    public long FileSizeBytes
+    {
+        get
+        {
+            lock (_gate)
+            {
+                try { return File.Exists(_path) ? new FileInfo(_path).Length : 0; }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
+            }
+        }
+    }
+
+    public int Clear()
+    {
+        lock (_gate)
+        {
+            EnsureLoaded();
+            var removed = _records.Count;
+            _records.Clear();
+            try { if (File.Exists(_path)) File.Delete(_path); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            return removed;
+        }
+    }
+
     public SpellingMistakeRecord? RecordMistake(string word, string typed)
     {
         var analysis = SpellingMistakeAnalyzer.Analyze(word, typed);

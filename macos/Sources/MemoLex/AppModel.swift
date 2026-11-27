@@ -202,7 +202,7 @@ enum EnglishAccent: String, CaseIterable {
         guard ready, !query.isEmpty, query.count <= 100 else { return }
         stopPronunciation()
         if !keepPendingContext { pendingContext = nil }
-        if !enterRecall { stopRecallMode() }
+        stopRecallMode()
         if page == .translation { cancelTranslation() }
         lookupTask?.cancel(); cancelCloudWordLookup(); wordVersion += 1
         let version = wordVersion; let account = accountVersion
@@ -242,7 +242,8 @@ enum EnglishAccent: String, CaseIterable {
                     spellingSuggestions = entry["translation"].text.trimmed.isEmpty ? result["spellingSuggestions"].list.map(\.text) : []
                     definitionLoading = entry["translation"].text.trimmed.isEmpty
                     recordHistory(word); status = definitionLoading ? "正在查找释义…" : "查词完成。"
-                    if enterRecall { startRecallMode() }
+                    let shouldRecall = enterRecall || (preferences.recallModeEnabled && navigate && !definitionLoading)
+                    if shouldRecall { startRecallMode() }
                     Task { if let value = try? await core.request("dictionary.related", ["word": .string(word)]), version == wordVersion { relations = value } }
                     Task { await loadExamples(reset: true) }
                     loadCloudWord()
@@ -486,29 +487,201 @@ enum EnglishAccent: String, CaseIterable {
         recallReady = false
     }
 
-    func revealFromRecall(remembered: Bool?) {
+    func revealFromRecall() {
         guard recallMode else { return }
         stopRecallMode()
-        switch remembered {
-        case .some(true): status = "太棒了！核对一下释义是否和你想的一致。"
-        case .some(false): status = "没关系，结合下方助记和例句再记一次，或加入云词本巩固。"
-        case .none: status = "已揭晓释义。"
+        status = "已揭晓释义。"
+    }
+
+    func toggleRecallMode() {
+        preferences.recallModeEnabled.toggle()
+        if !preferences.recallModeEnabled && recallMode {
+            stopRecallMode()
+        }
+        status = preferences.recallModeEnabled
+            ? "已开启「先回想」模式，后续查词将先遮住释义 2 秒。"
+            : "已关闭「先回想」模式。"
+    }
+
+    struct CacheCategoryInfo: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let description: String
+        let summary: String
+        let hasData: Bool
+        let confirmMessage: String
+    }
+
+    private func formatCacheBytes(_ bytes: Int64) -> String {
+        if bytes <= 0 { return "0 B" }
+        if bytes < 1024 { return "\(bytes) B" }
+        if bytes < 1024 * 1024 { return String(format: "%.1f KB", Double(bytes) / 1024.0) }
+        return String(format: "%.2f MB", Double(bytes) / (1024.0 * 1024.0))
+    }
+
+    private func matchingProfileFiles(prefix: String, excluding: String? = nil) -> [URL] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: AppPaths.profile, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles]) else {
+            return []
+        }
+        return urls.filter { url in
+            let name = url.lastPathComponent
+            guard name.hasPrefix(prefix), name.hasSuffix(".json") else { return false }
+            if let excluding, name.hasPrefix(excluding) { return false }
+            return true
         }
     }
 
-    func triggerSearchTabRecall() -> Bool {
-        let query = search.trimmed
-        guard ready, !query.isEmpty, query.range(of: "[\\p{Han}]", options: .regularExpression) == nil else { return false }
-        let target: String
-        if let exact = suggestions.first(where: { $0.caseInsensitiveCompare(query) == .orderedSame }) {
-            target = exact
-        } else if let first = suggestions.first {
-            target = first
-        } else {
-            target = query
+    private func measureFilesBytes(_ urls: [URL]) -> Int64 {
+        urls.reduce(Int64(0)) { sum, url in
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+            return sum + size
         }
-        lookup(target, recallMode: true)
-        return true
+    }
+
+    private func measureDirectoryBytes(_ dir: URL) -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) else {
+            return 0
+        }
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            if let vals = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]), vals.isRegularFile == true {
+                total += Int64(vals.fileSize ?? 0)
+            }
+        }
+        return total
+    }
+
+    func loadCacheCategories() async -> [CacheCategoryInfo] {
+        let stats = try? await core.request("cache.stats")
+        let contextCount = stats?["contextCount"].integer ?? contextSentences.count
+        let contextBytes = Int64(stats?["contextBytes"].doubleValue ?? 0)
+        let spellingCount = stats?["spellingCount"].integer ?? activeSpellingMistakes.count
+        let spellingBytes = Int64(stats?["spellingBytes"].doubleValue ?? 0)
+        let memoryCount = stats?["memoryCount"].integer ?? 0
+        let memoryBytes = Int64(stats?["memoryBytes"].doubleValue ?? 0)
+
+        let historyCount = history.count
+        let flashcardFiles = matchingProfileFiles(prefix: "flashcards-")
+        let flashcardBytes = measureFilesBytes(flashcardFiles)
+        let stubbornFiles = matchingProfileFiles(prefix: "stubborn-")
+        let stubbornBytes = measureFilesBytes(stubbornFiles)
+        let updatesBytes = measureDirectoryBytes(AppPaths.profile.appendingPathComponent("updates", isDirectory: true))
+        let networkBytes = memoryBytes + updatesBytes
+        let hasNetwork = memoryCount > 0 || updatesBytes > 0
+        let networkSummary: String
+        if !hasNetwork {
+            networkSummary = "暂无缓存"
+        } else if memoryCount > 0 && networkBytes > 0 {
+            networkSummary = "\(memoryCount) 项内存缓存 · \(formatCacheBytes(networkBytes))"
+        } else if memoryCount > 0 {
+            networkSummary = "\(memoryCount) 项内存缓存"
+        } else {
+            networkSummary = formatCacheBytes(networkBytes)
+        }
+
+        return [
+            CacheCategoryInfo(
+                id: "history",
+                title: "查词历史与次数",
+                description: "本机查词记录及「查过 N 次」计数，清除后「最近查词」与建议角标会重置。",
+                summary: historyCount > 0 ? "\(historyCount) 条记录" : "暂无记录",
+                hasData: historyCount > 0,
+                confirmMessage: "将清空本机的全部查词历史与查词次数统计，不会影响云词本和账号登录。"
+            ),
+            CacheCategoryInfo(
+                id: "contexts",
+                title: "已保存的原句",
+                description: "从段落翻译、截图翻译与真题例句保存的离线原句及复习计数。",
+                summary: contextCount > 0 ? "\(contextCount) 条原句 · \(formatCacheBytes(contextBytes))" : "暂无数据",
+                hasData: contextCount > 0,
+                confirmMessage: "将清空所有保存在本机的阅读原句，离线原句自测列表将变为空。"
+            ),
+            CacheCategoryInfo(
+                id: "spelling",
+                title: "拼写错点记录",
+                description: "卡片默写中记住的具体易错点与 2 选 1 错点微题记录。",
+                summary: spellingCount > 0 ? "\(spellingCount) 个易错词 · \(formatCacheBytes(spellingBytes))" : "暂无记录",
+                hasData: spellingCount > 0,
+                confirmMessage: "将清空已记录的拼写易错点，后续拼写练习会重新按实际输入记录。"
+            ),
+            CacheCategoryInfo(
+                id: "flashcards",
+                title: "卡片自测进度",
+                description: "顽固单词与各个云词本的本地卡片自测续接进度。",
+                summary: !flashcardFiles.isEmpty ? "\(flashcardFiles.count) 份进度 · \(formatCacheBytes(flashcardBytes))" : "暂无进度",
+                hasData: !flashcardFiles.isEmpty,
+                confirmMessage: "将清除所有本地保存的卡片自测进度，下次打开自测将从第 1 组重新开始。"
+            ),
+            CacheCategoryInfo(
+                id: "stubborn",
+                title: "顽固单词本地缓存",
+                description: "用于离线浏览顽固单词列表的本机快照，清除后联网可重新同步。",
+                summary: !stubbornFiles.isEmpty ? "\(stubbornFiles.count) 份缓存 · \(formatCacheBytes(stubbornBytes))" : "暂无缓存",
+                hasData: !stubbornFiles.isEmpty,
+                confirmMessage: "将清除本机缓存的顽固单词快照，不会退出墨墨账号，联网后会自动重新同步。"
+            ),
+            CacheCategoryInfo(
+                id: "network",
+                title: "网络与临时缓存",
+                description: "真题例句、联网释义、段落翻译、朗读语音内存缓存及更新安装包临时文件。",
+                summary: networkSummary,
+                hasData: hasNetwork,
+                confirmMessage: "将清除联网查询、翻译与语音缓存及本机临时文件，下次访问时重新获取。"
+            )
+        ]
+    }
+
+    func clearCacheCategory(_ id: String) async -> String {
+        switch id {
+        case "history":
+            clearHistory()
+            return "已清除查词历史与查词次数。"
+        case "contexts":
+            _ = try? await core.request("contextSentences.clear")
+            await refreshContextSentences()
+            return "已清除所有已保存的原句。"
+        case "spelling":
+            _ = try? await core.request("spelling.clear")
+            await refreshActiveSpellingMistakes()
+            return "已清除拼写错点记录。"
+        case "flashcards":
+            for url in matchingProfileFiles(prefix: "flashcards-") {
+                try? FileManager.default.removeItem(at: url)
+            }
+            return "已清除所有卡片自测进度。"
+        case "stubborn":
+            for url in matchingProfileFiles(prefix: "stubborn-") {
+                try? FileManager.default.removeItem(at: url)
+            }
+            stubbornSnapshot = nil
+            stubbornWords = []
+            stubbornOrder = []
+            stubbornIndex = 0
+            stubbornTotal = 0
+            stubbornHint = ""
+            lastStubbornFetch = nil
+            return "已清除顽固单词本地缓存。"
+        case "network":
+            _ = try? await core.request("cache.clear")
+            let updatesDir = AppPaths.profile.appendingPathComponent("updates", isDirectory: true)
+            if let children = try? FileManager.default.contentsOfDirectory(at: updatesDir, includingPropertiesForKeys: nil) {
+                for item in children {
+                    try? FileManager.default.removeItem(at: item)
+                }
+            }
+            return "已清除网络与临时缓存。"
+        default:
+            return ""
+        }
+    }
+
+    func clearAllCaches() async -> String {
+        let active = await loadCacheCategories().filter(\.hasData)
+        guard !active.isEmpty else { return "当前没有可清除的缓存。" }
+        for item in active {
+            _ = await clearCacheCategory(item.id)
+        }
+        return "已清除全部 \(active.count) 类本机缓存与记录。"
     }
 
     func openMorphemePractice(form: String, meaning: String, currentWord: String) {

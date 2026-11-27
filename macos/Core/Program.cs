@@ -215,6 +215,8 @@ internal sealed class CoreService : IDisposable
             }
             case "contextSentences.remove":
                 return new { removed = _contextSentences.Remove(T(p, "id")) };
+            case "contextSentences.clear":
+                return new { cleared = _contextSentences.Clear() };
             case "contextSentences.review":
                 return _contextSentences.RecordReview(T(p, "id"));
             case "spelling.getDrill":
@@ -226,6 +228,23 @@ internal sealed class CoreService : IDisposable
                 return new { ok = true };
             case "spelling.active":
                 return _spellingMistakes.ListActive();
+            case "spelling.clear":
+                return new { cleared = _spellingMistakes.Clear() };
+            case "cache.stats":
+                return new
+                {
+                    contextCount = _contextSentences.Count,
+                    contextBytes = _contextSentences.FileSizeBytes,
+                    spellingCount = _spellingMistakes.ActiveCount,
+                    spellingBytes = _spellingMistakes.FileSizeBytes,
+                    memoryCount = _examples.CachedCount + _onlineDictionary.CachedCount + _translation.CachedCount + _pronunciation.CachedCount,
+                    memoryBytes = _pronunciation.CachedBytes
+                };
+            case "cache.clear":
+                return new
+                {
+                    cleared = _examples.ClearCache() + _onlineDictionary.ClearCache() + _translation.ClearCache() + _pronunciation.ClearCache()
+                };
             case "translation.extract":
                 return VocabularyExtractor.Extract(T(p, "text"), _dictionary, Number(p, "limit", 24, 1, 60));
             case "dictionary.online":

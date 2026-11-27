@@ -22,16 +22,16 @@ internal static class SettingsDialog
     internal const string BugReportUrl=RepositoryUrl+"/issues/new?template=bug_report.yml";
     internal const string FeatureRequestUrl=RepositoryUrl+"/issues/new?template=feature_request.yml";
     internal const string IndependenceNotice="本软件为个人开发的非官方工具，与「墨墨背单词」无隶属关系。";
-    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.4.0";
+    internal static string Version=>typeof(SettingsDialog).Assembly.GetName().Version?.ToString(3)??"2.4.1";
     [Flags]
     private enum SettingsArea { None=0, General=1, Hover=2, Shortcuts=4 }
-    public static void Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null)
+    public static void Edit(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null,CacheMaintenanceHost? cacheMaintenance=null)
     {
-        var dialog=Build(owner,store,preferences,validateShortcuts,accountChanged:accountChanged,initialPage:initialPage,updates:updates,startOnboarding:startOnboarding,settingsChanged:settingsChanged);
+        var dialog=Build(owner,store,preferences,validateShortcuts,accountChanged:accountChanged,initialPage:initialPage,updates:updates,startOnboarding:startOnboarding,settingsChanged:settingsChanged,cacheMaintenance:cacheMaintenance);
         dialog.ShowDialog();
     }
 
-    internal static Window Build(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,IStartupRegistration? startupRegistration=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null)
+    internal static Window Build(Window owner,TokenStore store,Preferences preferences,Func<Dictionary<string,string>,string?>? validateShortcuts=null,IStartupRegistration? startupRegistration=null,Func<Task>? accountChanged=null,string? initialPage=null,UpdateManager? updates=null,Action? startOnboarding=null,Action? settingsChanged=null,CacheMaintenanceHost? cacheMaintenance=null)
     {
         var dialog=InputDialog.Shell(owner,"设置",out _);
         dialog.Width=Math.Min(980,SystemParameters.WorkArea.Width-60);dialog.Height=Math.Min(740,SystemParameters.WorkArea.Height-50);
@@ -119,8 +119,10 @@ internal static class SettingsDialog
         try{startupEnabled=startupRegistration.Enabled;}catch{startupReadError="无法读取开机自启动状态，请检查当前用户权限。";}
         var autoStart=new CheckBox {Content="开机自启动",IsChecked=startupEnabled==true,IsEnabled=startupEnabled.HasValue,Margin=new Thickness(0,0,0,8)};
         launchCard.Children.Add(autoStart);if(startupReadError!=null)launchCard.Children.Add(InputDialog.Text(startupReadError));
-        var doubleCopy=new CheckBox {Content=new TextBlock{Text="连按两次 Ctrl+C 查词或翻译",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.DoubleCopyEnabled,Margin=new Thickness(0,4,0,8)};
+        var doubleCopy=new CheckBox {Content=new TextBlock{Text="连按两次 Ctrl+C 查词或翻译",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.DoubleCopyEnabled,Margin=new Thickness(0,4,0,6)};
         dialog.RegisterName("DoubleCopyEnabled",doubleCopy);launchCard.Children.Add(doubleCopy);launchCard.Children.Add(InputDialog.Text("选中文字后，在 750 毫秒内连按两次 Ctrl+C。"));
+        var recallMode=new CheckBox {Content=new TextBlock{Text="查词时开启「先回想」模式",TextWrapping=TextWrapping.Wrap},IsChecked=preferences.RecallModeEnabled,Margin=new Thickness(0,8,0,6)};
+        dialog.RegisterName("RecallModeEnabled",recallMode);launchCard.Children.Add(recallMode);launchCard.Children.Add(InputDialog.Text("开启后，查词时会先遮住释义 2 秒，按空格或回车随时揭晓。"));
         var guide=new Button{Content="查看新手引导",HorizontalAlignment=HorizontalAlignment.Left,IsEnabled=startOnboarding!=null};guide.Click+=(_,_)=>{dialog.Close();owner.Dispatcher.BeginInvoke(startOnboarding!);};general.Children.Add(guide);dialog.RegisterName("OpenOnboarding",guide);
 
         var shortcutsPage=Page("快捷键","点击输入框后按下组合键，按 Delete 清除。");
@@ -229,9 +231,91 @@ internal static class SettingsDialog
         var ownedUpdates=updates==null;updates??=new UpdateManager(preferences,()=>{});updatePage.Children.Add(updates.BuildPanel(dialog));
         if(ownedUpdates)dialog.Closed+=(_,_)=>updates.Dispose();
         dialog.RegisterName("SettingsUpdatePage",PageView("软件更新"));
+        var cachePage=Page("数据与缓存","按类别查看并清理本机缓存与学习记录；不会退出账号，也不会删除本地助记或云端词本。");
+        var cacheSummaryBar=new DockPanel{Margin=new Thickness(0,0,0,12)};
+        var clearAllCacheButton=new Button{Content="一键清除全部",Padding=new Thickness(13,6,13,6),FontSize=12};
+        DockPanel.SetDock(clearAllCacheButton,Dock.Right);
+        var refreshCacheButton=new Button{Content="刷新统计",Style=pillStyle,Padding=new Thickness(11,5,11,5),FontSize=12,Margin=new Thickness(0,0,8,0)};
+        DockPanel.SetDock(refreshCacheButton,Dock.Right);
+        var cacheOverviewText=new TextBlock{FontSize=12.5,VerticalAlignment=VerticalAlignment.Center,TextWrapping=TextWrapping.Wrap};
+        cacheOverviewText.SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");
+        cacheSummaryBar.Children.Add(clearAllCacheButton);
+        cacheSummaryBar.Children.Add(refreshCacheButton);
+        cacheSummaryBar.Children.Add(cacheOverviewText);
+        cachePage.Children.Add(cacheSummaryBar);
+        var cacheListPanel=new StackPanel();
+        cachePage.Children.Add(cacheListPanel);
+        var cacheSafetyNote=new Border{CornerRadius=new CornerRadius(9),BorderThickness=new Thickness(1),Padding=new Thickness(12,9,12,9),Margin=new Thickness(0,4,0,6)};
+        cacheSafetyNote.SetResourceReference(Border.BackgroundProperty,"CardSoftBrush");
+        cacheSafetyNote.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");
+        var cacheSafetyText=new TextBlock{Text="安全说明：以上清理仅作用于本机缓存与学习记录，不会退出已登录的墨墨账号，也不会删除你手动编辑的本地助记或云端云词本。",FontSize=11.5,TextWrapping=TextWrapping.Wrap,LineHeight=19};
+        cacheSafetyText.SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");
+        cacheSafetyNote.Child=cacheSafetyText;
+        cachePage.Children.Add(cacheSafetyNote);
+        void RenderCacheCategories()
+        {
+            cacheListPanel.Children.Clear();
+            var items=cacheMaintenance?.LoadCategories()??[];
+            var activeCount=items.Count(item=>item.HasData);
+            cacheOverviewText.Text=items.Count==0
+                ?"当前窗口未连接缓存管理器。"
+                :activeCount>0?$"共 {items.Count} 类本机数据，其中 {activeCount} 类可清理":"所有分类均已清空，本机很干净。";
+            clearAllCacheButton.IsEnabled=cacheMaintenance!=null&&activeCount>0;
+            foreach(var item in items)
+            {
+                var captured=item;
+                var row=new Grid{Margin=new Thickness(13,11,13,11)};
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+                var info=new StackPanel{VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,14,0)};
+                var heading=new WrapPanel{Margin=new Thickness(0,0,0,4)};
+                var titleBlock=new TextBlock{Text=captured.Title,FontSize=13.5,FontWeight=FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,8,0)};
+                titleBlock.SetResourceReference(TextBlock.ForegroundProperty,"InkStrongBrush");
+                heading.Children.Add(titleBlock);
+                var badge=new Border{CornerRadius=new CornerRadius(8),BorderThickness=new Thickness(1),Padding=new Thickness(7,1.5,7,1.5),VerticalAlignment=VerticalAlignment.Center};
+                badge.SetResourceReference(Border.BackgroundProperty,captured.HasData?"PillBgBrush":"CardAltBrush");
+                badge.SetResourceReference(Border.BorderBrushProperty,captured.HasData?"PillBorderBrush":"BorderBrush");
+                var badgeText=new TextBlock{Text=captured.Summary,FontSize=10.5,FontWeight=captured.HasData?FontWeights.SemiBold:FontWeights.Normal};
+                badgeText.SetResourceReference(TextBlock.ForegroundProperty,captured.HasData?"AccentDeepBrush":"SubtleBrush");
+                badge.Child=badgeText;
+                heading.Children.Add(badge);
+                info.Children.Add(heading);
+                var desc=new TextBlock{Text=captured.Description,FontSize=11.5,TextWrapping=TextWrapping.Wrap,LineHeight=18};
+                desc.SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");
+                info.Children.Add(desc);
+                row.Children.Add(info);
+                var clearBtn=new Button{Content="清除",Padding=new Thickness(13,5,13,5),FontSize=12,VerticalAlignment=VerticalAlignment.Center,IsEnabled=captured.HasData};
+                clearBtn.Click+=(_,_)=>
+                {
+                    if(cacheMaintenance==null||!captured.HasData)return;
+                    if(!InputDialog.Confirm(dialog,"清除"+captured.Title,captured.ConfirmMessage,"清除"))return;
+                    SetStatus(cacheMaintenance.ClearCategory(captured.Id));
+                    RenderCacheCategories();
+                };
+                Grid.SetColumn(clearBtn,1);row.Children.Add(clearBtn);
+                var card=new Border{Child=row,CornerRadius=new CornerRadius(10),BorderThickness=new Thickness(1),Margin=new Thickness(0,0,0,9)};
+                card.SetResourceReference(Border.BackgroundProperty,"CardSoftBrush");
+                card.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");
+                cacheListPanel.Children.Add(card);
+            }
+        }
+        refreshCacheButton.Click+=(_,_)=>{RenderCacheCategories();SetStatus("已刷新缓存统计。");};
+        clearAllCacheButton.Click+=(_,_)=>
+        {
+            if(cacheMaintenance==null)return;
+            var active=cacheMaintenance.LoadCategories().Where(item=>item.HasData).ToArray();
+            if(active.Length==0)return;
+            var names=string.Join("、",active.Select(item=>item.Title));
+            if(!InputDialog.Confirm(dialog,"清除全部缓存",$"将一并清除以下 {active.Length} 类本机缓存与记录：\n{names}\n\n不会退出墨墨账号，也不会删除本地助记或云端词本。","全部清除"))return;
+            SetStatus(cacheMaintenance.ClearAll());
+            RenderCacheCategories();
+        };
+        RenderCacheCategories();
+        dialog.RegisterName("SettingsCachePage",PageView("数据与缓存"));
+        dialog.RegisterName("ClearAllCacheButton",clearAllCacheButton);
         var hoverPage=Page("鼠标取词","鼠标停在英文单词上时显示释义，移开后自动收起。");hoverPage.Children.Add(HoverSettingsPanel.Build(dialog,preferences,out var applyHover));
         dialog.RegisterName("SettingsHoverPage",PageView("鼠标取词"));
-        var pageOrder=new[]{"常规","墨墨账号","鼠标取词","快捷键","软件更新","反馈","关于与赞助"};
+        var pageOrder=new[]{"常规","墨墨账号","鼠标取词","快捷键","数据与缓存","软件更新","反馈","关于与赞助"};
         pages=pageOrder.Select(title=>pages.Single(page=>page.Title==title)).ToList();
         var navRowFactory=new FrameworkElementFactory(typeof(StackPanel));
         navRowFactory.SetValue(StackPanel.OrientationProperty,Orientation.Horizontal);
@@ -254,7 +338,9 @@ internal static class SettingsDialog
         navigation.SelectionChanged += (_, _) =>
         {
             if (navigation.SelectedIndex < 0) return;
-            host.Content = pages[navigation.SelectedIndex].View;
+            var selectedPage = pages[navigation.SelectedIndex];
+            if (selectedPage.Title == "数据与缓存") RenderCacheCategories();
+            host.Content = selectedPage.View;
             UiMotion.Reveal(host);
         };
         navigation.SelectedIndex=Math.Max(0,pages.FindIndex(page=>page.Title==initialPage));
@@ -279,6 +365,7 @@ internal static class SettingsDialog
             {
                 preferences.ThemeMode=themeDark.IsChecked==true?"dark":themeSystem.IsChecked==true?"system":"light";
                 preferences.DoubleCopyEnabled=doubleCopy.IsChecked==true;
+                preferences.RecallModeEnabled=recallMode.IsChecked==true;
                 ThemeManager.Apply(preferences.ThemeMode);
                 if(showCountdown.IsChecked!=true)preferences.ShowExamCountdown=false;
                 else if(examDate.TryGetDate(out var date,out var dateError)&&date!=null)
@@ -330,7 +417,7 @@ internal static class SettingsDialog
         exit.Checked+=(_,_)=>SaveClosingOptions();
         rememberClose.Checked+=(_,_)=>SaveClosingOptions();
         rememberClose.Unchecked+=(_,_)=>SaveClosingOptions();
-        foreach(var control in new System.Windows.Controls.Primitives.ToggleButton[]{showCountdown,autoStart,doubleCopy,themeLight,themeDark,themeSystem})
+        foreach(var control in new System.Windows.Controls.Primitives.ToggleButton[]{showCountdown,autoStart,doubleCopy,recallMode,themeLight,themeDark,themeSystem})
             Watch(control,SettingsArea.General);
         examName.TextChanged+=(_,_)=>QueueSave(SettingsArea.General);
         foreach(var part in new[]{examDate.Year,examDate.Month,examDate.Day})
@@ -354,7 +441,7 @@ internal static class SettingsDialog
         private static readonly Dictionary<string, string> Icons = new()
         {
             ["常规"] = "\uE713", ["墨墨账号"] = "\uE77B", ["鼠标取词"] = "\uE8B0",
-            ["快捷键"] = "\uE765", ["软件更新"] = "\uE896", ["反馈"] = "\uE90A", ["关于与赞助"] = "\uE946"
+            ["快捷键"] = "\uE765", ["数据与缓存"] = "\uE74D", ["软件更新"] = "\uE896", ["反馈"] = "\uE90A", ["关于与赞助"] = "\uE946"
         };
         public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
             => value is string key && Icons.TryGetValue(key, out var icon) ? icon : "\uE713";

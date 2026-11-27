@@ -42,6 +42,40 @@ internal static class FlashcardProgressStore
 
     internal static void Remove(string profile, string accountId) => DeleteFile(PathFor(profile, accountId));
 
+    internal static (int Count, long Bytes) MeasureAll(string profile)
+    {
+        try
+        {
+            if (!Directory.Exists(profile)) return (0, 0);
+            var files = Directory.GetFiles(profile, "stubborn-flashcards-*.json");
+            long bytes = 0;
+            foreach (var file in files)
+            {
+                try { bytes += new FileInfo(file).Length; }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+            return (files.Length, bytes);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return (0, 0); }
+    }
+
+    internal static int RemoveAll(string profile)
+    {
+        try
+        {
+            if (!Directory.Exists(profile)) return 0;
+            var files = Directory.GetFiles(profile, "stubborn-flashcards-*.json");
+            var removed = 0;
+            foreach (var file in files)
+            {
+                try { File.Delete(file); removed++; }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+            return removed;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
+    }
+
     private static bool IsValid(FlashcardProgressSnapshot? snapshot) =>
         snapshot is { Words: { Length: > 0 and <= MaxWords } words, Queue: { Length: <= MaxWords } queue }
         && snapshot.Cursor >= 0 && snapshot.Cursor <= words.Length

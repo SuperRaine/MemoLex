@@ -43,7 +43,7 @@ internal sealed class OnlineDictionaryClient : IDisposable
             Timeout = Timeout.InfiniteTimeSpan,
             MaxResponseContentBufferSize = 256 * 1024
         };
-        var version = typeof(OnlineDictionaryClient).Assembly.GetName().Version?.ToString(3) ?? "2.4.0";
+        var version = typeof(OnlineDictionaryClient).Assembly.GetName().Version?.ToString(3) ?? "2.4.1";
         _http.DefaultRequestHeaders.UserAgent.ParseAdd($"MemoLex/{version} (https://github.com/SuperRaine/MemoLex)");
     }
 
@@ -221,5 +221,7 @@ internal sealed class OnlineDictionaryClient : IDisposable
         public bool HasPartOfSpeech => Senses.Any(sense => sense.PartOfSpeech.Length > 0);
     }
 
+    public int CachedCount => _cache.Count;
+    public int ClearCache() { var count = _cache.Count; _cache.Clear(); return count; }
     public void Dispose() => _http.Dispose();
 }

@@ -54,7 +54,10 @@ public sealed class ExampleSentenceClient : IDisposable
         await _requests.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_cache.TryGetValue(key, out var cached) && DateTimeOffset.UtcNow - cached.Time < TimeSpan.FromMinutes(10)) return cached.Page;
+            lock (_cache)
+            {
+                if (_cache.TryGetValue(key, out var cached) && DateTimeOffset.UtcNow - cached.Time < TimeSpan.FromMinutes(10)) return cached.Page;
+            }
             if (_lastRequest != 0)
             {
                 var delay = _minimumInterval - Stopwatch.GetElapsedTime(_lastRequest);
@@ -72,8 +75,11 @@ public sealed class ExampleSentenceClient : IDisposable
                 using var document = await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token).ConfigureAwait(false);
                 var page = ParsePage(document.RootElement, offset);
                 cancellationToken.ThrowIfCancellationRequested();
-                if (_cache.Count >= 64) _cache.Remove(_cache.MinBy(item => item.Value.Time).Key);
-                _cache[key] = (DateTimeOffset.UtcNow, page);
+                lock (_cache)
+                {
+                    if (_cache.Count >= 64) _cache.Remove(_cache.MinBy(item => item.Value.Time).Key);
+                    _cache[key] = (DateTimeOffset.UtcNow, page);
+                }
                 return page;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -132,6 +138,8 @@ public sealed class ExampleSentenceClient : IDisposable
     }
     private static JsonElement Property(JsonElement element, string name) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) ? value : default;
     private static string Text(JsonElement element, string name) => Property(element, name).ValueKind == JsonValueKind.String ? Property(element, name).GetString() ?? "" : "";
+    public int CachedCount { get { lock (_cache) return _cache.Count; } }
+    public int ClearCache() { lock (_cache) { var count = _cache.Count; _cache.Clear(); return count; } }
     public void Dispose()
     {
         if (_disposed) return;

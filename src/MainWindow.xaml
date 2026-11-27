@@ -85,13 +85,42 @@
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                         <StackPanel>
                             <Grid x:Name="SearchHeadingRow" Margin="2,0,2,9">
-                                <TextBlock Text="快速查词" Foreground="{DynamicResource MutedBrush}" FontWeight="SemiBold" FontSize="12"/>
-                                <Border HorizontalAlignment="Right" Background="{DynamicResource PillBgBrush}" CornerRadius="5" Padding="5,1.5">
-                                    <TextBlock x:Name="SearchShortcutHint" Text="Ctrl+L" Foreground="{DynamicResource MutedBrush}" FontFamily="Segoe UI" FontSize="10" FontWeight="Medium"/>
-                                </Border>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+                                    <TextBlock Text="快速查词" Foreground="{DynamicResource MutedBrush}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                                    <Border Background="{DynamicResource PillBgBrush}" CornerRadius="5" Padding="5,1.5" Margin="6,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="SearchShortcutHint" Text="Ctrl+L" Foreground="{DynamicResource MutedBrush}" FontFamily="Segoe UI" FontSize="10" FontWeight="Medium"/>
+                                    </Border>
+                                </StackPanel>
+                                <ToggleButton x:Name="RecallModeToggle" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Click="RecallModeToggle_Click" Cursor="Hand" FocusVisualStyle="{x:Null}"
+                                              ToolTip="先回想模式：开启后，查词时会先遮住释义 2 秒，帮你主动回忆" AutomationProperties.Name="先回想模式开关">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border x:Name="Pill" Background="Transparent" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="7,2">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Ellipse x:Name="Dot" Width="6" Height="6" Fill="{DynamicResource SubtleBrush}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                                    <TextBlock x:Name="Label" Text="先回想" FontSize="10.5" FontWeight="Medium" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Pill" Property="Background" Value="{DynamicResource HoverBgBrush}"/>
+                                                    <Setter TargetName="Pill" Property="BorderBrush" Value="{DynamicResource PillBorderBrush}"/>
+                                                </Trigger>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter TargetName="Pill" Property="Background" Value="{DynamicResource PillBgBrush}"/>
+                                                    <Setter TargetName="Pill" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                                    <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource AccentBrush}"/>
+                                                    <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource AccentDeepBrush}"/>
+                                                    <Setter TargetName="Label" Property="FontWeight" Value="SemiBold"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
                             </Grid>
                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="42"/></Grid.ColumnDefinitions>
-                                <TextBox x:Name="SearchBox" Height="42" TextChanged="SearchBox_TextChanged" PreviewKeyDown="SearchBox_PreviewKeyDown" KeyDown="SearchBox_KeyDown" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14.5" ToolTip="输入英文查释义，或用中文找单词；按 Tab 先回想" Margin="0,0,6,0" AutomationProperties.Name="输入英文或中文查词"/>
+                                <TextBox x:Name="SearchBox" Height="42" TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14.5" ToolTip="输入英文查释义，或用中文找单词" Margin="0,0,6,0" AutomationProperties.Name="输入英文或中文查词"/>
                                 <Button x:Name="SearchButton" Grid.Column="1" Click="SearchButton_Click" Style="{StaticResource AccentButton}" Padding="0" Height="42" ToolTip="查询单词" AutomationProperties.Name="查询"><TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="16"/></Button>
                             </Grid>
                             <Grid Margin="0,9,0,4">
@@ -130,17 +159,15 @@
                             <Grid>
                                 <Grid.RowDefinitions><RowDefinition Height="24"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                                 <TextBlock Text="单词建议" Style="{StaticResource SectionLabel}" Margin="2,3,0,2" VerticalAlignment="Center"/>
-                                <local:SidebarWordList x:Name="SuggestionList" Grid.Row="1" SelectionChanged="SuggestionList_SelectionChanged" PreviewKeyDown="SuggestionList_PreviewKeyDown">
+                                <local:SidebarWordList x:Name="SuggestionList" Grid.Row="1" SelectionChanged="SuggestionList_SelectionChanged">
                                     <ListBox.Resources>
                                         <DataTemplate DataType="{x:Type local:WordSuggestionItem}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                 <TextBlock Text="{Binding Word}" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14" LineHeight="22" Padding="0,0,0,2" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                <Button Grid.Column="1" Content="{Binding RecallBadge}" Visibility="{Binding RecallVisibility}" Tag="{Binding Word}"
-                                                        Click="SuggestionRecallButton_Click" Focusable="False"
-                                                        FontSize="10" FontWeight="SemiBold" Padding="6,1.5" Margin="6,0,0,0" VerticalAlignment="Center"
-                                                        Background="{DynamicResource WarnBgBrush}" BorderBrush="{DynamicResource WarnBorderBrush}" Foreground="{DynamicResource WarnFgBrush}"
-                                                        ToolTip="{Binding RecallToolTip}"/>
+                                                <Border Grid.Column="1" Visibility="{Binding RepeatBadgeVisibility}" Background="{DynamicResource WarnBgBrush}" BorderBrush="{DynamicResource WarnBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="5,1" Margin="6,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                    <TextBlock Text="{Binding RepeatBadge}" FontSize="10" LineHeight="14" LineStackingStrategy="BlockLineHeight" FontWeight="Medium" Foreground="{DynamicResource WarnFgBrush}" VerticalAlignment="Center"/>
+                                                </Border>
                                             </Grid>
                                         </DataTemplate>
                                         <DataTemplate DataType="{x:Type sys:String}">
@@ -255,9 +282,8 @@
                                                 <Border x:Name="RecallProgressFill" Height="5" Width="0" HorizontalAlignment="Left" CornerRadius="2.5" Background="{DynamicResource AccentBrush}"/>
                                             </Border>
                                             <WrapPanel>
-                                                <Button x:Name="RecallRememberedButton" Content="✓ 想起来了 · 核对答案" Style="{StaticResource AccentButton}" Click="RecallRememberedButton_Click" Padding="14,7" FontSize="12.5" Margin="0,0,8,4"/>
-                                                <Button x:Name="RecallForgotButton" Content="没想起来 · 直接看释义" Click="RecallForgotButton_Click" Padding="13,7" FontSize="12.5" Margin="0,0,8,4"/>
-                                                <TextBlock Text="快捷键：空格 / 回车 立即揭晓" FontSize="11" Foreground="{DynamicResource SubtleBrush}" VerticalAlignment="Center" Margin="4,0,0,4"/>
+                                                <Button x:Name="RecallRevealButton" Content="查看释义" Style="{StaticResource AccentButton}" Click="RecallRevealButton_Click" Padding="18,7" FontSize="12.5" Margin="0,0,10,4"/>
+                                                <TextBlock Text="快捷键：空格 / 回车 立即揭晓" FontSize="11" Foreground="{DynamicResource SubtleBrush}" VerticalAlignment="Center" Margin="2,0,0,4"/>
                                             </WrapPanel>
                                         </StackPanel>
                                     </Border>

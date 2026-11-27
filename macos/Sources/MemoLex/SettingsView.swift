@@ -12,7 +12,7 @@ struct SettingsView: View {
     private let pages = [
         ("常规", "gearshape"), ("墨墨账号", "person.crop.circle"),
         ("鼠标取词", "cursorarrow"), ("系统权限", "lock.shield"), ("快捷键", "keyboard"),
-        ("软件更新", "arrow.down.circle"), ("反馈", "bubble.left"), ("关于与赞助", "info.circle")
+        ("数据与缓存", "internaldrive"), ("软件更新", "arrow.down.circle"), ("反馈", "bubble.left"), ("关于与赞助", "info.circle")
     ]
     var body: some View {
         VStack(spacing: 0) {
@@ -79,6 +79,7 @@ struct SettingsView: View {
         case "鼠标取词": return "鼠标停在英文单词上时显示释义，移开后自动收起。"
         case "系统权限": return "按需要授权取词、截图和全局快捷键。"
         case "快捷键": return "点击输入框，按下想用的组合键。"
+        case "数据与缓存": return "按类别查看并清理本机缓存与学习记录；不会退出账号，也不会删除本地助记或云端词本。"
         case "软件更新": return "检查新版本，设置自动更新。"
         case "反馈": return "遇到问题或有改进建议，欢迎联系我们。"
         default: return "墨墨搜词 MemoLex · \(AppPaths.version)"
@@ -91,6 +92,7 @@ struct SettingsView: View {
         case "鼠标取词": HoverSettings(preferences: model.preferences)
         case "系统权限": PermissionsSettings(model: model)
         case "快捷键": ShortcutSettings(preferences: model.preferences)
+        case "数据与缓存": CacheSettings(model: model, status: $status)
         case "软件更新": UpdatesSettings(model: model)
         case "反馈": FeedbackSettings(status: $status)
         default: AboutSettings()
@@ -144,6 +146,11 @@ private struct GeneralSettings: View {
             Toggle("登录 Mac 时自动启动", isOn: $preferences.startAtLogin)
             Toggle("连按两次 ⌘C 查词或翻译", isOn: $preferences.doubleCopy).tourTarget("clipboard")
             Text("选中文字后，在 750 毫秒内连按两次 ⌘C。").font(.system(size: 11)).foregroundStyle(Palette.muted)
+            Toggle("查词时开启「先回想」模式", isOn: $preferences.recallModeEnabled)
+                .onChange(of: preferences.recallModeEnabled) { enabled in
+                    if !enabled && model.recallMode { model.stopRecallMode() }
+                }
+            Text("开启后，查词时会先遮住释义 2 秒，按空格或回车随时揭晓。").font(.system(size: 11)).foregroundStyle(Palette.muted)
         }.frame(minWidth: 195)
     }
 }
@@ -187,6 +194,100 @@ private struct HoverSettings: View {
         }
     }
     private func modifier(_ label: String, flag: Int) -> some View { Toggle(label, isOn: Binding(get: { preferences.hoverModifiers & flag != 0 }, set: { if $0 { preferences.hoverModifiers |= flag } else { preferences.hoverModifiers &= ~flag } })) }
+}
+
+private struct CacheSettings: View {
+    @ObservedObject var model: AppModel
+    @Binding var status: String
+    @State private var items: [AppModel.CacheCategoryInfo] = []
+    @State private var busy = false
+
+    private var activeItems: [AppModel.CacheCategoryInfo] { items.filter(\.hasData) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text(activeItems.isEmpty
+                     ? "所有分类均已清空，本机很干净。"
+                     : "共 \(items.count) 类本机数据，其中 \(activeItems.count) 类可清理")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Palette.muted)
+                Spacer()
+                Button("刷新统计") {
+                    Task {
+                        await reload()
+                        status = "已刷新缓存统计。"
+                    }
+                }
+                .buttonStyle(PillButtonStyle())
+                .disabled(busy)
+                Button("一键清除全部") {
+                    let active = activeItems
+                    guard !active.isEmpty else { return }
+                    let names = active.map(\.title).joined(separator: "、")
+                    guard confirm("清除全部缓存", "将一并清除以下 \(active.count) 类本机缓存与记录：\n\(names)\n\n不会退出墨墨账号，也不会删除本地助记或云端词本。", action: "全部清除") else { return }
+                    Task {
+                        busy = true
+                        status = await model.clearAllCaches()
+                        await reload()
+                        busy = false
+                    }
+                }
+                .buttonStyle(MemoButtonStyle(compact: true))
+                .disabled(busy || activeItems.isEmpty)
+            }
+
+            ForEach(items) { item in
+                HStack(alignment: .center, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 8) {
+                            Text(item.title)
+                                .font(.system(size: 13.5, weight: .semibold))
+                            Text(item.summary)
+                                .font(.system(size: 10.5, weight: item.hasData ? .semibold : .regular))
+                                .foregroundStyle(item.hasData ? Palette.deep : Palette.muted)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(item.hasData ? Palette.wash : Palette.canvas, in: Capsule())
+                                .overlay(Capsule().strokeBorder(item.hasData ? Palette.accent.opacity(0.32) : Palette.border, lineWidth: 0.75))
+                        }
+                        Text(item.description)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Palette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Button("清除") {
+                        guard confirm("清除\(item.title)", item.confirmMessage, action: "清除") else { return }
+                        Task {
+                            busy = true
+                            status = await model.clearCacheCategory(item.id)
+                            await reload()
+                            busy = false
+                        }
+                    }
+                    .buttonStyle(MemoButtonStyle(compact: true))
+                    .disabled(busy || !item.hasData)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.paper, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.75))
+            }
+
+            Text("安全说明：以上清理仅作用于本机缓存与学习记录，不会退出已登录的墨墨账号，也不会删除你手动编辑的本地助记或云端云词本。")
+                .font(.system(size: 11.5))
+                .foregroundStyle(Palette.muted)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.paper.opacity(0.75), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.65))
+        }
+        .task { await reload() }
+    }
+
+    private func reload() async {
+        items = await model.loadCacheCategories()
+    }
 }
 
 private struct AccountSettings: View {

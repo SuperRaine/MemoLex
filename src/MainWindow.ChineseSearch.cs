@@ -11,10 +11,9 @@ namespace MemoLex;
 
 public sealed record WordSuggestionItem(string Word, int LookupCount)
 {
-    public bool SuggestRecall => LookupCount >= 2;
-    public Visibility RecallVisibility => SuggestRecall ? Visibility.Visible : Visibility.Collapsed;
-    public string RecallBadge => $"查过 {LookupCount} 次 · Tab";
-    public string RecallToolTip => $"你已查过 {LookupCount} 次，按 Tab 或点这里先花 2 秒回想意思";
+    public bool IsRepeated => LookupCount >= 2;
+    public Visibility RepeatBadgeVisibility => IsRepeated ? Visibility.Visible : Visibility.Collapsed;
+    public string RepeatBadge => $"{LookupCount}次";
 }
 
 public partial class MainWindow

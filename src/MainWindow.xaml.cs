@@ -63,6 +63,7 @@ public partial class MainWindow : Window
         ThemeManager.Apply(_preferences.ThemeMode);
         InitializeComponent();
         UpdateThemeToggleIcon();
+        SyncRecallModeToggle();
         RestoreStubbornWords();
         Activated+=(_,_)=>{if(_ready)_=RefreshStubbornWordsAsync();};
         RoundedWindow.Attach(this);
@@ -229,7 +230,7 @@ public partial class MainWindow : Window
         if (!ValidWord(word)) { StatusText.Text = "请输入英文单词或短语（最多 100 字符）。"; return; }
         StopPronunciation();
         if (!keepPendingContext) _pendingContext = null;
-        if (!recallMode) StopRecallMode();
+        StopRecallMode();
         if (addNavigationEntry) RememberCurrentView();
         CancelChineseSearch();
         CancelTranslation();
@@ -288,7 +289,8 @@ public partial class MainWindow : Window
         }
         UpdateContextCaptureBanner(entry?.word ?? word);
         RenderSavedContexts(entry?.word ?? word);
-        if (recallMode) EnterRecallMode(entry?.word ?? word);
+        var shouldRecall = recallMode || (_preferences.RecallModeEnabled && recordHistory && restore == null && hasLocalMeaning);
+        if (shouldRecall) EnterRecallMode(entry?.word ?? word);
         else UpdateRepeatedWordBanner();
         _navigating = false;
         if (addNavigationEntry) _navigation.Navigate(CaptureView());
@@ -703,15 +705,6 @@ public partial class MainWindow : Window
         if (!_ready) return;
         await UpdateSuggestionsAsync(SearchBox.Text);
     }
-    private async void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None && TryResolveRecallTarget(out var recallWord))
-        {
-            e.Handled = true;
-            SearchBox.Text = recallWord;
-            await LoadWordAsync(recallWord, recallMode: true);
-        }
-    }
     private async void SearchBox_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None) { e.Handled = true; await SearchAsync(SearchBox.Text); }
@@ -885,7 +878,7 @@ public partial class MainWindow : Window
         {
             SettingsDialog.Edit(this,_tokens,_preferences,ValidateGlobalShortcut,ReloadAccountAsync,
                 initialPage??(_updates?.CanInstall==true?"软件更新":!_tokens.HasToken?"墨墨账号":null),_updates,
-                startOnboarding:StartOnboarding,settingsChanged:ApplySettingsUI);
+                startOnboarding:StartOnboarding,settingsChanged:ApplySettingsUI,cacheMaintenance:BuildCacheMaintenance());
         }
         finally{_editingSettings=false;RefreshGlobalShortcut();RefreshDoubleCopy();RefreshHoverLookup();QueuePendingUpdateNotice();}
     }
@@ -893,6 +886,8 @@ public partial class MainWindow : Window
     {
         ThemeManager.Apply(_preferences.ThemeMode);
         UpdateThemeToggleIcon();
+        SyncRecallModeToggle();
+        if (!_preferences.RecallModeEnabled && _recallModeActive) StopRecallMode();
         UpdateShortcutHints();
         UpdateExamCountdown();
     }
@@ -1021,11 +1016,7 @@ public partial class MainWindow : Window
         if(_recallModeActive&&_viewTarget==ViewTarget.Word&&!SearchBox.IsKeyboardFocusWithin&&Keyboard.Modifiers==ModifierKeys.None&&key is Key.Space or Key.Enter)
         {
             e.Handled=true;
-            if(!e.IsRepeat)
-            {
-                bool? remembered=ReferenceEquals(Keyboard.FocusedElement,RecallRememberedButton)?true:ReferenceEquals(Keyboard.FocusedElement,RecallForgotButton)?false:null;
-                RevealFromRecallMode(remembered);
-            }
+            if(!e.IsRepeat) RevealFromRecallMode();
             return;
         }
         if(key is Key.BrowserBack or Key.BrowserForward){e.Handled=true;await MoveNavigationAsync(key==Key.BrowserBack?-1:1);return;}

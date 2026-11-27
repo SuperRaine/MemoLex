@@ -186,6 +186,31 @@ public sealed class ContextSentenceStore
         get { lock (_gate) { EnsureLoaded(); return _items.Count; } }
     }
 
+    public long FileSizeBytes
+    {
+        get
+        {
+            lock (_gate)
+            {
+                try { return File.Exists(_path) ? new FileInfo(_path).Length : 0; }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
+            }
+        }
+    }
+
+    public int Clear()
+    {
+        lock (_gate)
+        {
+            EnsureLoaded();
+            var removed = _items.Count;
+            _items.Clear();
+            try { if (File.Exists(_path)) File.Delete(_path); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            return removed;
+        }
+    }
+
     public IReadOnlyList<ContextSentenceItem> List(string? word = null)
     {
         lock (_gate)

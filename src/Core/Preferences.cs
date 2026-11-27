@@ -14,6 +14,7 @@ public sealed class Preferences
     public bool CloseToTray { get; set; }
     public bool RememberCloseAction { get; set; }
     public bool DoubleCopyEnabled { get; set; }
+    public bool RecallModeEnabled { get; set; }
     public bool OnboardingCompleted {get;set;}
     public bool ShowExamCountdown {get;set;}
     public string ExamName {get;set;}="考试";

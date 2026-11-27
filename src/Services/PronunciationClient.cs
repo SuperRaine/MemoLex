@@ -146,5 +146,8 @@ internal sealed class PronunciationClient : IDisposable
         catch (Exception error) when (error is HttpRequestException or IOException) { return null; }
     }
 
+    public int CachedCount { get { lock (_sentenceCache) return _sentenceCache.Count; } }
+    public long CachedBytes { get { lock (_sentenceCache) return _sentenceCache.Values.Sum(v => (long)v.Length); } }
+    public int ClearCache() { lock (_sentenceCache) { var count = _sentenceCache.Count; _sentenceCache.Clear(); _cachedSentences.Clear(); return count; } }
     public void Dispose() => _http.Dispose();
 }

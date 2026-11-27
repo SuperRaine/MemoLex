@@ -96,26 +96,43 @@ struct MainView: View {
     private func sidebar(compact: Bool, short: Bool) -> some View {
         VStack(spacing: short ? 8 : 13) {
             VStack(spacing: short ? 7 : 10) {
-                HStack {
+                HStack(spacing: 6) {
                     Text("快速查词").sectionLabel()
-                    Spacer()
-                    if let shortcut = model.preferences.shortcuts["search"]?.label, !shortcut.isEmpty {
+                    if let shortcut = preferences.shortcuts["search"]?.label, !shortcut.isEmpty {
                         Text(shortcut)
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Palette.deep)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .padding(.horizontal, 5).padding(.vertical, 1.5)
                             .background(Palette.wash, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                     }
+                    Spacer(minLength: 4)
+                    Button { model.toggleRecallMode() } label: {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(preferences.recallModeEnabled ? Palette.accent : Palette.muted.opacity(0.55))
+                                .frame(width: 6, height: 6)
+                            Text("先回想")
+                                .font(.system(size: 10.5, weight: preferences.recallModeEnabled ? .semibold : .medium))
+                                .foregroundStyle(preferences.recallModeEnabled ? Palette.deep : Palette.muted)
+                        }
+                        .padding(.horizontal, 7).padding(.vertical, 2.5)
+                        .background(preferences.recallModeEnabled ? Palette.wash : Color.clear, in: Capsule())
+                        .overlay(Capsule().strokeBorder(preferences.recallModeEnabled ? Palette.accent.opacity(0.75) : Palette.border, lineWidth: 0.9))
+                    }
+                    .buttonStyle(.plain)
+                    .noFocusRing()
+                    .help(preferences.recallModeEnabled
+                          ? "先回想模式（已开启）：查词时会先遮住释义 2 秒，点击可关闭"
+                          : "先回想模式（已关闭）：开启后，查词时会先遮住释义 2 秒，帮你主动回忆")
                 }
                 HStack(spacing: 6) {
                     HStack(spacing: 7) {
                         Image(systemName: "magnifyingglass").font(.system(size: 12.5)).foregroundStyle(Palette.muted)
                         TextField("输入英文或中文", text: $model.search).textFieldStyle(.plain)
-                            .help("输入英文查释义，或用中文找单词；按 Tab 先回想")
+                            .help("输入英文查释义，或用中文找单词")
                             .focused($searchFocused).onSubmit { model.lookup(model.search) }
                             .onChange(of: model.search) { _ in model.suggest() }
                     }.padding(.horizontal, 10).frame(height: 36).controlSurface()
-                        .background(SearchTabMonitor(active: { searchFocused }, onTab: { model.triggerSearchTabRecall() }))
                     Button { model.lookup(model.search) } label: {
                         Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .semibold))
                     }
@@ -139,25 +156,20 @@ struct MainView: View {
                         LazyVStack(alignment: .leading, spacing: 1) {
                             ForEach(model.suggestions, id: \.self) { w in
                                 let count = model.lookupCount(for: w)
-                                HStack(spacing: 4) {
-                                    Button { model.lookup(w) } label: {
+                                Button { model.lookup(w) } label: {
+                                    HStack(spacing: 6) {
                                         Text(w).font(.system(size: 14)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                    .buttonStyle(SidebarRowStyle(selected: w == model.word))
-                                    if count >= 2 {
-                                        Button("查过\(count)次·回想") {
-                                            model.lookup(w, recallMode: true)
+                                        if count >= 2 {
+                                            Text("\(count)次")
+                                                .font(.system(size: 10, weight: .medium))
+                                                .foregroundStyle(Color(red: 0.65, green: 0.34, blue: 0.03))
+                                                .padding(.horizontal, 5).padding(.vertical, 1.5)
+                                                .background(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.14), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                                .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.32), lineWidth: 0.7))
                                         }
-                                        .buttonStyle(.plain)
-                                        .noFocusRing()
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundStyle(Color(red: 0.65, green: 0.34, blue: 0.03))
-                                        .padding(.horizontal, 6).padding(.vertical, 2.5)
-                                        .background(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.16), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35), lineWidth: 0.7))
-                                        .help("你已查过 \(count) 次，按 Tab 或点这里先花 2 秒回想意思")
                                     }
                                 }
+                                .buttonStyle(SidebarRowStyle(selected: w == model.word))
                             }
                         }.background(SidebarWheelPaging())
                     }
@@ -298,47 +310,6 @@ private struct SidebarWheelPaging: NSViewRepresentable {
             clip.scroll(to: clip.constrainBoundsRect(target).origin)
             scroll.reflectScrolledClipView(clip)
             return true
-        }
-    }
-}
-
-private struct SearchTabMonitor: NSViewRepresentable {
-    var active: () -> Bool
-    var onTab: () -> Bool
-
-    func makeNSView(context: Context) -> MonitorView {
-        let view = MonitorView()
-        view.active = active
-        view.onTab = onTab
-        return view
-    }
-    func updateNSView(_ view: MonitorView, context: Context) {
-        view.active = active
-        view.onTab = onTab
-    }
-    static func dismantleNSView(_ view: MonitorView, coordinator: ()) { view.removeMonitor() }
-
-    final class MonitorView: NSView {
-        var active: (() -> Bool)?
-        var onTab: (() -> Bool)?
-        private var monitor: Any?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            removeMonitor()
-            guard window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, event.window === self.window, event.keyCode == 48,
-                      event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
-                      self.active?() == true,
-                      self.onTab?() == true else { return event }
-                return nil
-            }
-        }
-
-        func removeMonitor() {
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
         }
     }
 }
@@ -841,11 +812,9 @@ private struct WordPage: View {
             }
             .frame(height: 5)
             HStack(spacing: 10) {
-                Button("✓ 想起来了 · 核对答案") { model.revealFromRecall(remembered: true) }
+                Button("查看释义") { model.revealFromRecall() }
                     .buttonStyle(MemoButtonStyle(accent: true))
                     .keyboardShortcut(.return, modifiers: [])
-                Button("没想起来 · 直接看释义") { model.revealFromRecall(remembered: false) }
-                    .buttonStyle(MemoButtonStyle())
                 Text("快捷键：空格 / 回车 立即揭晓")
                     .font(.system(size: 11))
                     .foregroundStyle(Palette.muted)
@@ -856,7 +825,7 @@ private struct WordPage: View {
         .background(Palette.wash.opacity(0.78), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Palette.accent.opacity(0.32), lineWidth: 0.9))
         .overlay {
-            Button("") { model.revealFromRecall(remembered: nil) }
+            Button("") { model.revealFromRecall() }
                 .keyboardShortcut(.space, modifiers: [])
                 .opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
         }

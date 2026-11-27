@@ -310,5 +310,7 @@ public sealed class TranslationClient : IDisposable
     }
 
     private readonly record struct CacheKey(string Pair, string Text, int TextCount, string Credential);
+    public int CachedCount { get { lock (_state) return _cache.Count; } }
+    public int ClearCache() { lock (_state) { var count = _cache.Count; _cache.Clear(); return count; } }
     public void Dispose() => _http.Dispose();
 }

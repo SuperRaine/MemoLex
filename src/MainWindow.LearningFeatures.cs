@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -66,7 +67,7 @@ public partial class MainWindow
         UiMotion.Reveal(RecallMaskCard, distance: 4);
         Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
         {
-            if (_recallModeActive) RecallRememberedButton.Focus();
+            if (_recallModeActive) RecallRevealButton.Focus();
         }));
     }
 
@@ -92,73 +93,40 @@ public partial class MainWindow
         }
     }
 
-    private void RevealFromRecallMode(bool? remembered)
+    private void RevealFromRecallMode()
     {
         if (!_recallModeActive) return;
         StopRecallMode();
         UiMotion.Reveal(DefinitionRevealBody, distance: 4);
-        StatusText.Text = remembered switch
-        {
-            true => "太棒了！核对一下释义是否和你想的一致。",
-            false => "没关系，结合下方助记和例句再记一次，或加入云词本巩固。",
-            _ => "已揭晓释义。"
-        };
+        StatusText.Text = "已揭晓释义。";
     }
 
-    private void RecallRememberedButton_Click(object sender, RoutedEventArgs e) => RevealFromRecallMode(true);
-    private void RecallForgotButton_Click(object sender, RoutedEventArgs e) => RevealFromRecallMode(false);
+    private void RecallRevealButton_Click(object sender, RoutedEventArgs e) => RevealFromRecallMode();
     private void RepeatedRecallButton_Click(object sender, RoutedEventArgs e)
     {
         if (ValidWord(_word)) EnterRecallMode(_word);
     }
 
-    private bool TryResolveRecallTarget(out string word)
+    private void SyncRecallModeToggle()
     {
-        word = "";
-        var raw = SearchBox.Text.Trim();
-        if (raw.Length == 0 || ChineseReverseSearch.ContainsChinese(raw)) return false;
-        if (SuggestionList.SelectedItem is WordSuggestionItem selected)
-        {
-            word = selected.Word;
-            return ValidWord(word);
-        }
-        var normalized = ExampleText.NormalizeLookup(raw).Trim();
-        if (ValidWord(normalized) && _dictionary.Lookup(normalized) != null)
-        {
-            word = normalized;
-            return true;
-        }
-        if (SuggestionList.Items.Count > 0 && SuggestionList.Items[0] is WordSuggestionItem first)
-        {
-            word = first.Word;
-            return ValidWord(word);
-        }
-        if (ValidWord(normalized))
-        {
-            word = normalized;
-            return true;
-        }
-        return false;
+        if (RecallModeToggle == null) return;
+        RecallModeToggle.IsChecked = _preferences.RecallModeEnabled;
+        RecallModeToggle.ToolTip = _preferences.RecallModeEnabled
+            ? "先回想模式（已开启）：查词时会先遮住释义 2 秒，点击可关闭"
+            : "先回想模式（已关闭）：开启后，查词时会先遮住释义 2 秒，帮你主动回忆";
     }
 
-    private async void SuggestionList_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void RecallModeToggle_Click(object sender, RoutedEventArgs e)
     {
-        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None && SuggestionList.SelectedItem is WordSuggestionItem item)
-        {
-            e.Handled = true;
-            SearchBox.Text = item.Word;
-            await LoadWordAsync(item.Word, recallMode: true);
-        }
-    }
-
-    private async void SuggestionRecallButton_Click(object sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-        if (sender is Button { Tag: string word } && ValidWord(word))
-        {
-            SearchBox.Text = word;
-            await LoadWordAsync(word, recallMode: true);
-        }
+        var enabled = RecallModeToggle.IsChecked == true;
+        _preferences.RecallModeEnabled = enabled;
+        _preferences.Save();
+        SyncRecallModeToggle();
+        if (!enabled && _recallModeActive)
+            StopRecallMode();
+        StatusText.Text = enabled
+            ? "已开启「先回想」模式，后续查词将先遮住释义 2 秒。"
+            : "已关闭「先回想」模式。";
     }
 
     private void UpdateContextCaptureBanner(string word)
@@ -370,5 +338,134 @@ public partial class MainWindow
         dialog.ShowDialog();
         UpdateContextReviewButtons();
         if (ValidWord(_word)) RenderSavedContexts(_word);
+    }
+
+    private CacheMaintenanceHost BuildCacheMaintenance()
+    {
+        var profile = _tokens.ProfileDirectory;
+        var updatesDir = Path.Combine(profile, "updates");
+        var browserDir = Path.Combine(profile, "dictionary-browser");
+
+        IReadOnlyList<CacheCategoryItem> Load()
+        {
+            var historyCount = _preferences.SearchHistory.Count;
+            var contextCount = _contextSentences.Count;
+            var contextBytes = _contextSentences.FileSizeBytes;
+            var spellingCount = _spellingMistakes.ActiveCount;
+            var spellingBytes = _spellingMistakes.FileSizeBytes;
+            var (flashcardCount, flashcardBytes) = FlashcardProgressStore.MeasureAll(profile);
+            var (stubbornCount, stubbornBytes) = StubbornWordCache.MeasureAll(profile);
+            var memoryCount = _cloudCache.Count + _examples.CachedCount + _onlineDictionary.CachedCount + _translation.CachedCount + _pronunciation.CachedCount;
+            var tempDiskBytes = CacheMaintenanceHost.MeasureDirectoryBytes(updatesDir) + CacheMaintenanceHost.MeasureDirectoryBytes(browserDir);
+            var networkTotalBytes = _pronunciation.CachedBytes + tempDiskBytes;
+            var hasNetwork = memoryCount > 0 || tempDiskBytes > 0;
+            var networkSummary = !hasNetwork
+                ? "暂无缓存"
+                : memoryCount > 0 && networkTotalBytes > 0
+                    ? $"{memoryCount} 项内存缓存 · {CacheMaintenanceHost.FormatBytes(networkTotalBytes)}"
+                    : memoryCount > 0
+                        ? $"{memoryCount} 项内存缓存"
+                        : CacheMaintenanceHost.FormatBytes(networkTotalBytes);
+
+            return
+            [
+                new CacheCategoryItem(
+                    "history",
+                    "查词历史与次数",
+                    "本机查词记录及「查过 N 次」计数，清除后「最近查词」与建议角标会重置。",
+                    historyCount > 0 ? $"{historyCount} 条记录" : "暂无记录",
+                    historyCount > 0,
+                    "将清空本机的全部查词历史与查词次数统计，不会影响云词本和账号登录。"),
+                new CacheCategoryItem(
+                    "contexts",
+                    "已保存的原句",
+                    "从段落翻译、截图翻译与真题例句保存的离线原句及复习计数。",
+                    contextCount > 0 ? $"{contextCount} 条原句 · {CacheMaintenanceHost.FormatBytes(contextBytes)}" : "暂无数据",
+                    contextCount > 0,
+                    "将清空所有保存在本机的阅读原句，离线原句自测列表将变为空。"),
+                new CacheCategoryItem(
+                    "spelling",
+                    "拼写错点记录",
+                    "卡片默写中记住的具体易错点与 2 选 1 错点微题记录。",
+                    spellingCount > 0 ? $"{spellingCount} 个易错词 · {CacheMaintenanceHost.FormatBytes(spellingBytes)}" : "暂无记录",
+                    spellingCount > 0,
+                    "将清空已记录的拼写易错点，后续拼写练习会重新按实际输入记录。"),
+                new CacheCategoryItem(
+                    "flashcards",
+                    "卡片自测进度",
+                    "顽固单词与各个云词本的本地卡片自测续接进度。",
+                    flashcardCount > 0 ? $"{flashcardCount} 份进度 · {CacheMaintenanceHost.FormatBytes(flashcardBytes)}" : "暂无进度",
+                    flashcardCount > 0,
+                    "将清除所有本地保存的卡片自测进度，下次打开自测将从第 1 组重新开始。"),
+                new CacheCategoryItem(
+                    "stubborn",
+                    "顽固单词本地缓存",
+                    "用于离线浏览顽固单词列表的本机快照，清除后联网可重新同步。",
+                    stubbornCount > 0 ? $"{stubbornCount} 份缓存 · {CacheMaintenanceHost.FormatBytes(stubbornBytes)}" : "暂无缓存",
+                    stubbornCount > 0,
+                    "将清除本机缓存的顽固单词快照，不会退出墨墨账号，联网后会自动重新同步。"),
+                new CacheCategoryItem(
+                    "network",
+                    "网络与临时缓存",
+                    "真题例句、联网释义、段落翻译、朗读语音内存缓存，以及更新包和海词浏览临时文件。",
+                    networkSummary,
+                    hasNetwork,
+                    "将清除联网查询、翻译与语音缓存及本机临时文件，下次访问时重新获取。")
+            ];
+        }
+
+        string ClearOne(string id)
+        {
+            switch (id)
+            {
+                case "history":
+                    _preferences.ClearHistory();
+                    _preferences.Save();
+                    UpdateHistory();
+                    _ = UpdateSuggestionsAsync(SearchBox.Text);
+                    UpdateRepeatedWordBanner();
+                    return "已清除查词历史与查词次数。";
+                case "contexts":
+                    _contextSentences.Clear();
+                    UpdateContextReviewButtons();
+                    if (ValidWord(_word))
+                    {
+                        RenderSavedContexts(_word);
+                        UpdateContextCaptureBanner(_word);
+                    }
+                    return "已清除所有已保存的原句。";
+                case "spelling":
+                    _spellingMistakes.Clear();
+                    return "已清除拼写错点记录。";
+                case "flashcards":
+                    FlashcardProgressStore.RemoveAll(profile);
+                    return "已清除所有卡片自测进度。";
+                case "stubborn":
+                    StubbornWordCache.RemoveAll(profile);
+                    ResetStubbornWords();
+                    return "已清除顽固单词本地缓存。";
+                case "network":
+                    _cloudCache.Clear();
+                    _examples.ClearCache();
+                    _onlineDictionary.ClearCache();
+                    _translation.ClearCache();
+                    _pronunciation.ClearCache();
+                    CacheMaintenanceHost.ClearDirectoryBestEffort(updatesDir);
+                    CacheMaintenanceHost.ClearDirectoryBestEffort(browserDir);
+                    return "已清除网络与临时缓存。";
+                default:
+                    return "";
+            }
+        }
+
+        string ClearAll()
+        {
+            var items = Load().Where(c => c.HasData).ToArray();
+            if (items.Length == 0) return "当前没有可清除的缓存。";
+            foreach (var item in items) ClearOne(item.Id);
+            return $"已清除全部 {items.Length} 类本机缓存与记录。";
+        }
+
+        return new CacheMaintenanceHost(Load, ClearOne, ClearAll);
     }
 }
