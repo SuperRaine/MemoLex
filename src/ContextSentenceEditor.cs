@@ -7,6 +7,7 @@ using MemoLex.Core;
 namespace MemoLex;
 
 internal sealed record ContextSentenceDraft(
+    string Word,
     string Sentence,
     string Translation,
     string Source,
@@ -23,23 +24,27 @@ internal static class ContextSentenceEditor
         ContextSentenceItem? original,
         bool canSync,
         Func<ContextSentenceDraft, bool, Task> save,
-        Func<Task<bool>>? delete = null)
+        Func<Task<bool>>? delete = null,
+        bool allowEditWord = false)
     {
         var isEdit = original != null;
-        var dialog = InputDialog.Shell(owner, (isEdit ? "编辑例句 · " : "添加例句 · ") + word, out _);
+        var initialWord = (original?.Word ?? word ?? "").Trim();
+        var titleWord = initialWord.Length > 0 ? " · " + initialWord : "";
+        var dialog = InputDialog.Shell(owner, (isEdit ? "编辑例句" : "添加例句") + titleWord, out _);
         dialog.Width = 660;
-        dialog.Height = 575;
+        dialog.Height = allowEditWord && !isEdit ? 625 : 575;
         dialog.MinWidth = 540;
         dialog.MinHeight = 500;
         dialog.SizeToContent = SizeToContent.Manual;
 
         var body = new Grid { Margin = new Thickness(24, 16, 24, 20) };
         body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 0: status banner
-        body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1.15, GridUnitType.Star) }); // 1: sentence
-        body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.85, GridUnitType.Star) }); // 2: translation
-        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 3: source & tags
-        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 4: status text
-        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 5: buttons
+        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 1: optional word input
+        body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1.15, GridUnitType.Star) }); // 2: sentence
+        body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.85, GridUnitType.Star) }); // 3: translation
+        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 4: source & tags
+        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 5: status text
+        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 6: buttons
 
         var pillStyle = Application.Current?.TryFindResource("PillButton") as Style;
         var accentStyle = Application.Current?.TryFindResource("AccentButton") as Style;
@@ -106,7 +111,36 @@ internal static class ContextSentenceEditor
         bannerCard.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         body.Children.Add(bannerCard);
 
-        // 1. English sentence
+        // 1. Optional word input (when adding from My Sentences dialog)
+        TextBox? wordBox = null;
+        if (allowEditWord && !isEdit)
+        {
+            var wordRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            wordRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(68) });
+            wordRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var wordLabel = new TextBlock { Text = "所属单词 *", FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+            wordLabel.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
+            wordRow.Children.Add(wordLabel);
+
+            wordBox = new TextBox
+            {
+                Text = initialWord,
+                MaxLength = 100,
+                FontSize = 14,
+                Height = 32,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
+                Padding = new Thickness(9, 2, 9, 2),
+                ToolTip = "填写该例句对应的英文单词或短语"
+            };
+            Grid.SetColumn(wordBox, 1);
+            wordRow.Children.Add(wordBox);
+            Grid.SetRow(wordRow, 1);
+            body.Children.Add(wordRow);
+            dialog.RegisterName("ContextWordText", wordBox);
+        }
+
+        // 2. English sentence
         var sentenceGroup = new Grid { Margin = new Thickness(0, 0, 0, 10) };
         sentenceGroup.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         sentenceGroup.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -128,11 +162,11 @@ internal static class ContextSentenceEditor
         };
         Grid.SetRow(sentenceBox, 1);
         sentenceGroup.Children.Add(sentenceBox);
-        Grid.SetRow(sentenceGroup, 1);
+        Grid.SetRow(sentenceGroup, 2);
         body.Children.Add(sentenceGroup);
         dialog.RegisterName("ContextSentenceText", sentenceBox);
 
-        // 2. Chinese translation
+        // 3. Chinese translation
         var translationGroup = new Grid { Margin = new Thickness(0, 0, 0, 12) };
         translationGroup.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         translationGroup.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -154,7 +188,7 @@ internal static class ContextSentenceEditor
         };
         Grid.SetRow(translationBox, 1);
         translationGroup.Children.Add(translationBox);
-        Grid.SetRow(translationGroup, 2);
+        Grid.SetRow(translationGroup, 3);
         body.Children.Add(translationGroup);
         dialog.RegisterName("ContextTranslationText", translationBox);
 
@@ -260,14 +294,14 @@ internal static class ContextSentenceEditor
         };
         metaCard.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
         metaCard.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-        Grid.SetRow(metaCard, 3);
+        Grid.SetRow(metaCard, 4);
         body.Children.Add(metaCard);
 
-        // 4. Status text
+        // 5. Status text
         var status = InputDialog.Text("多个标签可用逗号或空格分隔；本地保存支持离线自测。", status: true);
         status.Margin = new Thickness(0, 10, 0, 12);
         status.FontSize = 12;
-        Grid.SetRow(status, 4);
+        Grid.SetRow(status, 5);
         body.Children.Add(status);
 
         // 5. Action bar
@@ -351,13 +385,20 @@ internal static class ContextSentenceEditor
 
         DockPanel.SetDock(buttons, Dock.Right);
         footer.Children.Add(buttons);
-        Grid.SetRow(footer, 5);
+        Grid.SetRow(footer, 6);
         body.Children.Add(footer);
 
         InputDialog.SetBody(dialog, body);
 
         async Task SaveAsync(bool sync)
         {
+            var resolvedWord = (wordBox?.Text ?? initialWord).Trim();
+            if (resolvedWord.Length == 0 || resolvedWord.Length > 100)
+            {
+                status.Text = "请先填写有效的英文单词。";
+                wordBox?.Focus();
+                return;
+            }
             var sentence = sentenceBox.Text.Trim();
             if (sentence.Length == 0)
             {
@@ -368,7 +409,7 @@ internal static class ContextSentenceEditor
             var translation = translationBox.Text.Trim();
             var source = string.IsNullOrWhiteSpace(sourceBox.Text) ? "自建例句" : sourceBox.Text.Trim();
             var tags = ContextSentenceHelper.ParseTags(tagsBox.Text);
-            var draft = new ContextSentenceDraft(sentence, translation, source, tags);
+            var draft = new ContextSentenceDraft(resolvedWord, sentence, translation, source, tags);
 
             await RunBusyAsync(async () =>
             {
@@ -390,8 +431,15 @@ internal static class ContextSentenceEditor
         };
         dialog.Loaded += (_, _) =>
         {
-            sentenceBox.Focus();
-            sentenceBox.CaretIndex = sentenceBox.Text.Length;
+            if (wordBox != null && string.IsNullOrWhiteSpace(wordBox.Text))
+            {
+                wordBox.Focus();
+            }
+            else
+            {
+                sentenceBox.Focus();
+                sentenceBox.CaretIndex = sentenceBox.Text.Length;
+            }
         };
         return dialog;
     }

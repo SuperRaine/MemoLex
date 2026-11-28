@@ -41,7 +41,6 @@ enum EnglishAccent: String, CaseIterable {
     @Published var contextSentences: [J] = []
     @Published var activeSpellingMistakes: [J] = []
     @Published var pendingContext: PendingWordContext? = nil
-    @Published var contextReviewFocusWord: String? = nil
     @Published var editingContextSentence: J? = nil
     @Published var morphemePracticeGroup: J? = nil
     @Published var recallMode = false
@@ -426,9 +425,11 @@ enum EnglishAccent: String, CaseIterable {
         sheet = .contextEditor
     }
 
-    func saveContextSentenceEdit(id: String?, sentence: String, translation: String, source: String, tags: [String], cloud: Bool, cloudID: String?) async throws {
-        let query = word.trimmed
-        guard !query.isEmpty else { return }
+    func saveContextSentenceEdit(word targetWord: String? = nil, id: String?, sentence: String, translation: String, source: String, tags: [String], cloud: Bool, cloudID: String?) async throws {
+        let query = (targetWord ?? word).trimmed
+        guard !query.isEmpty, query.count <= 100 else {
+            throw CoreFailure(code: "invalid_word", message: "请先填写有效的英文单词。")
+        }
         let generation = accountVersion
         var params: [String: J] = [
             "word": .string(query),
@@ -507,12 +508,7 @@ enum EnglishAccent: String, CaseIterable {
         await refreshContextSentences()
     }
 
-    func openContextReview(focusWord: String? = nil) {
-        guard !contextSentences.isEmpty else {
-            status = "还没有收藏例句，可在翻译或真题例句中点击「收藏例句」"
-            return
-        }
-        contextReviewFocusWord = focusWord
+    func openMySentences() {
         sheet = .contextReview
     }
 
@@ -550,7 +546,7 @@ enum EnglishAccent: String, CaseIterable {
             "source": .string(lastTranslationSourceLabel)
         ])) != nil {
             await refreshContextSentences()
-            status = "已收藏「\(targetWord)」的例句，可随时例句自测"
+            status = "已收藏「\(targetWord)」的例句，可在顶部「我的例句」中查看与自测"
         }
     }
 

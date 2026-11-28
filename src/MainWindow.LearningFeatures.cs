@@ -148,7 +148,8 @@ public partial class MainWindow
             ContextCaptureSourceText.Text = $"来自「{ctx.Source}」";
             ContextCaptureSentenceText.Text = ctx.Sentence;
             var alreadySaved = _contextSentences.Contains(ctx.Word, ctx.Sentence, MnemonicAccountKey);
-            SavePendingContextButton.Content = alreadySaved ? "✓ 已收藏 · 去自测" : "＋ 收藏例句";
+            SavePendingContextButton.Content = alreadySaved ? "✓ 已收藏" : "＋ 收藏例句";
+            SavePendingContextButton.IsEnabled = !alreadySaved;
             ContextCaptureBanner.Visibility = Visibility.Visible;
         }
         else
@@ -162,11 +163,13 @@ public partial class MainWindow
         if (_pendingContext is not { } ctx) return;
         if (_contextSentences.Contains(ctx.Word, ctx.Sentence, MnemonicAccountKey))
         {
-            OpenContextSentenceReview(ctx.Word);
+            SavePendingContextButton.Content = "✓ 已收藏";
+            SavePendingContextButton.IsEnabled = false;
             return;
         }
         _contextSentences.Save(ctx.Word, ctx.Sentence, ctx.Translation, ctx.Source, ctx.MatchedForm, MnemonicAccountKey);
-        SavePendingContextButton.Content = "✓ 已收藏 · 去自测";
+        SavePendingContextButton.Content = "✓ 已收藏";
+        SavePendingContextButton.IsEnabled = false;
         RenderSavedContexts(_word);
         RefreshExampleSaveButtons();
         UpdateContextReviewButtons();
@@ -201,10 +204,9 @@ public partial class MainWindow
         }
 
         var cloudCount = items.Count(item => item.IsCloud);
-        var totalCount = _contextSentences.CountForAccount(accountKey);
         SavedContextHintText.Text = cloudCount > 0
-            ? $"本词 {items.Count} 条（云端 {cloudCount}）· 共 {totalCount} 条"
-            : $"本词 {items.Count} 条 · 共 {totalCount} 条";
+            ? $"本词 {items.Count} 条（云端 {cloudCount}）"
+            : $"本词 {items.Count} 条";
         var pillStyle = TryFindResource("PillButton") as Style;
         foreach (var item in items)
         {
@@ -373,28 +375,57 @@ public partial class MainWindow
         UpdateSavedContextVisibility(word);
     }
 
+    private void MySentencesButton_Click(object sender, RoutedEventArgs e) => OpenMySentencesDialog();
+
+    private void OpenMySentencesDialog()
+    {
+        if (!_ready) return;
+        var dialog = MySentencesDialog.Build(
+            this,
+            loadItems: () => _contextSentences.List(null, MnemonicAccountKey),
+            lookupWord: w => _ = LoadWordAsync(w),
+            speakSentence: (btn, text) => SpeakExampleAsync(btn, text),
+            openEditor: (ownerWindow, item) => OpenContextSentenceEditor(
+                item,
+                explicitWord: item?.Word ?? (ValidWord(_word) ? _word : ""),
+                dialogOwner: ownerWindow,
+                allowEditWord: item == null),
+            deleteItem: (ownerWindow, item) => DeleteContextSentenceAsync(item, rethrowOnError: false, dialogOwner: ownerWindow),
+            startReview: (ownerWindow, deck) => OpenContextSentenceReview(deck, ownerWindow));
+        dialog.ShowDialog();
+        RefreshContextSentenceViews(_word);
+    }
+
     private void AddContextSentenceButton_Click(object sender, RoutedEventArgs e) => OpenContextSentenceEditor(null);
 
-    private void OpenContextSentenceEditor(ContextSentenceItem? original)
+    private void OpenContextSentenceEditor(
+        ContextSentenceItem? original,
+        string? explicitWord = null,
+        Window? dialogOwner = null,
+        bool allowEditWord = false)
     {
-        if (!_ready || !ValidWord(_word)) return;
-        var word = _word;
+        var initialWord = (original?.Word ?? explicitWord ?? _word ?? "").Trim();
+        if (!_ready || (!allowEditWord && !ValidWord(initialWord))) return;
         var account = _accountVersion;
         var accountKey = MnemonicAccountKey;
         var canSync = _allowCloud && _tokens.HasToken;
         var currentItem = original;
+        var owner = dialogOwner ?? this;
 
         var dialog = ContextSentenceEditor.Build(
-            this,
-            word,
+            owner,
+            initialWord,
             currentItem,
             canSync,
             async (draft, sync) =>
             {
+                var targetWord = ExampleText.NormalizeLookup(draft.Word).Trim();
+                if (!ValidWord(targetWord))
+                    throw new ArgumentException("请输入有效的英文单词或短语（最多 100 个字符）。");
                 var existingCloudId = currentItem != null && currentItem.AccountKey == accountKey ? currentItem.CloudId : null;
                 var localSaved = _contextSentences.SaveEdit(
                     currentItem?.Id,
-                    word,
+                    targetWord,
                     draft.Sentence,
                     draft.Translation,
                     draft.Source,
@@ -404,7 +435,7 @@ public partial class MainWindow
                     accountKey: existingCloudId != null ? accountKey : null,
                     matchedForm: currentItem?.MatchedForm);
                 currentItem = localSaved;
-                RefreshContextSentenceViews(word);
+                RefreshContextSentenceViews(targetWord);
 
                 if (!sync)
                 {
@@ -419,9 +450,9 @@ public partial class MainWindow
 
                 try
                 {
-                    var voc = _vocabulary?.Spelling.Equals(word, StringComparison.OrdinalIgnoreCase) == true
+                    var voc = _vocabulary?.Spelling.Equals(targetWord, StringComparison.OrdinalIgnoreCase) == true
                         ? _vocabulary
-                        : await _api.ResolveWordAsync(word, _accountCts.Token);
+                        : await _api.ResolveWordAsync(targetWord, _accountCts.Token);
                     if (voc == null) throw new MaiMemoException("墨墨暂未收录这个单词。");
                     var synced = await _api.SavePhraseAsync(
                         voc.Id,
@@ -433,7 +464,7 @@ public partial class MainWindow
                         _accountCts.Token);
                     currentItem = _contextSentences.SaveEdit(
                         localSaved.Id,
-                        word,
+                        targetWord,
                         synced.Text,
                         synced.Interpretation,
                         synced.Origin,
@@ -442,8 +473,8 @@ public partial class MainWindow
                         origin: "cloud",
                         accountKey: accountKey,
                         matchedForm: localSaved.MatchedForm);
-                    _cloudCache.Remove((_accountCredentialKey ?? "offline") + ":" + word.ToLowerInvariant());
-                    RefreshContextSentenceViews(word);
+                    _cloudCache.Remove((_accountCredentialKey ?? "offline") + ":" + targetWord.ToLowerInvariant());
+                    RefreshContextSentenceViews(targetWord);
                     StatusText.Text = "例句已同步到墨墨云端。";
                 }
                 catch (Exception error)
@@ -452,19 +483,20 @@ public partial class MainWindow
                     throw new MaiMemoException("已保存到本地，未能同步到墨墨：" + UserError(error));
                 }
             },
-            delete: currentItem == null ? null : () => DeleteContextSentenceAsync(currentItem, rethrowOnError: true));
+            delete: currentItem == null ? null : () => DeleteContextSentenceAsync(currentItem, rethrowOnError: true, dialogOwner: owner),
+            allowEditWord: allowEditWord);
 
         dialog.ShowDialog();
     }
 
-    private async Task<bool> DeleteContextSentenceAsync(ContextSentenceItem item, bool rethrowOnError = false)
+    private async Task<bool> DeleteContextSentenceAsync(ContextSentenceItem item, bool rethrowOnError = false, Window? dialogOwner = null)
     {
         var accountKey = MnemonicAccountKey;
         var hasCloudCopy = !string.IsNullOrWhiteSpace(item.CloudId) && item.AccountKey == accountKey;
         if (hasCloudCopy)
         {
             if (!InputDialog.Confirm(
-                    this,
+                    dialogOwner ?? this,
                     "删除云端例句",
                     "这条例句已同步到墨墨云端。确认后将同时从本机和墨墨云端删除，手机端也会同步移除。",
                     "确认删除"))
@@ -515,31 +547,21 @@ public partial class MainWindow
     private void UpdateContextReviewButtons()
     {
         var count = _contextSentences.CountForAccount(MnemonicAccountKey);
-        if (TranslationContextReviewButton != null)
-            TranslationContextReviewButton.Content = count > 0 ? $"例句自测 ({count})" : "例句自测";
-        if (WordContextReviewButton != null)
-            WordContextReviewButton.Content = count > 0 ? $"例句自测 ({count})" : "例句自测";
+        if (MySentencesButton != null)
+            MySentencesButton.ToolTip = count > 0
+                ? $"我的例句（共 {count} 条 · 浏览、编辑与例句自测）"
+                : "我的例句（浏览、编辑与例句自测）";
     }
 
-    private void ContextReviewButton_Click(object sender, RoutedEventArgs e) => OpenContextSentenceReview();
-    private void WordContextReviewButton_Click(object sender, RoutedEventArgs e) => OpenContextSentenceReview(_word);
-
-    private void OpenContextSentenceReview(string? focusWord = null)
+    private void OpenContextSentenceReview(IReadOnlyList<ContextSentenceItem> deck, Window? dialogOwner = null)
     {
-        var all = _contextSentences.List(null, MnemonicAccountKey);
-        if (all.Count == 0)
+        if (deck.Count == 0)
         {
-            StatusText.Text = "还没有收藏例句，可在翻译、真题例句或单词页中添加例句。";
+            StatusText.Text = "当前没有可用于自测的例句。";
             return;
         }
 
-        var orderedItems = all.ToList();
-        if (!string.IsNullOrWhiteSpace(focusWord))
-        {
-            orderedItems = all
-                .OrderByDescending(item => item.Word.Equals(focusWord, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        }
+        var orderedItems = deck.ToList();
         var uniqueWords = orderedItems
             .Select(item => item.Word.Trim())
             .Where(w => w.Length > 0)
@@ -547,13 +569,13 @@ public partial class MainWindow
             .ToArray();
 
         var dialog = StubbornFlashcards.Build(
-            this,
+            dialogOwner ?? this,
             uniqueWords,
             _dictionary,
             _onlineDictionary,
             word => _mnemonics.Get(word, MnemonicAccountKey).FirstOrDefault()?.Text,
             persistProgress: false,
-            title: "我的例句 · 卡片自测",
+            title: "我的例句 · 例句自测",
             speak: (w, accent) => PlaySpeechAsync(w, accent),
             getMnemonics: w => _mnemonics.Get(w, MnemonicAccountKey),
             mnemonicStore: _mnemonics,

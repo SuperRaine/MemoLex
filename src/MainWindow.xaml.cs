@@ -451,7 +451,7 @@ public partial class MainWindow : Window
         {
             if (_contextSentences.Contains(sourceWord, sentence.English, MnemonicAccountKey))
             {
-                OpenContextSentenceReview(sourceWord);
+                StatusText.Text = $"「{sourceWord}」的这条例句已在「我的例句」中。";
                 return;
             }
             var srcLabel = string.IsNullOrWhiteSpace(sentence.Source) ? "真题例句" : sentence.Source;
@@ -459,7 +459,7 @@ public partial class MainWindow : Window
             RefreshExampleSaveButtons();
             RenderSavedContexts(_word);
             UpdateContextReviewButtons();
-            StatusText.Text = $"已收藏「{sourceWord}」的例句，可随时例句自测";
+            StatusText.Text = $"已收藏「{sourceWord}」的例句，可在顶部「我的例句」中统一管理与自测";
         };
         var headingActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         headingActions.Children.Add(saveSentenceBtn);
@@ -944,13 +944,8 @@ public partial class MainWindow : Window
         var dialog = LearningDashboardDialog.Build(
             this, _preferences, progress, _stubbornWords?.Total ?? 0,
             w => _ = LoadWordAsync(w),
-            contextSentences: _contextSentences,
-            spellingMistakes: _spellingMistakes,
-            startContextReview: () => OpenContextSentenceReview(),
-            accountKey: MnemonicAccountKey);
+            spellingMistakes: _spellingMistakes);
         dialog.ShowDialog();
-        UpdateContextReviewButtons();
-        if (ValidWord(_word)) RenderSavedContexts(_word);
     }
     private void RenderSpellingSuggestions(string query, bool notFound)
     {

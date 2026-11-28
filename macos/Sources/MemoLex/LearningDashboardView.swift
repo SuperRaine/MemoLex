@@ -106,30 +106,22 @@ struct LearningDashboardView: View {
                     .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
 
-                    HStack(alignment: .center, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("例句自测与拼写巩固")
-                                .font(.system(size: 13.5, weight: .semibold))
-                            let mistakeSummary: String = {
-                                if model.activeSpellingMistakes.isEmpty {
-                                    return "拼写出错时会自动记下易错位置，连续拼对 2 次后自动清除"
-                                }
-                                let sample = model.activeSpellingMistakes.prefix(3).map {
-                                    "\($0["word"].text)（\($0["correctOption"].text)/\($0["wrongOption"].text)）"
-                                }.joined(separator: "、")
-                                return "待巩固拼写 \(model.activeSpellingMistakes.count) 词：\(sample)"
-                            }()
-                            Text("已收藏 \(model.contextSentences.count) 条例句 · \(mistakeSummary)")
-                                .font(.system(size: 11.5))
-                                .foregroundStyle(Palette.muted)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer(minLength: 8)
-                        Button(model.contextSentences.isEmpty ? "暂无例句" : "例句自测（\(model.contextSentences.count)）") {
-                            model.openContextReview()
-                        }
-                        .buttonStyle(MemoButtonStyle(accent: true, compact: true))
-                        .disabled(model.contextSentences.isEmpty)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("拼写易错巩固")
+                            .font(.system(size: 13.5, weight: .semibold))
+                        let mistakeSummary: String = {
+                            if model.activeSpellingMistakes.isEmpty {
+                                return "拼写默写出错时会自动记下易错位置，连续拼对 2 次后自动清除。"
+                            }
+                            let sample = model.activeSpellingMistakes.prefix(4).map {
+                                "\($0["word"].text)（\($0["correctOption"].text)/\($0["wrongOption"].text)）"
+                            }.joined(separator: "、")
+                            return "待巩固拼写 \(model.activeSpellingMistakes.count) 词：\(sample)"
+                        }()
+                        Text(mistakeSummary)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Palette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)

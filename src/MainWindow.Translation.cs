@@ -145,7 +145,7 @@ public partial class MainWindow
                 if(ctx==null)return;
                 _contextSentences.Save(ctx.Word,ctx.Sentence,ctx.Translation,ctx.Source,ctx.MatchedForm,MnemonicAccountKey);
                 UpdateContextReviewButtons();
-                TranslationExtractedStatus.Text=$"✓ 已收藏「{word}」的例句，可点击右上角「例句自测」复习。";
+                TranslationExtractedStatus.Text=$"✓ 已收藏「{word}」的例句，可在顶部「我的例句」中查看与自测。";
                 TranslationExtractedStatus.Visibility=Visibility.Visible;
                 StatusText.Text=$"已收藏「{word}」的例句";
             };

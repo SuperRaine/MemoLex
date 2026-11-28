@@ -409,9 +409,33 @@ struct NotebookView: View {
 
 struct ContextSentenceEditorView: View {
     @ObservedObject var model: AppModel
+    var body: some View {
+        ContextSentenceEditorForm(
+            model: model,
+            editingItem: model.editingContextSentence,
+            initialWord: model.editingContextSentence.flatMap { let w = $0["word"].text.trimmed; return w.isEmpty ? nil : w } ?? model.word,
+            allowEditWord: false,
+            onClose: { model.sheet = nil }
+        )
+        .frame(width: 710, height: 590)
+        .background(Palette.paper)
+        .foregroundStyle(Palette.ink)
+        .font(.system(size: 13))
+        .noFocusRing()
+    }
+}
+
+struct ContextSentenceEditorForm: View {
+    @ObservedObject var model: AppModel
+    var editingItem: J?
+    var initialWord: String
+    var allowEditWord: Bool = false
+    var onClose: () -> Void
+
     @State private var itemID: String?
     @State private var cloudID: String?
     @State private var origin = "local"
+    @State private var targetWord = ""
     @State private var sentence = ""
     @State private var translation = ""
     @State private var source = "自建例句"
@@ -442,10 +466,11 @@ struct ContextSentenceEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DialogHeader(title: isEdit ? "编辑例句" : "添加例句") { model.sheet = nil }
+            DialogHeader(title: isEdit ? "编辑例句" : "添加例句") { onClose() }
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
-                    Text("\(model.word) · \(isEdit ? "编辑例句" : "添加例句")")
+                    let headingWord = targetWord.trimmed.isEmpty ? "" : "\(targetWord.trimmed) · "
+                    Text("\(headingWord)\(isEdit ? "编辑例句" : "添加例句")")
                         .font(.system(size: 21, weight: .semibold))
                     Spacer()
                 }
@@ -467,12 +492,19 @@ struct ContextSentenceEditorView: View {
                 .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
 
+                if allowEditWord && !isEdit {
+                    HStack(spacing: 8) {
+                        Text("所属单词 *").font(.system(size: 12, weight: .semibold)).frame(width: 64, alignment: .leading)
+                        TextField("输入英文单词或短语", text: $targetWord).inputFrame()
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 5) {
                     Text("英文例句 *").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
                     TextEditor(text: $sentence)
                         .font(.system(size: 14.5))
                         .padding(6)
-                        .frame(minHeight: 88, maxHeight: 118)
+                        .frame(minHeight: 84, maxHeight: 114)
                         .background(Palette.paper, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.9))
                 }
@@ -482,7 +514,7 @@ struct ContextSentenceEditorView: View {
                     TextEditor(text: $translation)
                         .font(.system(size: 13.5))
                         .padding(6)
-                        .frame(minHeight: 70, maxHeight: 96)
+                        .frame(minHeight: 68, maxHeight: 92)
                         .background(Palette.paper, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.9))
                 }
@@ -519,7 +551,7 @@ struct ContextSentenceEditorView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 8) {
-                    if let editing = model.editingContextSentence, isEdit {
+                    if let editing = editingItem, isEdit {
                         Button(isCloud ? "删除云端与本地例句" : "删除例句") {
                             Task { await deleteItem(editing) }
                         }
@@ -529,32 +561,28 @@ struct ContextSentenceEditorView: View {
                         .disabled(saving)
                     }
                     Spacer()
-                    Button("取消") { model.sheet = nil }
+                    Button("取消") { onClose() }
                         .buttonStyle(MemoButtonStyle(compact: true))
                         .disabled(saving)
                     Button("保存到本地") { Task { await save(cloud: false) } }
                         .buttonStyle(PillButtonStyle(compact: false))
-                        .disabled(saving || sentence.trimmed.isEmpty || sentence.count > 2000)
+                        .disabled(saving || targetWord.trimmed.isEmpty || sentence.trimmed.isEmpty || sentence.count > 2000)
                     Button("同步到墨墨") { Task { await save(cloud: true) } }
                         .buttonStyle(MemoButtonStyle(accent: true))
-                        .disabled(saving || !model.loggedIn || sentence.trimmed.isEmpty || sentence.count > 2000)
+                        .disabled(saving || !model.loggedIn || targetWord.trimmed.isEmpty || sentence.trimmed.isEmpty || sentence.count > 2000)
                         .help(model.loggedIn ? "保存到本地并同步到墨墨账号" : "请先在设置中登录墨墨账号")
                 }
             }.padding(22)
         }
-        .frame(width: 710, height: 590)
-        .background(Palette.paper)
-        .foregroundStyle(Palette.ink)
-        .font(.system(size: 13))
-        .noFocusRing()
         .onAppear { loadInitial() }
     }
 
     private func loadInitial() {
-        guard let item = model.editingContextSentence else {
+        guard let item = editingItem else {
             itemID = nil
             cloudID = nil
             origin = "local"
+            targetWord = initialWord.trimmed
             sentence = ""
             translation = ""
             source = "自建例句"
@@ -565,6 +593,7 @@ struct ContextSentenceEditorView: View {
         itemID = item["id"].text.isEmpty ? nil : item["id"].text
         cloudID = item["cloudId"].text.isEmpty ? nil : item["cloudId"].text
         origin = item["origin"].text.isEmpty ? "local" : item["origin"].text
+        targetWord = item["word"].text.trimmed.isEmpty ? initialWord.trimmed : item["word"].text.trimmed
         sentence = item["sentence"].text
         translation = item["translation"].text
         source = item["source"].text.trimmed.isEmpty ? "自建例句" : item["source"].text
@@ -600,6 +629,11 @@ struct ContextSentenceEditorView: View {
     }
 
     private func save(cloud: Bool) async {
+        let cleanWord = targetWord.trimmed
+        guard !cleanWord.isEmpty, cleanWord.count <= 100 else {
+            error = "请先填写有效的英文单词。"
+            return
+        }
         let cleanSentence = sentence.trimmed
         guard !cleanSentence.isEmpty else {
             error = "请先填写英文例句内容。"
@@ -611,6 +645,7 @@ struct ContextSentenceEditorView: View {
         defer { saving = false }
         do {
             try await model.saveContextSentenceEdit(
+                word: cleanWord,
                 id: itemID,
                 sentence: cleanSentence,
                 translation: translation.trimmed,
@@ -619,7 +654,7 @@ struct ContextSentenceEditorView: View {
                 cloud: cloud,
                 cloudID: cloudID
             )
-            model.sheet = nil
+            onClose()
         } catch {
             self.error = error.localizedDescription
         }
@@ -631,7 +666,7 @@ struct ContextSentenceEditorView: View {
         defer { saving = false }
         do {
             if try await model.deleteContextSentence(item, rethrowOnError: true) {
-                model.sheet = nil
+                onClose()
             }
         } catch {
             self.error = error.localizedDescription

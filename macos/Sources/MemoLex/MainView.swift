@@ -348,6 +348,7 @@ private struct MainTitlebar: View {
                 }
             }.buttonStyle(PillButtonStyle()).fixedSize(horizontal: true, vertical: false).layoutPriority(2)
                 .help(model.titleAccount + " · " + model.accountStatus)
+            titleButton("text.quote", label: "我的例句") { model.openMySentences() }
             titleButton("chart.bar", label: "学习统计看板") { model.sheet = .dashboard }
             titleButton("gearshape", label: "设置") { model.sheet = .settings }
             HStack(spacing: 7) {
@@ -537,22 +538,20 @@ private struct WordPage: View {
                                     .lineLimit(2)
                             }
                             Spacer(minLength: 8)
-                            Button(saved ? "✓ 已收藏 · 去自测" : "＋ 收藏例句") {
-                                if saved {
-                                    model.openContextReview(focusWord: model.word)
-                                } else {
-                                    Task {
-                                        await model.saveContextSentence(
-                                            word: model.word,
-                                            sentence: ctx.sentence,
-                                            translation: ctx.translation,
-                                            source: ctx.source,
-                                            matchedForm: ctx.matchedForm
-                                        )
-                                    }
+                            Button(saved ? "✓ 已收藏" : "＋ 收藏例句") {
+                                guard !saved else { return }
+                                Task {
+                                    await model.saveContextSentence(
+                                        word: model.word,
+                                        sentence: ctx.sentence,
+                                        translation: ctx.translation,
+                                        source: ctx.source,
+                                        matchedForm: ctx.matchedForm
+                                    )
                                 }
                             }
-                            .buttonStyle(MemoButtonStyle(accent: true, compact: true))
+                            .buttonStyle(MemoButtonStyle(accent: !saved, compact: true))
+                            .disabled(saved)
                         }
                         .padding(.horizontal, 11).padding(.vertical, 7)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -746,8 +745,8 @@ private struct WordPage: View {
         if !wordContexts.isEmpty {
             let cloudCount = wordContexts.filter { $0["origin"].text == "cloud" && !$0["cloudId"].text.isEmpty }.count
             let summaryText = cloudCount > 0
-                ? "本词 \(wordContexts.count) 条（云端 \(cloudCount)）· 共 \(model.contextSentences.count) 条"
-                : "本词 \(wordContexts.count) 条 · 共 \(model.contextSentences.count) 条"
+                ? "本词 \(wordContexts.count) 条（云端 \(cloudCount)）"
+                : "本词 \(wordContexts.count) 条"
             rule
             HStack {
                 HStack(spacing: 8) {
@@ -759,15 +758,10 @@ private struct WordPage: View {
                         .font(.system(size: 11.5)).foregroundStyle(Palette.muted).lineLimit(1)
                 }
                 Spacer()
-                HStack(spacing: 6) {
-                    Button("＋ 添加例句") {
-                        model.openContextSentenceEditor(nil)
-                    }.buttonStyle(PillButtonStyle())
-                        .help("新建自定义例句，支持同步到墨墨云端")
-                    Button("例句自测 (\(model.contextSentences.count))") {
-                        model.openContextReview(focusWord: model.word)
-                    }.buttonStyle(PillButtonStyle())
-                }
+                Button("＋ 添加例句") {
+                    model.openContextSentenceEditor(nil)
+                }.buttonStyle(PillButtonStyle())
+                    .help("新建自定义例句，支持同步到墨墨云端")
             }.padding(.bottom, 6)
             ForEach(Array(wordContexts.enumerated()), id: \.offset) { _, ctx in
                 let sentence = ctx["sentence"].text
@@ -1008,7 +1002,7 @@ private struct ExamplesView: View {
                     let saved = model.isContextSentenceSaved(word: model.word, sentence: eng)
                     Button(saved ? "✓ 已收藏" : "收藏例句") {
                         if saved {
-                            model.openContextReview(focusWord: model.word)
+                            model.status = "「\(model.word)」的这条例句已在「我的例句」中。"
                         } else {
                             let src = item["source"].text.trimmed.isEmpty ? "真题例句" : item["source"].text
                             Task {
@@ -1022,7 +1016,7 @@ private struct ExamplesView: View {
                             }
                         }
                     }.buttonStyle(PillButtonStyle())
-                        .help("收藏到「我的例句」，方便随时自测")
+                        .help(saved ? "已收藏在「我的例句」中" : "收藏到「我的例句」")
                     let loading = model.loadingExampleIndex == index
                     Button { model.speakExample(at: index) } label: {
                         HStack(spacing: 5) {
@@ -1112,11 +1106,6 @@ private struct TranslationPage: View {
             HStack(spacing: 9) {
                 Text("段落翻译").font(.system(size: 23, weight: .semibold))
                 Spacer()
-                Button(model.contextSentences.isEmpty ? "例句自测" : "例句自测 (\(model.contextSentences.count))") {
-                    model.openContextReview()
-                }
-                .buttonStyle(PillButtonStyle())
-                .help("用收藏的例句进行卡片自测")
                 MemoPicker(title: "翻译方向", selection: $model.translationDirection,
                            options: [("en|zh-CN", "英译中"), ("zh-CN|en", "中译英")]).frame(width: 104)
                 Button(model.translating ? "翻译中…" : "翻译") {
@@ -1222,7 +1211,7 @@ private struct TranslationPage: View {
                                             Button("收藏所在例句") {
                                                 Task {
                                                     await model.saveFromTranslation(word: w)
-                                                    batchStatus = "✓ 已收藏「\(w)」的例句，可点击右上角「例句自测」复习。"
+                                                    batchStatus = "✓ 已收藏「\(w)」的例句，可在顶部「我的例句」中查看与自测。"
                                                 }
                                             }
                                         }

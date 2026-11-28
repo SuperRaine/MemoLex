@@ -13,10 +13,7 @@ internal static class LearningDashboardDialog
         FlashcardProgressSnapshot? stubbornProgress,
         int stubbornTotal,
         Action<string> lookupWord,
-        ContextSentenceStore? contextSentences = null,
-        SpellingMistakeStore? spellingMistakes = null,
-        Action? startContextReview = null,
-        string? accountKey = null)
+        SpellingMistakeStore? spellingMistakes = null)
     {
         var dialog = InputDialog.Shell(owner, "学习统计看板", out var body);
         dialog.Width = 660;
@@ -184,11 +181,10 @@ internal static class LearningDashboardDialog
         topCard.Child = topStack;
         body.Children.Add(topCard);
 
-        // Saved context sentences & active spelling mistakes card
-        if (contextSentences != null || spellingMistakes != null)
+        // Active spelling mistakes card
+        if (spellingMistakes != null)
         {
-            var savedSentences = contextSentences?.List(null, accountKey) ?? [];
-            var activeMistakes = spellingMistakes?.ListActive() ?? [];
+            var activeMistakes = spellingMistakes.ListActive();
             var practiceCard = new Border
             {
                 CornerRadius = new CornerRadius(12),
@@ -198,65 +194,31 @@ internal static class LearningDashboardDialog
             };
             practiceCard.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
             practiceCard.SetResourceReference(Border.BorderBrushProperty, "PillBorderBrush");
-            var practiceDock = new DockPanel();
-
-            if (startContextReview != null)
-            {
-                var reviewBtn = new Button
-                {
-                    Content = savedSentences.Count > 0 ? $"例句自测（{savedSentences.Count}）" : "暂无例句",
-                    IsEnabled = savedSentences.Count > 0,
-                    FontSize = 12,
-                    Padding = new Thickness(14, 7, 14, 7),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(12, 0, 0, 0),
-                    ToolTip = "用收藏的例句进行卡片自测"
-                };
-                if (Application.Current.TryFindResource("AccentButton") is Style accentStyle) reviewBtn.Style = accentStyle;
-                reviewBtn.Click += (_, _) =>
-                {
-                    dialog.Close();
-                    startContextReview();
-                };
-                DockPanel.SetDock(reviewBtn, Dock.Right);
-                practiceDock.Children.Add(reviewBtn);
-            }
 
             var practiceInfo = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             var practiceTitle = new TextBlock
             {
-                Text = "例句自测与拼写巩固",
+                Text = "拼写易错巩固",
                 FontSize = 13,
                 FontWeight = FontWeights.SemiBold
             };
             practiceTitle.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
             practiceInfo.Children.Add(practiceTitle);
 
-            var detailParts = new List<string>
-            {
-                $"已收藏 {savedSentences.Count} 条例句"
-            };
-            if (activeMistakes.Count > 0)
-            {
-                var sample = string.Join("、", activeMistakes.Take(3).Select(m => $"{m.Word}（{m.CorrectOption}/{m.WrongOption}）"));
-                detailParts.Add($"待巩固拼写 {activeMistakes.Count} 词：{sample}");
-            }
-            else
-            {
-                detailParts.Add("拼写出错时会自动记下易错位置，连续拼对 2 次后自动清除");
-            }
+            var descText = activeMistakes.Count > 0
+                ? $"待巩固拼写 {activeMistakes.Count} 词：{string.Join("、", activeMistakes.Take(4).Select(m => $"{m.Word}（{m.CorrectOption}/{m.WrongOption}）"))}"
+                : "拼写默写出错时会自动记下易错位置，连续拼对 2 次后自动清除。";
             var practiceDesc = new TextBlock
             {
-                Text = string.Join(" · ", detailParts),
+                Text = descText,
                 FontSize = 11.5,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 4, 0, 0)
             };
             practiceDesc.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             practiceInfo.Children.Add(practiceDesc);
-            practiceDock.Children.Add(practiceInfo);
 
-            practiceCard.Child = practiceDock;
+            practiceCard.Child = practiceInfo;
             body.Children.Add(practiceCard);
         }
 
