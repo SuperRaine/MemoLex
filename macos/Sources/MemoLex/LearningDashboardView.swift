@@ -125,7 +125,7 @@ struct LearningDashboardView: View {
                                     parts.append("拼写易错点 \(model.activeSpellingMistakes.count) 词：\(sample)")
                                 }
                                 if parts.isEmpty {
-                                    return "答错或拼错会自动加入错题本，多次答对后自动移出。"
+                                    return "拼写默写与例句选择题答错会自动分类收录，多次答对后自动移出。"
                                 }
                                 return parts.joined(separator: " · ")
                             }()

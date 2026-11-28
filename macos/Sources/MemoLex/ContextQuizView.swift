@@ -547,11 +547,11 @@ struct ContextQuizView: View {
             correctCount += 1
             if !answerWord.isEmpty {
                 Task {
-                    if let res = await model.recordMistakeRight(word: answerWord),
+                    if let res = await model.recordMistakeRight(word: answerWord, category: "sentence"),
                        res["wasInBook"].flag, targetIndex == currentIndex {
                         mistakeFeedback = res["removed"].flag
-                            ? "已熟练掌握，自动移出错题本 ✓"
-                            : "错题已巩固一次，继续加油！"
+                            ? "已熟练掌握，自动移出例句错题 ✓"
+                            : "例句错题已巩固一次，继续加油！"
                     }
                 }
             }
@@ -568,9 +568,10 @@ struct ContextQuizView: View {
                         reason: "例句填空",
                         wrongInput: wrongDisplay,
                         contextSentence: fullSentence,
-                        contextTranslation: translation
+                        contextTranslation: translation,
+                        contextItemId: itemId.isEmpty ? nil : itemId
                     ) != nil, targetIndex == currentIndex {
-                        mistakeFeedback = "已记入错题本，后续抽测将优先巩固"
+                        mistakeFeedback = "已记入例句错题，后续抽测将优先巩固"
                     }
                 }
             }

@@ -32,41 +32,38 @@ internal static class WordContrastDialog
         var isDark = ThemeManager.IsDark;
 
         var root = new Grid { Margin = new Thickness(22, 16, 22, 18) };
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 0: header + anchor
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 0: compact header
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // 1: filter chip bar
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // 2: scrollable cards
 
-        // 0. Compact Header
+        // 0. Unified Compact Header
         var headerStack = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
         var titleDock = new DockPanel();
-        if (!isSimilar)
+        var speakGroup = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var ukBtn = new Button
         {
-            var speakGroup = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            var ukBtn = new Button
-            {
-                Content = "英音",
-                FontSize = 11,
-                Padding = new Thickness(9, 3, 9, 3),
-                Margin = new Thickness(0, 0, 5, 0),
-                ToolTip = $"朗读 {report.TargetWord}（英音）"
-            };
-            if (pillStyle != null) ukBtn.Style = pillStyle;
-            ukBtn.Click += async (_, _) => await speakWord(report.TargetWord, EnglishAccent.British);
+            Content = "英音",
+            FontSize = 11,
+            Padding = new Thickness(9, 3, 9, 3),
+            Margin = new Thickness(0, 0, 5, 0),
+            ToolTip = $"朗读 {report.TargetWord}（英音）"
+        };
+        if (pillStyle != null) ukBtn.Style = pillStyle;
+        ukBtn.Click += async (_, _) => await speakWord(report.TargetWord, EnglishAccent.British);
 
-            var usBtn = new Button
-            {
-                Content = "美音",
-                FontSize = 11,
-                Padding = new Thickness(9, 3, 9, 3),
-                ToolTip = $"朗读 {report.TargetWord}（美音）"
-            };
-            if (pillStyle != null) usBtn.Style = pillStyle;
-            usBtn.Click += async (_, _) => await speakWord(report.TargetWord, EnglishAccent.American);
-            speakGroup.Children.Add(ukBtn);
-            speakGroup.Children.Add(usBtn);
-            DockPanel.SetDock(speakGroup, Dock.Right);
-            titleDock.Children.Add(speakGroup);
-        }
+        var usBtn = new Button
+        {
+            Content = "美音",
+            FontSize = 11,
+            Padding = new Thickness(9, 3, 9, 3),
+            ToolTip = $"朗读 {report.TargetWord}（美音）"
+        };
+        if (pillStyle != null) usBtn.Style = pillStyle;
+        usBtn.Click += async (_, _) => await speakWord(report.TargetWord, EnglishAccent.American);
+        speakGroup.Children.Add(ukBtn);
+        speakGroup.Children.Add(usBtn);
+        DockPanel.SetDock(speakGroup, Dock.Right);
+        titleDock.Children.Add(speakGroup);
 
         var titleWrap = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
         var titleBlock = new TextBlock
@@ -80,7 +77,7 @@ internal static class WordContrastDialog
         titleBlock.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
         titleWrap.Children.Add(titleBlock);
 
-        if (!isSimilar && !string.IsNullOrWhiteSpace(report.TargetPhonetic))
+        if (!string.IsNullOrWhiteSpace(report.TargetPhonetic))
         {
             var ipa = new TextBlock
             {
@@ -93,7 +90,7 @@ internal static class WordContrastDialog
             ipa.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             titleWrap.Children.Add(ipa);
         }
-        if (!isSimilar && !string.IsNullOrWhiteSpace(report.TargetMeaning))
+        if (!string.IsNullOrWhiteSpace(report.TargetMeaning))
         {
             var meanBrief = new TextBlock
             {
@@ -109,33 +106,13 @@ internal static class WordContrastDialog
         titleDock.Children.Add(titleWrap);
         headerStack.Children.Add(titleDock);
 
-        if (isSimilar && !string.IsNullOrWhiteSpace(report.GroupAnchor))
-        {
-            var anchorTb = new TextBlock
-            {
-                Text = report.GroupAnchor,
-                FontSize = 12.5,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = ThemeManager.Hex(isDark ? "#7DD3FC" : "#0369A1"),
-                TextWrapping = TextWrapping.Wrap
-            };
-            var anchorBanner = new Border
-            {
-                Child = anchorTb,
-                Background = ThemeManager.Hex(isDark ? "#102836" : "#F0F9FF"),
-                BorderBrush = ThemeManager.Hex(isDark ? "#234C63" : "#BAE6FD"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(9),
-                Padding = new Thickness(12, 7, 12, 7),
-                Margin = new Thickness(0, 8, 0, 0)
-            };
-            headerStack.Children.Add(anchorBanner);
-        }
-        else if (!isSimilar && report.Items.Count > 0)
+        if (report.Items.Count > 0)
         {
             var sub = new TextBlock
             {
-                Text = $"共 {report.Items.Count} 个近义词 · 对比词性边界、语义侧重与常见搭配（点击单词跳转查词）",
+                Text = isSimilar
+                    ? $"共 {report.Items.Count} 个形近词 · 逐组高亮拼写差异并对比释义与巧记（点击单词跳转查词）"
+                    : $"共 {report.Items.Count} 个近义词 · 对比同义下的用法方向、语域、词性与搭配（点击单词跳转查词）",
                 FontSize = 12,
                 Margin = new Thickness(0, 3, 0, 0)
             };
@@ -151,7 +128,7 @@ internal static class WordContrastDialog
         Grid.SetRow(chipBar, 1);
         root.Children.Add(chipBar);
 
-        // 2. Scrollable contrast cards
+        // 2. Scrollable pairwise contrast cards
         var listPanel = new StackPanel { Margin = new Thickness(0, 0, 4, 0) };
         var scroll = new ScrollViewer
         {
@@ -221,62 +198,16 @@ internal static class WordContrastDialog
                 ? report.Items
                 : report.Items.Where(x => x.Word.Equals(selectedWord, StringComparison.OrdinalIgnoreCase)).ToArray();
 
-            if (isSimilar)
+            foreach (var item in visible)
             {
-                // Target word sits cleanly at the top as Row #1 of the memory chain — zero duplication!
-                var targetSpans = visible.Count == 1 && visible[0].TargetSpans.Length > 0
-                    ? visible[0].TargetSpans
-                    : (report.TargetOverviewSpans is { Length: > 0 }
-                        ? report.TargetOverviewSpans
-                        : [new LetterSpan(report.TargetWord, false)]);
-
-                listPanel.Children.Add(BuildSimilarMemoryRow(
-                    word: report.TargetWord,
-                    spans: targetSpans,
-                    phonetic: report.TargetPhonetic,
-                    meaning: report.TargetMeaning,
-                    memoryHook: report.TargetMemoryHook,
-                    badgeText: "当前词",
-                    isTarget: true,
-                    isFocused: false,
-                    isDark: isDark,
-                    pillStyle: pillStyle,
-                    onLookup: null,
-                    speakWord: speakWord));
-
-                foreach (var item in visible)
-                {
-                    var isFocused = !string.IsNullOrWhiteSpace(focusWord) &&
-                        item.Word.Equals(focusWord.Trim(), StringComparison.OrdinalIgnoreCase);
-                    var candSpans = item.CandidateSpans.Length > 0
-                        ? item.CandidateSpans
-                        : [new LetterSpan(item.Word, false)];
-
-                    listPanel.Children.Add(BuildSimilarMemoryRow(
-                        word: item.Word,
-                        spans: candSpans,
-                        phonetic: item.Phonetic,
-                        meaning: item.Meaning,
-                        memoryHook: item.MemoryHook,
-                        badgeText: isFocused ? "已定位" : null,
-                        isTarget: false,
-                        isFocused: isFocused,
-                        isDark: isDark,
-                        pillStyle: pillStyle,
-                        onLookup: w => { dialog.Close(); lookupWord(w); },
-                        speakWord: speakWord));
-                }
-            }
-            else
-            {
-                foreach (var item in visible)
-                {
-                    var isFocused = !string.IsNullOrWhiteSpace(focusWord) &&
-                        item.Word.Equals(focusWord.Trim(), StringComparison.OrdinalIgnoreCase);
-                    var card = BuildSynonymCard(report, item, isDark, isFocused, pillStyle,
+                var isFocused = !string.IsNullOrWhiteSpace(focusWord) &&
+                    item.Word.Equals(focusWord.Trim(), StringComparison.OrdinalIgnoreCase);
+                var card = isSimilar
+                    ? BuildSimilarCard(report, item, isDark, isFocused, pillStyle,
+                        w => { dialog.Close(); lookupWord(w); }, speakWord)
+                    : BuildSynonymCard(report, item, isDark, isFocused, pillStyle,
                         w => { dialog.Close(); lookupWord(w); }, speakWord);
-                    listPanel.Children.Add(card);
-                }
+                listPanel.Children.Add(card);
             }
         }
 
@@ -295,219 +226,7 @@ internal static class WordContrastDialog
         return dialog;
     }
 
-    private static Border BuildSimilarMemoryRow(
-        string word,
-        LetterSpan[] spans,
-        string phonetic,
-        string meaning,
-        string memoryHook,
-        string? badgeText,
-        bool isTarget,
-        bool isFocused,
-        bool isDark,
-        Style? pillStyle,
-        Action<string>? onLookup,
-        Func<string, EnglishAccent, Task> speakWord)
-    {
-        var stack = new StackPanel();
-
-        // Top row: highlighted spelling + IPA + concise meaning + speak button(s)
-        var topDock = new DockPanel();
-        var rightPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        if (isTarget)
-        {
-            var ukBtn = new Button
-            {
-                Content = "英音",
-                FontSize = 11,
-                Padding = new Thickness(8, 2.5, 8, 2.5),
-                Margin = new Thickness(0, 0, 5, 0),
-                ToolTip = $"朗读 {word}（英音）"
-            };
-            if (pillStyle != null) ukBtn.Style = pillStyle;
-            ukBtn.Click += async (_, _) => await speakWord(word, EnglishAccent.British);
-
-            var usBtn = new Button
-            {
-                Content = "美音",
-                FontSize = 11,
-                Padding = new Thickness(8, 2.5, 8, 2.5),
-                ToolTip = $"朗读 {word}（美音）"
-            };
-            if (pillStyle != null) usBtn.Style = pillStyle;
-            usBtn.Click += async (_, _) => await speakWord(word, EnglishAccent.American);
-            rightPanel.Children.Add(ukBtn);
-            rightPanel.Children.Add(usBtn);
-        }
-        else
-        {
-            var speakBtn = new Button
-            {
-                Content = "朗读",
-                FontSize = 11,
-                Padding = new Thickness(9, 2.5, 9, 2.5),
-                ToolTip = $"朗读 {word}"
-            };
-            if (pillStyle != null) speakBtn.Style = pillStyle;
-            speakBtn.Click += async (_, _) => await speakWord(word, EnglishAccent.British);
-            rightPanel.Children.Add(speakBtn);
-        }
-        DockPanel.SetDock(rightPanel, Dock.Right);
-        topDock.Children.Add(rightPanel);
-
-        var leftWrap = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
-        if (!string.IsNullOrWhiteSpace(badgeText))
-            leftWrap.Children.Add(MakeSoftPill(badgeText, isAccent: true));
-
-        var spansElement = BuildHighlightedWordElement(spans, isTarget, isDark);
-        if (onLookup != null)
-        {
-            var wordBtn = new Button
-            {
-                Content = spansElement,
-                Padding = new Thickness(1, 0, 6, 0),
-                Background = Brushes.Transparent,
-                BorderThickness = new Thickness(0),
-                Cursor = Cursors.Hand,
-                VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = $"点击查词「{word}」"
-            };
-            wordBtn.Click += (_, _) => onLookup(word);
-            leftWrap.Children.Add(wordBtn);
-        }
-        else
-        {
-            spansElement.Margin = new Thickness(1, 0, 7, 0);
-            leftWrap.Children.Add(spansElement);
-        }
-
-        if (!string.IsNullOrWhiteSpace(phonetic))
-        {
-            var ipa = new TextBlock
-            {
-                Text = phonetic,
-                FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 12,
-                Margin = new Thickness(0, 0, 9, 0),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            ipa.SetResourceReference(TextBlock.ForegroundProperty, "SubtleBrush");
-            leftWrap.Children.Add(ipa);
-        }
-
-        if (!string.IsNullOrWhiteSpace(meaning))
-        {
-            var meanTb = new TextBlock
-            {
-                Text = meaning,
-                FontSize = 13,
-                FontWeight = FontWeights.Medium,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = TextWrapping.Wrap
-            };
-            meanTb.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
-            leftWrap.Children.Add(meanTb);
-        }
-
-        topDock.Children.Add(leftWrap);
-        stack.Children.Add(topDock);
-
-        // Memory hook line (the core differentiation cue!)
-        if (!string.IsNullOrWhiteSpace(memoryHook))
-        {
-            var hookDock = new DockPanel { Margin = new Thickness(0, 7, 0, 0) };
-            var cueBadge = MakeStatusPill(
-                "巧记",
-                isTarget ? (isDark ? "#132936" : "#E0F2FE") : (isDark ? "#2A2010" : "#FEF3C7"),
-                isTarget ? (isDark ? "#234C63" : "#7DD3FC") : (isDark ? "#6B4E16" : "#FCD34D"),
-                isTarget ? (isDark ? "#7DD3FC" : "#0369A1") : (isDark ? "#FBBF24" : "#B45309"));
-            cueBadge.Margin = new Thickness(0, 1, 7, 0);
-            cueBadge.VerticalAlignment = VerticalAlignment.Top;
-            DockPanel.SetDock(cueBadge, Dock.Left);
-            hookDock.Children.Add(cueBadge);
-
-            var hookTb = new TextBlock
-            {
-                Text = memoryHook,
-                FontSize = 12.5,
-                LineHeight = 20,
-                TextWrapping = TextWrapping.Wrap,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            hookTb.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
-            hookDock.Children.Add(hookTb);
-            stack.Children.Add(hookDock);
-        }
-
-        var border = new Border
-        {
-            Child = stack,
-            CornerRadius = new CornerRadius(10),
-            BorderThickness = new Thickness(isTarget || isFocused ? 1.35 : 1),
-            Padding = new Thickness(14, 11, 14, 11),
-            Margin = new Thickness(0, 0, 0, 8)
-        };
-        if (isTarget)
-        {
-            border.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
-            border.SetResourceReference(Border.BorderBrushProperty, "AccentBrush");
-        }
-        else
-        {
-            border.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
-            border.SetResourceReference(Border.BorderBrushProperty, isFocused ? "AccentBrush" : "BorderBrush");
-        }
-        return border;
-    }
-
-    private static TextBlock BuildHighlightedWordElement(LetterSpan[] spans, bool isTarget, bool isDark)
-    {
-        var wordTb = new TextBlock
-        {
-            FontFamily = new FontFamily("Consolas, Segoe UI"),
-            FontSize = 17,
-            FontWeight = FontWeights.Bold,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        wordTb.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
-
-        var hlBg = isTarget
-            ? ThemeManager.Hex(isDark ? "#15364A" : "#DBEAFE")
-            : ThemeManager.Hex(isDark ? "#431D25" : "#FFE4E6");
-        var hlFg = isTarget
-            ? ThemeManager.Hex(isDark ? "#7DD3FC" : "#0369A1")
-            : ThemeManager.Hex(isDark ? "#FB7185" : "#BE123C");
-
-        foreach (var span in spans)
-        {
-            if (span.Highlight)
-            {
-                var badge = new Border
-                {
-                    Background = hlBg,
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(3, 0, 3, 0),
-                    Margin = new Thickness(1, 0, 1, 0),
-                    Child = new TextBlock
-                    {
-                        Text = span.Text,
-                        FontFamily = new FontFamily("Consolas, Segoe UI"),
-                        FontSize = 17,
-                        FontWeight = FontWeights.Bold,
-                        Foreground = hlFg
-                    }
-                };
-                wordTb.Inlines.Add(new InlineUIContainer(badge) { BaselineAlignment = BaselineAlignment.Center });
-            }
-            else
-            {
-                wordTb.Inlines.Add(new Run(span.Text));
-            }
-        }
-        return wordTb;
-    }
-
-    private static Border BuildSynonymCard(
+    private static Border BuildSimilarCard(
         WordContrastReport report,
         WordContrastEntry item,
         bool isDark,
@@ -517,7 +236,113 @@ internal static class WordContrastDialog
         Func<string, EnglishAccent, Task> speakWord)
     {
         var cardStack = new StackPanel();
+        cardStack.Children.Add(BuildCardHeader(item, isDark, isFocused, pillStyle, onLookup, speakWord));
 
+        // Clean pairwise visual spelling comparison (strictly 1-on-1, no multi-word mismatch!)
+        var diffGrid = new Grid();
+        diffGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        diffGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        diffGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var targetSpans = item.TargetSpans.Length > 0 ? item.TargetSpans : [new LetterSpan(report.TargetWord, false)];
+        var candSpans = item.CandidateSpans.Length > 0 ? item.CandidateSpans : [new LetterSpan(item.Word, false)];
+
+        var leftDiff = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var leftLabel = new TextBlock { Text = "当前词", FontSize = 10.5, Margin = new Thickness(0, 0, 0, 2) };
+        leftLabel.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        leftDiff.Children.Add(leftLabel);
+        leftDiff.Children.Add(BuildHighlightedWordElement(targetSpans, isTarget: true, isDark));
+        Grid.SetColumn(leftDiff, 0);
+        diffGrid.Children.Add(leftDiff);
+
+        var vs = new TextBlock
+        {
+            Text = "↔",
+            FontSize = 16,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(14, 0, 14, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        vs.SetResourceReference(TextBlock.ForegroundProperty, "SubtleBrush");
+        Grid.SetColumn(vs, 1);
+        diffGrid.Children.Add(vs);
+
+        var rightDiff = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var rightLabel = new TextBlock { Text = "形近词", FontSize = 10.5, Margin = new Thickness(0, 0, 0, 2) };
+        rightLabel.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        rightDiff.Children.Add(rightLabel);
+        rightDiff.Children.Add(BuildHighlightedWordElement(candSpans, isTarget: false, isDark));
+        Grid.SetColumn(rightDiff, 2);
+        diffGrid.Children.Add(rightDiff);
+
+        var diffBanner = new Border
+        {
+            Child = diffGrid,
+            CornerRadius = new CornerRadius(9),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(12, 8, 12, 8),
+            Margin = new Thickness(0, 0, 0, 9),
+            Background = ThemeManager.Hex(isDark ? "#132634" : "#F8FCFF"),
+            BorderBrush = ThemeManager.Hex(isDark ? "#254960" : "#CDE6F7")
+        };
+        cardStack.Children.Add(diffBanner);
+
+        // Side-by-side memory & meaning boxes for BOTH words
+        var compareGrid = new Grid();
+        compareGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        compareGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(9) });
+        compareGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var leftCue = !string.IsNullOrWhiteSpace(report.TargetMemoryHook) ? report.TargetMemoryHook : report.TargetMnemonic;
+        var rightCue = !string.IsNullOrWhiteSpace(item.MemoryHook) ? item.MemoryHook : item.CandidateMnemonic;
+
+        var leftCol = BuildSideColumn(
+            report.TargetWord,
+            report.TargetMeaning,
+            null,
+            [],
+            leftCue,
+            mnemonicLabel: "巧记：",
+            isDark,
+            isTarget: true);
+        Grid.SetColumn(leftCol, 0);
+        compareGrid.Children.Add(leftCol);
+
+        var rightCol = BuildSideColumn(
+            item.Word,
+            item.Meaning,
+            null,
+            [],
+            rightCue,
+            mnemonicLabel: "巧记：",
+            isDark,
+            isTarget: false);
+        Grid.SetColumn(rightCol, 2);
+        compareGrid.Children.Add(rightCol);
+
+        cardStack.Children.Add(compareGrid);
+
+        var outer = new Border
+        {
+            Child = cardStack,
+            CornerRadius = new CornerRadius(11),
+            BorderThickness = new Thickness(isFocused ? 1.4 : 1),
+            Padding = new Thickness(14, 12, 14, 12),
+            Margin = new Thickness(0, 0, 0, 10)
+        };
+        outer.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
+        outer.SetResourceReference(Border.BorderBrushProperty, isFocused ? "AccentBrush" : "BorderBrush");
+        return outer;
+    }
+
+    private static DockPanel BuildCardHeader(
+        WordContrastEntry item,
+        bool isDark,
+        bool isFocused,
+        Style? pillStyle,
+        Action<string> onLookup,
+        Func<string, EnglishAccent, Task> speakWord)
+    {
         var topDock = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         var rightStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
 
@@ -581,7 +406,67 @@ internal static class WordContrastDialog
             leftWrap.Children.Add(MakeSoftPill("已定位", isAccent: true));
 
         topDock.Children.Add(leftWrap);
-        cardStack.Children.Add(topDock);
+        return topDock;
+    }
+
+    private static TextBlock BuildHighlightedWordElement(LetterSpan[] spans, bool isTarget, bool isDark)
+    {
+        var wordTb = new TextBlock
+        {
+            FontFamily = new FontFamily("Consolas, Segoe UI"),
+            FontSize = 17,
+            FontWeight = FontWeights.Bold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        wordTb.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
+
+        var hlBg = isTarget
+            ? ThemeManager.Hex(isDark ? "#15364A" : "#DBEAFE")
+            : ThemeManager.Hex(isDark ? "#431D25" : "#FFE4E6");
+        var hlFg = isTarget
+            ? ThemeManager.Hex(isDark ? "#7DD3FC" : "#0369A1")
+            : ThemeManager.Hex(isDark ? "#FB7185" : "#BE123C");
+
+        foreach (var span in spans)
+        {
+            if (span.Highlight)
+            {
+                var badge = new Border
+                {
+                    Background = hlBg,
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(3, 0, 3, 0),
+                    Margin = new Thickness(1, 0, 1, 0),
+                    Child = new TextBlock
+                    {
+                        Text = span.Text,
+                        FontFamily = new FontFamily("Consolas, Segoe UI"),
+                        FontSize = 17,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = hlFg
+                    }
+                };
+                wordTb.Inlines.Add(new InlineUIContainer(badge) { BaselineAlignment = BaselineAlignment.Center });
+            }
+            else
+            {
+                wordTb.Inlines.Add(new Run(span.Text));
+            }
+        }
+        return wordTb;
+    }
+
+    private static Border BuildSynonymCard(
+        WordContrastReport report,
+        WordContrastEntry item,
+        bool isDark,
+        bool isFocused,
+        Style? pillStyle,
+        Action<string> onLookup,
+        Func<string, EnglishAccent, Task> speakWord)
+    {
+        var cardStack = new StackPanel();
+        cardStack.Children.Add(BuildCardHeader(item, isDark, isFocused, pillStyle, onLookup, speakWord));
 
         if (!string.IsNullOrWhiteSpace(item.Verdict))
         {
@@ -636,12 +521,20 @@ internal static class WordContrastDialog
         compareGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(9) });
         compareGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
+        var leftPrimary = !string.IsNullOrWhiteSpace(item.TargetUsageNote)
+            ? "用法：" + item.TargetUsageNote
+            : (item.TargetUniqueSenses.Length > 0 ? "延伸：" + string.Join("、", item.TargetUniqueSenses) : report.TargetMeaning);
+        var rightPrimary = !string.IsNullOrWhiteSpace(item.CandidateUsageNote)
+            ? "用法：" + item.CandidateUsageNote
+            : (item.CandidateUniqueSenses.Length > 0 ? "延伸：" + string.Join("、", item.CandidateUniqueSenses) : item.Meaning);
+
         var leftCol = BuildSideColumn(
             report.TargetWord,
-            item.TargetUniqueSenses.Length > 0 ? "侧重：" + string.Join("、", item.TargetUniqueSenses) : report.TargetMeaning,
+            leftPrimary,
             report.TargetMeaning,
             item.TargetPhrases,
-            null,
+            report.TargetMnemonic,
+            mnemonicLabel: "助记：",
             isDark,
             isTarget: true);
         Grid.SetColumn(leftCol, 0);
@@ -649,10 +542,11 @@ internal static class WordContrastDialog
 
         var rightCol = BuildSideColumn(
             item.Word,
-            item.CandidateUniqueSenses.Length > 0 ? "侧重：" + string.Join("、", item.CandidateUniqueSenses) : item.Meaning,
+            rightPrimary,
             item.Meaning,
             item.CandidatePhrases,
             item.CandidateMnemonic,
+            mnemonicLabel: "助记：",
             isDark,
             isTarget: false);
         Grid.SetColumn(rightCol, 2);
@@ -679,6 +573,7 @@ internal static class WordContrastDialog
         string? fullMeaning,
         string[] phrases,
         string? mnemonic,
+        string mnemonicLabel,
         bool isDark,
         bool isTarget)
     {
@@ -696,12 +591,13 @@ internal static class WordContrastDialog
 
         if (!string.IsNullOrWhiteSpace(primaryText))
         {
+            var isHighlightLine = primaryText.StartsWith("用法：") || primaryText.StartsWith("延伸：");
             var pTb = new TextBlock
             {
                 Text = primaryText,
                 FontSize = 12,
                 LineHeight = 19,
-                FontWeight = !string.IsNullOrWhiteSpace(fullMeaning) && primaryText.StartsWith("侧重：") ? FontWeights.SemiBold : FontWeights.Normal,
+                FontWeight = isHighlightLine ? FontWeights.SemiBold : FontWeights.Normal,
                 TextWrapping = TextWrapping.Wrap
             };
             pTb.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
@@ -734,12 +630,12 @@ internal static class WordContrastDialog
         {
             var mnemTb = new TextBlock
             {
-                Text = "助记：" + mnemonic,
-                FontSize = 11,
-                LineHeight = 17,
+                Text = mnemonicLabel + mnemonic,
+                FontSize = 11.5,
+                LineHeight = 18,
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 5, 0, 0),
-                Foreground = ThemeManager.Hex(isDark ? "#94A3B8" : "#64748B")
+                Margin = new Thickness(0, 6, 0, 0),
+                Foreground = ThemeManager.Hex(isDark ? "#94A3B8" : "#475569")
             };
             col.Children.Add(mnemTb);
         }

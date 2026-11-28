@@ -21,9 +21,10 @@ internal static class ContextSentenceQuizDialog
         bool persistProgress = false,
         Action<ContextQuizProgressSnapshot>? onProgressChanged = null,
         Action? onClearProgress = null,
-        Func<Task<IReadOnlyList<ContextQuizQuestion>>>? rebuildFreshAll = null)
+        Func<Task<IReadOnlyList<ContextQuizQuestion>>>? rebuildFreshAll = null,
+        string? title = null)
     {
-        var dialog = InputDialog.Shell(owner, "例句填空 · 四选一自测", out _);
+        var dialog = InputDialog.Shell(owner, string.IsNullOrWhiteSpace(title) ? "例句填空 · 四选一自测" : title, out _);
         dialog.Width = 780;
         dialog.Height = Math.Min(700, Math.Max(560, SystemParameters.WorkArea.Height - 55));
         dialog.MinWidth = 620;
@@ -676,11 +677,11 @@ internal static class ContextSentenceQuizDialog
                 correctCount++;
                 if (mistakeBook != null)
                 {
-                    var res = mistakeBook.RecordRight(q.AnswerBaseWord);
+                    var res = mistakeBook.RecordRight(q.AnswerBaseWord, MistakeBookStore.CategorySentence);
                     if (res.Removed)
-                        lastMistakeFeedback = "🎉 已熟练掌握，自动移出错题本！";
+                        lastMistakeFeedback = "🎉 已熟练掌握，自动移出例句错题！";
                     else if (res.WasInBook)
-                        lastMistakeFeedback = "错题已巩固一次，继续加油！";
+                        lastMistakeFeedback = "例句错题已巩固一次，继续加油！";
                 }
             }
             else
@@ -690,8 +691,8 @@ internal static class ContextSentenceQuizDialog
                 mistakeKinds[opt.DistractorKind] = mistakeKinds.GetValueOrDefault(opt.DistractorKind) + 1;
                 if (mistakeBook != null)
                 {
-                    mistakeBook.RecordWrong(q.AnswerBaseWord, "例句填空", opt.DisplayText, q.FullSentence, q.Translation);
-                    lastMistakeFeedback = "已记入错题本，后续抽测将优先巩固";
+                    mistakeBook.RecordWrong(q.AnswerBaseWord, MistakeBookStore.CategorySentence, opt.DisplayText, q.FullSentence, q.Translation, q.ItemId);
+                    lastMistakeFeedback = "已记入例句错题，后续抽测将优先巩固";
                 }
             }
             SaveProgress(currentIndex + 1);

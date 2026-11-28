@@ -151,7 +151,7 @@
                                     </Style>
                                 </Grid.Resources>
                                 <Button x:Name="MySentencesButton" Content="我的例句" Click="MySentencesButton_Click" ToolTip="我的例句（浏览、编辑与例句自测）" AutomationProperties.Name="我的例句"/>
-                                <Button x:Name="MistakeBookButton" Grid.Column="2" Click="MistakeBookButton_Click" ToolTip="错题本（答错自动收录与随机抽测）" AutomationProperties.Name="错题本">
+                                <Button x:Name="MistakeBookButton" Grid.Column="2" Click="MistakeBookButton_Click" ToolTip="错题本（拼写错题 / 例句错题分类巩固）" AutomationProperties.Name="错题本">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                                         <TextBlock Text="错题本" VerticalAlignment="Center"/>
                                         <Ellipse x:Name="MistakeBookDot" Width="6" Height="6" Fill="#EF4444" Margin="4,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>

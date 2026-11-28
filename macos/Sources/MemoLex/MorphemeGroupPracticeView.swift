@@ -281,18 +281,13 @@ struct MorphemeGroupPracticeView: View {
             answeredCorrectly = true
             if !missedCurrent {
                 firstTryCorrect += 1
-                Task { _ = await model.recordMistakeRight(word: currentWord) }
             }
             feedback = "✓ 正确！\(currentWord)：\(current["explanation"].text)"
             feedbackCorrect = true
             model.speakWord(currentWord, accent: .american)
         } else {
-            let firstMiss = !missedCurrent
             missedCurrent = true
             wrongPicked.insert(pickedWord.lowercased())
-            if firstMiss {
-                Task { _ = await model.recordMistakeWrong(word: currentWord, reason: "同根辨析", wrongInput: pickedWord) }
-            }
             feedback = "✗ \(pickedWord) 表示「\(picked["promptMeaning"].text)」，再看看其他词缀！"
             feedbackCorrect = false
         }

@@ -400,7 +400,9 @@ internal static class StubbornFlashcards
         {
             activeSpellingBox = null;
             var word = practice.Current;
-            var currentMistake = word != null ? mistakeBook?.Get(word) : null;
+            var currentMistake = word != null && spellingMode
+                ? mistakeBook?.Get(word, MistakeBookStore.CategorySpelling)
+                : null;
             var levelSuffix = currentMistake != null ? $" · {MistakeBookStore.LevelLabel(currentMistake.Weight)}" : "";
             var noticeSuffix = !string.IsNullOrWhiteSpace(mistakeNotice) ? $" · {mistakeNotice}" : "";
             progress.Text = $"第 {practice.GroupNumber} / {practice.GroupCount} 组 · 剩余 {practice.Remaining} / {practice.GroupWordCount} 词 · 已掌握 {practice.MasteredCount} / {practice.TotalWordCount}{levelSuffix}{noticeSuffix}";
@@ -1015,9 +1017,9 @@ internal static class StubbornFlashcards
                     if (!mistakeEvaluatedOnCard && mistakeBook != null)
                     {
                         mistakeEvaluatedOnCard = true;
-                        var res = mistakeBook.RecordRight(word);
-                        if (res.Removed) mistakeNotice = "✓ 已掌握，移出错题本";
-                        else if (res.WasInBook) mistakeNotice = "错题已巩固一次";
+                        var res = mistakeBook.RecordRight(word, MistakeBookStore.CategorySpelling);
+                        if (res.Removed) mistakeNotice = "✓ 已掌握，移出拼写错题";
+                        else if (res.WasInBook) mistakeNotice = "拼写错题已巩固一次";
                     }
                 }
                 spellingCorrect = true;
@@ -1050,9 +1052,9 @@ internal static class StubbornFlashcards
                 if (!mistakeEvaluatedOnCard && mistakeBook != null)
                 {
                     mistakeEvaluatedOnCard = true;
-                    mistakeBook.RecordWrong(word, "拼写错误", typed);
-                    mistakeNotice = "已记入错题本";
-                    message += " · 已记入错题本";
+                    mistakeBook.RecordWrong(word, MistakeBookStore.CategorySpelling, typed);
+                    mistakeNotice = "已记入拼写错题";
+                    message += " · 已记入拼写错题";
                 }
                 else if (recorded != null)
                 {
@@ -1368,26 +1370,6 @@ internal static class StubbornFlashcards
             if (!revealed || flipping || swiping || practice.Current == null) return;
             var answeredWord = practice.Current;
             if (currentContext != null) contextSentences?.RecordReview(currentContext.Id);
-            if (!spellingMode && !mistakeEvaluatedOnCard && mistakeBook != null)
-            {
-                mistakeEvaluatedOnCard = true;
-                if (answer == FlashcardAnswer.Known)
-                {
-                    var res = mistakeBook.RecordRight(answeredWord);
-                    if (res.Removed) mistakeNotice = $"「{answeredWord}」已掌握，自动移出错题本";
-                    else if (res.WasInBook) mistakeNotice = $"「{answeredWord}」已巩固一次";
-                    else mistakeNotice = null;
-                }
-                else if (answer == FlashcardAnswer.Forgotten)
-                {
-                    mistakeBook.RecordWrong(answeredWord, "卡片忘记");
-                    mistakeNotice = $"「{answeredWord}」已记入错题本";
-                }
-                else
-                {
-                    mistakeNotice = null;
-                }
-            }
             swiping = true;
             var toX = answer == FlashcardAnswer.Forgotten ? -110.0 : 110.0;
             var tilt = answer == FlashcardAnswer.Forgotten ? -5.5 : 5.5;

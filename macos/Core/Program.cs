@@ -374,12 +374,13 @@ internal sealed class CoreService : IDisposable
             case "spelling.clear":
                 return new { cleared = _spellingMistakes.Clear() };
             case "mistakes.list":
-                return _mistakeBook.List().Select(item =>
+                return _mistakeBook.List(Null(T(p, "category"))).Select(item =>
                 {
                     var entry = _dictionary.Lookup(item.Word);
                     return new
                     {
                         item.Word,
+                        item.Category,
                         item.Weight,
                         item.WrongCount,
                         item.RightCount,
@@ -387,6 +388,7 @@ internal sealed class CoreService : IDisposable
                         item.LastWrongInput,
                         item.ContextSentence,
                         item.ContextTranslation,
+                        item.ContextItemId,
                         item.FirstWrongAt,
                         item.UpdatedAt,
                         Phonetic = string.IsNullOrWhiteSpace(entry?.phonetic) ? "" : "/" + entry.phonetic.Trim().Trim('/') + "/",
@@ -394,7 +396,7 @@ internal sealed class CoreService : IDisposable
                     };
                 }).ToArray();
             case "mistakes.get":
-                return _mistakeBook.Get(word);
+                return _mistakeBook.Get(word, Null(T(p, "category")));
             case "mistakes.status":
                 return new { count = _mistakeBook.Count, hasUnread = _mistakeBook.HasUnread };
             case "mistakes.markViewed":
@@ -406,11 +408,12 @@ internal sealed class CoreService : IDisposable
                     T(p, "reason", "拼写错误"),
                     Null(T(p, "wrongInput")),
                     Null(T(p, "contextSentence")),
-                    Null(T(p, "contextTranslation")));
+                    Null(T(p, "contextTranslation")),
+                    Null(T(p, "contextItemId")));
             case "mistakes.recordRight":
-                return _mistakeBook.RecordRight(word);
+                return _mistakeBook.RecordRight(word, Null(T(p, "category")));
             case "mistakes.remove":
-                return new { removed = _mistakeBook.Remove(word) };
+                return new { removed = _mistakeBook.Remove(word, Null(T(p, "category"))) };
             case "mistakes.clear":
                 return new { cleared = _mistakeBook.Clear() };
             case "mistakes.sample":
@@ -418,7 +421,16 @@ internal sealed class CoreService : IDisposable
                 string[]? filter = null;
                 if (p.ValueKind == JsonValueKind.Object && p.TryGetProperty("words", out var wf) && wf.ValueKind == JsonValueKind.Array)
                     filter = wf.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
-                return _mistakeBook.PickWeightedRandom(filter, Number(p, "limit", 0, 0, 1000));
+                return _mistakeBook.PickWeightedRandom(filter, Number(p, "limit", 0, 0, 1000), Null(T(p, "category")));
+            }
+            case "mistakes.buildSentenceQuiz":
+            {
+                string[]? filter = null;
+                if (p.ValueKind == JsonValueKind.Object && p.TryGetProperty("words", out var wf) && wf.ValueKind == JsonValueKind.Array)
+                    filter = wf.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+                var picked = _mistakeBook.PickWeightedRandomItems(MistakeBookStore.CategorySentence, filter);
+                var deck = MistakeBookStore.BuildSentenceDeck(picked, _contextSentences.List(null, _tokens.CredentialKey));
+                return await ContextSentenceQuiz.BuildQuestionsAsync(deck, _dictionary, _related, _notes, _tokens.CredentialKey, cancellation);
             }
             case "cache.stats":
             {

@@ -236,7 +236,7 @@ internal static class LearningDashboardDialog
             if (activeMistakes.Count > 0)
                 descParts.Add($"易错拼写 {activeMistakes.Count} 词：{string.Join("、", activeMistakes.Take(3).Select(m => $"{m.Word}（{m.CorrectOption}/{m.WrongOption}）"))}");
             else
-                descParts.Add("答错或拼错会自动加入错题本，多次答对后自动移出");
+                descParts.Add("拼写默写与例句选择题答错会自动分类收录，多次答对后自动移出");
 
             var practiceDesc = new TextBlock
             {

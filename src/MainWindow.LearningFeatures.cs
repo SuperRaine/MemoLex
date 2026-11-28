@@ -402,19 +402,19 @@ public partial class MainWindow
 
         var dialog = MistakeBookDialog.Build(
             this,
-            loadItems: () => _mistakeBook.List(),
+            loadItems: category => _mistakeBook.List(category),
             lookupEntry: w => _dictionary.Lookup(w),
             lookupWord: w => _ = LoadWordAsync(w),
             speakWord: (w, accent) => PlaySpeechAsync(w, accent),
-            removeWord: w =>
+            removeWord: (w, category) =>
             {
-                var ok = _mistakeBook.Remove(w);
+                var ok = _mistakeBook.Remove(w, category);
                 UpdateContextReviewButtons();
                 return ok;
             },
-            startCardQuiz: (ownerWindow, words, spellingMode) =>
+            startSpellingQuiz: (ownerWindow, words) =>
             {
-                var sampled = _mistakeBook.PickWeightedRandom(words);
+                var sampled = _mistakeBook.PickWeightedRandom(words, category: MistakeBookStore.CategorySpelling);
                 if (sampled.Count == 0) return;
                 var practice = StubbornFlashcards.Build(
                     ownerWindow,
@@ -423,7 +423,7 @@ public partial class MainWindow
                     _onlineDictionary,
                     word => _mnemonics.Get(word, MnemonicAccountKey).FirstOrDefault()?.Text,
                     persistProgress: false,
-                    title: spellingMode ? "错题本 · 拼写随机抽测" : "错题本 · 卡片随机抽测",
+                    title: "拼写错题 · 默写抽测",
                     speak: (w, accent) => PlaySpeechAsync(w, accent),
                     getMnemonics: w => _mnemonics.Get(w, MnemonicAccountKey),
                     mnemonicStore: _mnemonics,
@@ -432,9 +432,20 @@ public partial class MainWindow
                     contextSentences: _contextSentences,
                     accountKey: MnemonicAccountKey,
                     mistakeBook: _mistakeBook,
-                    startInSpellingMode: spellingMode);
+                    startInSpellingMode: true);
                 practice.ShowDialog();
                 UpdateContextReviewButtons();
+            },
+            startSentenceQuiz: async (ownerWindow, selectedItems) =>
+            {
+                var filterWords = selectedItems.Select(i => i.Word).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                var picked = _mistakeBook.PickWeightedRandomItems(MistakeBookStore.CategorySentence, filterWords);
+                if (picked.Count == 0) return "当前没有可抽测的例句错题。";
+                var deck = MistakeBookStore.BuildSentenceDeck(picked, _contextSentences.List(null, MnemonicAccountKey));
+                if (deck.Count == 0) return "这些例句错题缺少对应例句，请先在「我的例句」中补充例句。";
+                await OpenContextSentenceReviewAsync(deck, ownerWindow, persistProgress: false, title: "例句错题 · 四选一抽测");
+                UpdateContextReviewButtons();
+                return null;
             },
             addToCloudNotepad: cloudAdd,
             activeNotepadTitle: activePad?.Title);
@@ -624,16 +635,21 @@ public partial class MainWindow
             MySentencesButton.ToolTip = count > 0
                 ? $"我的例句（共 {count} 条 · 浏览、编辑与例句自测）"
                 : "我的例句（浏览、编辑与例句自测）";
-        var mistakes = _mistakeBook.Count;
+        var spellMistakes = _mistakeBook.List(MistakeBookStore.CategorySpelling).Count;
+        var sentMistakes = _mistakeBook.List(MistakeBookStore.CategorySentence).Count;
         if (MistakeBookButton != null)
-            MistakeBookButton.ToolTip = mistakes > 0
-                ? $"错题本（当前 {mistakes} 词待巩固 · 支持随机抽测）"
-                : "错题本（答错自动收录与随机抽测）";
+            MistakeBookButton.ToolTip = (spellMistakes + sentMistakes) > 0
+                ? $"错题本（拼写错题 {spellMistakes} · 例句错题 {sentMistakes}）"
+                : "错题本（拼写错题 / 例句错题分类巩固）";
         if (MistakeBookDot != null)
             MistakeBookDot.Visibility = _mistakeBook.HasUnread ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async Task OpenContextSentenceReviewAsync(IReadOnlyList<ContextSentenceItem> deck, Window? dialogOwner = null, bool persistProgress = false)
+    private async Task OpenContextSentenceReviewAsync(
+        IReadOnlyList<ContextSentenceItem> deck,
+        Window? dialogOwner = null,
+        bool persistProgress = false,
+        string? title = null)
     {
         if (deck.Count == 0)
         {
@@ -702,7 +718,8 @@ public partial class MainWindow
                     _related,
                     _mnemonics,
                     accountKey);
-            });
+            },
+            title: title);
         dialog.ShowDialog();
         UpdateContextReviewButtons();
         if (ValidWord(_word)) RenderSavedContexts(_word);
@@ -756,7 +773,7 @@ public partial class MainWindow
                 new CacheCategoryItem(
                     "mistakes",
                     "错题本记录",
-                    "在卡片、拼写、例句填空与同根辨析中答错收录的待巩固单词。",
+                    "在拼写默写与例句四选一自测中答错收录的待巩固错题。",
                     mistakeCount > 0 ? $"{mistakeCount} 个错题 · {CacheMaintenanceHost.FormatBytes(mistakeBytes)}" : "暂无错题",
                     mistakeCount > 0,
                     "将清空本机错题本中的全部待巩固单词记录。"),

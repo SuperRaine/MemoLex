@@ -2,84 +2,120 @@ import AppKit
 import SwiftUI
 
 struct MistakeBookSheet: View {
-    private enum FilterKind: String, CaseIterable {
-        case all, highWeight, spelling, quiz, flashcard
+    private enum BookTab: String {
+        case spelling
+        case sentence
+    }
+
+    private enum SubFilter: String {
+        case all
+        case highWeight
+    }
+
+    private enum ActivePractice {
+        case spelling([String])
+        case sentence(questions: [J], filterWords: [String]?)
     }
 
     @ObservedObject var model: AppModel
+    @State private var activeTab: BookTab = .spelling
+    @State private var activeSubFilter: SubFilter = .all
     @State private var filterText = ""
-    @State private var activeFilter: FilterKind = .all
-    @State private var practiceSession: (words: [String], spellingMode: Bool)? = nil
+    @State private var activePractice: ActivePractice? = nil
+    @State private var buildingQuiz = false
     @State private var addingToCloud = false
-    @State private var cloudNotice = ""
+    @State private var noticeText = ""
+    @State private var initializedTab = false
 
-    private var allItems: [J] { model.mistakeItems }
+    private var spellingItems: [J] {
+        model.mistakeItems.filter { item in
+            let cat = item["category"].text.lowercased()
+            if !cat.isEmpty { return cat == "spelling" }
+            return item["lastReason"].text.contains("拼写")
+        }
+    }
+
+    private var sentenceItems: [J] {
+        model.mistakeItems.filter { item in
+            let cat = item["category"].text.lowercased()
+            if !cat.isEmpty { return cat == "sentence" }
+            return item["lastReason"].text.contains("例句")
+        }
+    }
+
+    private var currentBookItems: [J] {
+        activeTab == .sentence ? sentenceItems : spellingItems
+    }
 
     private var highWeightCount: Int {
-        allItems.filter { $0["weight"].integer >= 6 }.count
-    }
-
-    private var spellingCount: Int {
-        allItems.filter { $0["lastReason"].text.contains("拼写") }.count
-    }
-
-    private var quizCount: Int {
-        allItems.filter { $0["lastReason"].text.contains("例句") || $0["lastReason"].text.contains("同根") }.count
-    }
-
-    private var flashcardCount: Int {
-        allItems.filter { $0["lastReason"].text.contains("卡片") }.count
+        currentBookItems.filter { $0["weight"].integer >= 6 }.count
     }
 
     private var filteredItems: [J] {
         let query = filterText.trimmed
-        return allItems.filter { item in
-            switch activeFilter {
-            case .all: break
-            case .highWeight: if item["weight"].integer < 6 { return false }
-            case .spelling: if !item["lastReason"].text.contains("拼写") { return false }
-            case .quiz:
-                let r = item["lastReason"].text
-                if !r.contains("例句") && !r.contains("同根") { return false }
-            case .flashcard: if !item["lastReason"].text.contains("卡片") { return false }
-            }
+        return currentBookItems.filter { item in
+            if activeSubFilter == .highWeight && item["weight"].integer < 6 { return false }
             guard !query.isEmpty else { return true }
             if item["word"].text.localizedCaseInsensitiveContains(query) { return true }
             if item["meaning"].text.localizedCaseInsensitiveContains(query) { return true }
             if item["lastWrongInput"].text.localizedCaseInsensitiveContains(query) { return true }
-            if item["lastReason"].text.localizedCaseInsensitiveContains(query) { return true }
             return item["contextSentence"].text.localizedCaseInsensitiveContains(query)
         }
     }
 
     private var isFiltered: Bool {
-        activeFilter != .all || !filterText.trimmed.isEmpty
+        activeSubFilter != .all || !filterText.trimmed.isEmpty
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            DialogHeader(title: "错题本") { model.sheet = nil }
-            if let session = practiceSession {
+            DialogHeader(title: activeHeaderTitle) { model.sheet = nil }
+            switch activePractice {
+            case .spelling(let words):
                 StubbornFlashcardView(
                     core: model.core,
-                    words: session.words,
-                    title: session.spellingMode ? "错题本 · 拼写随机抽测" : "错题本 · 卡片随机抽测",
+                    words: words,
+                    title: "拼写错题 · 默写抽测",
                     persistsProgress: false,
                     preferences: model.preferences,
                     onSpeak: { model.speakWord($0, accent: $1) },
                     contextItemsByWord: model.contextSentenceMap,
                     onContextReviewed: { id in Task { await model.recordContextReview(id: id) } },
-                    startInSpellingMode: session.spellingMode,
+                    startInSpellingMode: true,
                     onMistakeChanged: { Task { await model.refreshMistakeBook() } }
                 ) {
-                    practiceSession = nil
+                    activePractice = nil
                     Task {
                         await model.markMistakeBookViewed()
                         await model.refreshMistakeBook()
                     }
                 }
                 .padding(22)
-            } else {
+            case .sentence(let questions, let filterWords):
+                ContextQuizView(
+                    model: model,
+                    initialQuestions: questions,
+                    persistsProgress: false,
+                    onRebuild: { retryIds in
+                        let retrySet = Set(retryIds.map { $0.lowercased() })
+                        let retryWords = questions
+                            .filter { retrySet.contains($0["itemId"].text.lowercased()) }
+                            .map { $0["answerBaseWord"].text }
+                            .filter { !$0.isEmpty }
+                        return await model.buildSentenceMistakeQuiz(words: retryWords.isEmpty ? filterWords : retryWords)
+                    },
+                    onRebuildFreshAll: {
+                        await model.buildSentenceMistakeQuiz(words: filterWords)
+                    }
+                ) {
+                    activePractice = nil
+                    Task {
+                        await model.markMistakeBookViewed()
+                        await model.refreshMistakeBook()
+                    }
+                }
+                .padding(22)
+            case nil:
                 listContent
             }
         }
@@ -91,6 +127,20 @@ struct MistakeBookSheet: View {
         .task {
             await model.markMistakeBookViewed()
             await model.refreshMistakeBook()
+            if !initializedTab {
+                initializedTab = true
+                if spellingItems.isEmpty && !sentenceItems.isEmpty {
+                    activeTab = .sentence
+                }
+            }
+        }
+    }
+
+    private var activeHeaderTitle: String {
+        switch activePractice {
+        case .spelling: return "拼写错题 · 默写抽测"
+        case .sentence: return "例句错题 · 四选一抽测"
+        case nil: return "错题本"
         }
     }
 
@@ -108,28 +158,32 @@ struct MistakeBookSheet: View {
                     }
                     .buttonStyle(PillButtonStyle(compact: false))
                     .disabled(filteredItems.isEmpty || addingToCloud)
-                    .help("将当前筛选的错词批量加入到「\(model.selectedNotepadTitle)」")
+                    .help("将当前列表中的错词批量加入到「\(model.selectedNotepadTitle)」")
                 }
-                Button(spellingButtonTitle) {
-                    Task { await startPractice(spellingMode: true) }
-                }
-                .buttonStyle(PillButtonStyle(compact: false))
-                .disabled(filteredItems.isEmpty)
-                .help("直接进入拼写默写模式随机抽测错词，常错词优先出现")
 
-                Button(cardButtonTitle) {
-                    Task { await startPractice(spellingMode: false) }
+                Button(primaryPracticeTitle) {
+                    Task { await startCurrentBookPractice() }
                 }
                 .buttonStyle(MemoButtonStyle(accent: true))
-                .disabled(filteredItems.isEmpty)
-                .help("像卡片一样随机抽测错词，常错词优先出现，多次答对后自动移出")
+                .disabled(filteredItems.isEmpty || buildingQuiz)
+                .help(activeTab == .sentence
+                      ? "以四选一语境选择题形式抽测这些例句错题，答对自动巩固并逐步移出"
+                      : "直接进入拼写默写模式随机抽测这些拼写错题，常错词优先出现")
+            }
+
+            HStack(spacing: 4) {
+                bookTabButton(.spelling, title: "拼写错题 (\(spellingItems.count))")
+                bookTabButton(.sentence, title: "例句错题 (\(sentenceItems.count))")
+                Spacer()
             }
 
             HStack(spacing: 8) {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 12.5))
                     .foregroundStyle(Palette.deep)
-                Text("答错或拼错的单词会自动收录到这里；抽测时常错词会优先出现，多次答对后自动移出。")
+                Text(activeTab == .sentence
+                     ? "例句四选一自测中答错的题目会自动收录到这里；点击「例句选择题抽测」继续刷选择题，多次答对后自动移出。"
+                     : "拼写默写中拼错的单词会自动收录到这里；点击「拼写抽测」集中默写，常错词优先出现，多次拼对后自动移出。")
                     .font(.system(size: 11.5))
                     .foregroundStyle(Palette.deep)
                     .fixedSize(horizontal: false, vertical: true)
@@ -139,45 +193,43 @@ struct MistakeBookSheet: View {
             .background(Palette.wash.opacity(0.82), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.accent.opacity(0.28), lineWidth: 0.8))
 
-            if !cloudNotice.isEmpty {
-                Text(cloudNotice)
+            if !noticeText.isEmpty {
+                Text(noticeText)
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(Color(red: 0.05, green: 0.54, blue: 0.36))
             }
 
-            VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").font(.system(size: 12.5)).foregroundStyle(Palette.muted)
-                    TextField("搜索错词、释义、误拼输入或来源…", text: $filterText).textFieldStyle(.plain)
+                    TextField("搜索当前分类中的单词、释义或例句…", text: $filterText).textFieldStyle(.plain)
                 }
                 .padding(.horizontal, 10)
                 .frame(height: 33)
                 .controlSurface()
 
-                HStack(spacing: 6) {
-                    filterChip(.all, title: "全部 (\(allItems.count))")
-                    filterChip(.highWeight, title: "重点易错 (\(highWeightCount))")
-                    filterChip(.spelling, title: "拼写错误 (\(spellingCount))")
-                    filterChip(.quiz, title: "例句/辨析 (\(quizCount))")
-                    filterChip(.flashcard, title: "卡片忘记 (\(flashcardCount))")
-                    Spacer()
-                }
+                subFilterChip(.all, title: "全部 (\(currentBookItems.count))")
+                subFilterChip(.highWeight, title: "重点易错 (\(highWeightCount))")
             }
-            .padding(12)
+            .padding(10)
             .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
 
             ScrollView {
                 if filteredItems.isEmpty {
                     VStack(spacing: 8) {
-                        Image(systemName: allItems.isEmpty ? "checkmark.seal" : "line.3.horizontal.decrease.circle")
+                        Image(systemName: currentBookItems.isEmpty ? "checkmark.seal" : "line.3.horizontal.decrease.circle")
                             .font(.system(size: 28))
                             .foregroundStyle(Palette.muted)
-                        Text(allItems.isEmpty ? "错题本目前是空的" : "没有符合当前筛选条件的错词")
+                        Text(currentBookItems.isEmpty
+                             ? (activeTab == .sentence ? "暂无例句错题" : "暂无拼写错题")
+                             : "没有符合当前筛选条件的错题")
                             .font(.system(size: 15, weight: .semibold))
-                        Text(allItems.isEmpty
-                             ? "在例句四选一自测、卡片自测、拼写默写或同根辨析中答错的单词会自动进入这里。"
-                             : "可以清空搜索关键词或切换筛选标签查看其他错词。")
+                        Text(currentBookItems.isEmpty
+                             ? (activeTab == .sentence
+                                ? "在「例句四选一自测」中选错的题目会自动收录到这里，方便继续刷选择题。"
+                                : "在「拼写默写」中输入有效英文但拼错的单词会自动进入这里，方便集中抽测。")
+                             : "可以清空搜索关键词或切换「全部」查看该分类下的其他错题。")
                             .font(.system(size: 12))
                             .foregroundStyle(Palette.muted)
                     }
@@ -195,7 +247,9 @@ struct MistakeBookSheet: View {
                 }
             }
 
-            Text("点击单词可跳转查词；点击「随机抽测」或「拼写抽测」可像卡片一样随机巩固错词，熟练掌握后自动移出。")
+            Text(activeTab == .sentence
+                 ? "点击单词可跳转查词；点击「例句选择题抽测」继续用四选一选择题巩固例句错题。"
+                 : "点击单词可跳转查词；点击「拼写抽测」集中默写巩固拼写错题，熟练掌握后自动移出。")
                 .font(.system(size: 11.5))
                 .foregroundStyle(Palette.muted)
         }
@@ -203,34 +257,47 @@ struct MistakeBookSheet: View {
     }
 
     private var summaryText: String {
-        if allItems.isEmpty {
-            return "答错或拼错的单词会自动收录到这里，多次答对后自动移出"
+        if spellingItems.isEmpty && sentenceItems.isEmpty {
+            return "仅收录拼写默写与例句选择题的错题，多次答对后自动移出"
         }
-        if highWeightCount > 0 {
-            return "共 \(allItems.count) 个待巩固错词 · 重点易错 \(highWeightCount) 词"
+        return "拼写错题 \(spellingItems.count) 词 · 例句错题 \(sentenceItems.count) 题"
+    }
+
+    private var primaryPracticeTitle: String {
+        if activeTab == .sentence {
+            if buildingQuiz { return "正在出题…" }
+            return filteredItems.isEmpty ? "例句选择题抽测" : "例句选择题抽测 (\(filteredItems.count))"
         }
-        return "共 \(allItems.count) 个待巩固错词"
+        return filteredItems.isEmpty ? "拼写抽测" : "拼写抽测 (\(filteredItems.count))"
     }
 
-    private var cardButtonTitle: String {
-        if filteredItems.isEmpty { return "随机抽测" }
-        return isFiltered ? "随机抽测 (\(filteredItems.count))" : "随机抽测 (\(filteredItems.count))"
-    }
-
-    private var spellingButtonTitle: String {
-        if filteredItems.isEmpty { return "拼写抽测" }
-        return "拼写抽测 (\(filteredItems.count))"
-    }
-
-    private func filterChip(_ kind: FilterKind, title: String) -> some View {
-        let selected = activeFilter == kind
+    private func bookTabButton(_ tab: BookTab, title: String) -> some View {
+        let selected = activeTab == tab
         return Button(title) {
-            activeFilter = kind
+            if activeTab != tab {
+                activeTab = tab
+                activeSubFilter = .all
+                noticeText = ""
+            }
+        }
+        .font(.system(size: 12.5, weight: selected ? .semibold : .regular))
+        .foregroundStyle(selected ? Palette.deep : Palette.muted)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(selected ? Palette.wash : Palette.canvas, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(selected ? Palette.accent : Palette.border, lineWidth: selected ? 1.1 : 0.85))
+        .buttonStyle(.plain)
+    }
+
+    private func subFilterChip(_ kind: SubFilter, title: String) -> some View {
+        let selected = activeSubFilter == kind
+        return Button(title) {
+            activeSubFilter = kind
         }
         .font(.system(size: 11.5, weight: selected ? .semibold : .regular))
         .foregroundStyle(selected ? Palette.deep : Palette.muted)
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(.vertical, 5)
         .background(selected ? Palette.wash : Palette.paper, in: Capsule())
         .overlay(Capsule().strokeBorder(selected ? Palette.accent : Palette.border, lineWidth: 0.9))
         .buttonStyle(.plain)
@@ -263,14 +330,15 @@ struct MistakeBookSheet: View {
         let weight = item["weight"].integer
         let wrongCount = item["wrongCount"].integer
         let rightCount = item["rightCount"].integer
-        let lastReason = item["lastReason"].text
         let lastWrongInput = item["lastWrongInput"].text
         let phonetic = item["phonetic"].text
         let meaning = item["meaning"].text.decodedLines.replacingOccurrences(of: "\n", with: "；")
         let sentence = item["contextSentence"].text
+        let translation = item["contextTranslation"].text
+        let isSentence = activeTab == .sentence
         let wColors = weightPalette(weight)
         let levelLabel = weight >= 6 ? "重点易错" : weight >= 3 ? "待巩固" : "快掌握"
-        let statsLabel = rightCount > 0 ? "\(lastReason) · 错 \(wrongCount) · 对 \(rightCount)" : "\(lastReason) · 错 \(wrongCount) 次"
+        let statsLabel = rightCount > 0 ? "错 \(wrongCount) · 对 \(rightCount)" : "错 \(wrongCount) 次"
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 6) {
@@ -310,16 +378,16 @@ struct MistakeBookSheet: View {
                 .help("朗读单词")
 
                 Button("移出") {
-                    Task { await model.removeMistake(word: word) }
+                    Task { await model.removeMistake(word: word, category: activeTab.rawValue) }
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 .foregroundStyle(Palette.muted)
-                .help("手动将此词移出错题本")
+                .help(isSentence ? "从例句错题中移出" : "从拼写错题中移出")
             }
 
             if !lastWrongInput.trimmed.isEmpty {
-                let wrongLabel = lastReason.contains("拼写") ? "上次误拼：\(lastWrongInput)" : "上次误选：\(lastWrongInput)"
+                let wrongLabel = isSentence ? "上次误选：\(lastWrongInput)" : "上次误拼：\(lastWrongInput)"
                 Text(wrongLabel)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color(red: 0.76, green: 0.14, blue: 0.24))
@@ -335,12 +403,23 @@ struct MistakeBookSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if !sentence.trimmed.isEmpty {
-                Text("例句：\(sentence)")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Palette.muted)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+            if isSentence && !sentence.trimmed.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sentence)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !translation.trimmed.isEmpty {
+                        Text(translation)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Palette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.paper.opacity(0.85), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.7))
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
@@ -349,27 +428,45 @@ struct MistakeBookSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.85))
     }
 
-    private func startPractice(spellingMode: Bool) async {
+    private func startCurrentBookPractice() async {
         let filterWords = filteredItems.map { $0["word"].text }.filter { !$0.isEmpty }
         guard !filterWords.isEmpty else { return }
-        let sampled = await model.sampleMistakeWords(filterWords: isFiltered ? filterWords : nil)
-        let finalWords = sampled.isEmpty ? filterWords.shuffled() : sampled
-        practiceSession = (words: finalWords, spellingMode: spellingMode)
+        noticeText = ""
+
+        if activeTab == .sentence {
+            buildingQuiz = true
+            defer { buildingQuiz = false }
+            let targetFilter = isFiltered ? filterWords : nil
+            let questions = await model.buildSentenceMistakeQuiz(words: targetFilter)
+            if questions.isEmpty {
+                noticeText = "这些例句错题缺少对应例句，请先在「我的例句」中补充例句。"
+                return
+            }
+            activePractice = .sentence(questions: questions, filterWords: targetFilter)
+        } else {
+            let sampled = await model.sampleMistakeWords(filterWords: isFiltered ? filterWords : nil, category: "spelling")
+            let finalWords = sampled.isEmpty ? filterWords.shuffled() : sampled
+            activePractice = .spelling(finalWords)
+        }
     }
 
     private func addFilteredToCloud() async {
-        let words = filteredItems.map { $0["word"].text }.filter { !$0.isEmpty }
+        var seen = Set<String>()
+        let words = filteredItems.map { $0["word"].text }.filter { w in
+            let k = w.lowercased()
+            return !k.isEmpty && seen.insert(k).inserted
+        }
         guard !words.isEmpty else { return }
         addingToCloud = true
         defer { addingToCloud = false }
         do {
             let added = try await model.batchAddToNotepad(words)
-            cloudNotice = added > 0
+            noticeText = added > 0
                 ? "已将 \(added) 个错词加入云词本「\(model.selectedNotepadTitle)」。"
                 : "当前筛选的错词都已在云词本「\(model.selectedNotepadTitle)」中。"
-            model.status = cloudNotice
+            model.status = noticeText
         } catch {
-            cloudNotice = ""
+            noticeText = ""
             model.fail(error)
         }
     }

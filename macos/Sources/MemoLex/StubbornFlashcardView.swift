@@ -344,7 +344,7 @@ struct StubbornFlashcardView: View {
 
     private func fetchMistakeWeight(for word: String) async -> Int? {
         guard trackMistakes else { return nil }
-        guard let rec = try? await core.request("mistakes.get", ["word": .string(word)]),
+        guard let rec = try? await core.request("mistakes.get", ["word": .string(word), "category": .string("spelling")]),
               rec != .null else { return nil }
         let weight = rec["weight"].integer
         return weight > 0 ? weight : nil
@@ -640,13 +640,13 @@ struct StubbornFlashcardView: View {
         let willRecordMistake = trackMistakes && !mistakeEvaluatedOnCard
         recordCardMistakeWrong(word, reason: "拼写错误", wrongInput: trimmed)
         let (message, isProgress) = buildSpellingHint(word: word, typed: trimmed)
-        spellingClue = willRecordMistake ? "\(message) · 已记入错题本" : message
+        spellingClue = willRecordMistake ? "\(message) · 已记入拼写错题" : message
         spellingClueTone = isProgress ? "info" : "warn"
         spellingFocused = true
         Task { @MainActor in
             if let rec = try? await core.request("spelling.recordMistake", ["word": .string(word), "typed": .string(trimmed)]),
                rec != .null, practice.current == word, !revealed,
-               !spellingClue.contains("已记入错题本"), !spellingClue.contains("已记下易错点") {
+               !spellingClue.contains("已记入拼写错题"), !spellingClue.contains("已记下易错点") {
                 spellingClue += " · 已记下易错点"
             }
         }
@@ -707,7 +707,7 @@ struct StubbornFlashcardView: View {
 
     private var progressLineText: String {
         var parts = ["第 \(practice.groupNumber) / \(practice.groupCount) 组", "剩余 \(practice.queue.count) / \(practice.groupWordCount) 词", "已掌握 \(practice.masteredCount) / \(practice.totalWordCount)"]
-        if let weight = currentMistakeWeight, weight > 0 {
+        if spellingMode, let weight = currentMistakeWeight, weight > 0 {
             let level = weight >= 6 ? "重点易错" : weight >= 3 ? "待巩固" : "快掌握"
             parts.append(level)
         }
@@ -732,7 +732,7 @@ struct StubbornFlashcardView: View {
             if let rec = try? await core.request("mistakes.recordWrong", params), rec != .null {
                 let w = rec["weight"].integer
                 if practice.current == word { currentMistakeWeight = w }
-                mistakeNotice = "已记入错题本"
+                mistakeNotice = "已记入拼写错题"
                 onMistakeChanged?()
             }
         }
@@ -741,15 +741,15 @@ struct StubbornFlashcardView: View {
     @MainActor private func recordCardMistakeRightAsync(_ word: String) async {
         guard trackMistakes, !mistakeEvaluatedOnCard else { return }
         mistakeEvaluatedOnCard = true
-        if let res = try? await core.request("mistakes.recordRight", ["word": .string(word)]),
+        if let res = try? await core.request("mistakes.recordRight", ["word": .string(word), "category": .string("spelling")]),
            res["wasInBook"].flag {
             if res["removed"].flag {
                 if practice.current == word { currentMistakeWeight = nil }
-                mistakeNotice = "已掌握，自动移出错题本 ✓"
+                mistakeNotice = "已掌握，自动移出拼写错题 ✓"
             } else {
                 let rem = res["remainingWeight"].integer
                 if practice.current == word { currentMistakeWeight = rem }
-                mistakeNotice = "错题已巩固一次"
+                mistakeNotice = "拼写错题已巩固一次"
             }
             onMistakeChanged?()
         }
@@ -965,13 +965,6 @@ struct StubbornFlashcardView: View {
         if let current = practice.current {
             if let ctx = contextItem(for: current), !ctx["id"].text.isEmpty {
                 onContextReviewed?(ctx["id"].text)
-            }
-            if !spellingMode {
-                if value == .forgotten {
-                    recordCardMistakeWrong(current, reason: "卡片忘记")
-                } else if value == .known && !hadMistakeOnCurrentWord {
-                    Task { await recordCardMistakeRightAsync(current) }
-                }
             }
         }
         autoFlipTask?.cancel()

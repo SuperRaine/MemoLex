@@ -28,8 +28,20 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
     private static readonly Regex NonstandardSpelling = new(
         @"^\s*(?:abbr|pref|suf|comb|contr)\.|^(?:\[[^\]]*\]\s*)?(?:[a-z]+\.\s*)?(?:\[\s*)?(?:古英语|古义|古语|古用法|方言|古(?:\s|\]))",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex AnnotationPattern = new(@"\[[^\]]*\]|\([^)]*\)|（[^）]*）", RegexOptions.Compiled);
+    private static readonly Regex AnnotationPattern = new(@"\[[^\]]*\]|［[^］]*］|【[^】]*】|\([^)]*\)|（[^）]*）", RegexOptions.Compiled);
+    private static readonly Regex InflectionGlossPattern = new(
+        @"的(?:过去式|过去分词|现在分词|复数|第三人称单数|比较级|最高级|ing形式)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex DomainJargonSegmentPattern = new(
+        @"^(?:［[^］]{1,6}］|\[[^\]]{1,6}\]|【[^】]{1,6}】)",
+        RegexOptions.Compiled);
     private static readonly Regex HanTokenPattern = new(@"[\u4E00-\u9FFF]{2,4}", RegexOptions.Compiled);
+    private static readonly HashSet<string> WeakSingleCharSenses = new(StringComparer.Ordinal)
+    {
+        "的", "地", "得", "之", "为", "于", "在", "有", "一", "不", "人", "事", "物",
+        "上", "下", "中", "出", "入", "来", "去", "成", "做", "作", "使", "让", "把",
+        "被", "向", "从", "对", "与", "和", "或", "而", "及", "等", "以", "可", "能"
+    };
     private static readonly Lazy<Dictionary<string, string>> DerivativeParts = new(LoadDerivativeParts);
     public bool Available => _data!=null;
     public void AttachChineseSearch(ChineseReverseSearch chinese) => _chinese = chinese;
@@ -180,6 +192,7 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
                 if (entry == null || entry.HasHistoricalDefinition || NonstandardSpelling.IsMatch(entry.translation) ||
                     !entry.translation.Any(c => c is >= '\u3400' and <= '\u9fff')) return;
                 if (!allowProper && LooksLikeProperName(entry)) return;
+                if (!allowProper && IsPureInflection(entry, word)) return;
                 var meaning = entry.DisplayMeaning;
                 if (meaning.Length == 0) return;
                 simList.Add(new RelatedWord(entry.word, meaning));
@@ -272,24 +285,145 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
         }).ToArray();
     }
 
+    private static bool TryGetInflectionLemma(DictionaryEntry entry, out string lemma)
+    {
+        lemma = "";
+        if (string.IsNullOrWhiteSpace(entry.exchange)) return false;
+        foreach (var piece in entry.exchange.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (piece.StartsWith("0:", StringComparison.Ordinal) && piece.Length > 2)
+            {
+                var candidate = piece[2..].Trim();
+                if (candidate.Length >= 2 && candidate.All(char.IsAsciiLetter) && !candidate.Equals(entry.word, StringComparison.OrdinalIgnoreCase))
+                {
+                    lemma = candidate;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static bool IsPureInflection(DictionaryEntry entry, string targetWord)
+    {
+        if (!TryGetInflectionLemma(entry, out var lemma)) return false;
+        // Keep if the target itself is an inflection or if the word is an independent high-value lemma without inflection-marker gloss.
+        if (InflectionGlossPattern.IsMatch(entry.translation)) return true;
+        if (targetWord.StartsWith(lemma, StringComparison.OrdinalIgnoreCase) && lemma.Length >= 4) return true;
+        return string.IsNullOrWhiteSpace(entry.tag) && entry.oxford != "1" && string.IsNullOrWhiteSpace(entry.collins);
+    }
+
+    private bool IsRecognizedLearnerWord(DictionaryEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.tag) || entry.oxford == "1") return true;
+        if (!string.IsNullOrWhiteSpace(entry.collins) && entry.collins != "0") return true;
+        return dictionary.FrequencyRank(entry.word) <= 22000;
+    }
+
+    private static HashSet<string> ExtractPosGroups(string displayMeaning)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var line in displayMeaning.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var p = DictionaryEntry.SplitDisplaySense(line).PartOfSpeech.Trim().ToLowerInvariant();
+            if (p.StartsWith("prep")) set.Add("prep");
+            else if (p.StartsWith("conj")) set.Add("conj");
+            else if (p.StartsWith("vt") || p.StartsWith("vi") || p.StartsWith("v.")) set.Add("v");
+            else if (p.StartsWith("adj") || p.StartsWith("a.")) set.Add("adj");
+            else if (p.StartsWith("adv") || p.StartsWith("ad.")) set.Add("adv");
+            else if (p.StartsWith("n.")) set.Add("n");
+        }
+        return set;
+    }
+
+    private static string ExtractPrimaryPosGroup(string displayMeaning)
+    {
+        var first = displayMeaning.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "";
+        var p = DictionaryEntry.SplitDisplaySense(first).PartOfSpeech.Trim().ToLowerInvariant();
+        if (p.StartsWith("prep")) return "prep";
+        if (p.StartsWith("conj")) return "conj";
+        if (p.StartsWith("vt") || p.StartsWith("vi") || p.StartsWith("v.")) return "v";
+        if (p.StartsWith("adj") || p.StartsWith("a.")) return "adj";
+        if (p.StartsWith("adv") || p.StartsWith("ad.")) return "adv";
+        if (p.StartsWith("n.")) return "n";
+        return "";
+    }
+
+    private static HashSet<string> ExtractAlignmentSenses(string displayMeaning, int maxLines = int.MaxValue)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var line in displayMeaning.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(maxLines))
+        {
+            var (_, rest) = DictionaryEntry.SplitDisplaySense(line);
+            var body = rest.Length > 0 ? rest : line;
+            foreach (var rawSeg in body.Split(['；', ';', '，', ',', '、', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (DomainJargonSegmentPattern.IsMatch(rawSeg)) continue;
+                var cleaned = AnnotationPattern.Replace(rawSeg, "").Trim();
+                if (cleaned.Length > 2 && (cleaned.EndsWith('的') || cleaned.EndsWith('地'))) cleaned = cleaned[..^1];
+                if (cleaned.Length == 1 && cleaned[0] is >= '\u4E00' and <= '\u9FFF' && !WeakSingleCharSenses.Contains(cleaned))
+                {
+                    set.Add(cleaned);
+                }
+                else if (cleaned.Length is >= 2 and <= 4 && cleaned.All(c => c is >= '\u4E00' and <= '\u9FFF'))
+                {
+                    set.Add(cleaned);
+                }
+                else
+                {
+                    foreach (Match m in HanTokenPattern.Matches(cleaned))
+                        set.Add(m.Value);
+                }
+            }
+        }
+        return set;
+    }
+
+    private static int SenseOverlapScore(HashSet<string> targetSenses, HashSet<string> candSenses)
+    {
+        if (targetSenses.Count == 0 || candSenses.Count == 0) return 0;
+        var score = 0;
+        foreach (var t in targetSenses)
+        {
+            if (candSenses.Contains(t))
+            {
+                score += t.Length >= 2 ? 3 : 2;
+                continue;
+            }
+            if (t.Length == 1)
+            {
+                // Standalone concrete 1-char noun like "山" matches compound glosses like "山峰" / "小山" / "山脉".
+                if (candSenses.Any(c => c.Length is >= 2 and <= 3 && c.Contains(t, StringComparison.Ordinal)))
+                    score += 1;
+                continue;
+            }
+            if (candSenses.Any(c => c.Length >= 2 && (t.Contains(c, StringComparison.Ordinal) || c.Contains(t, StringComparison.Ordinal))))
+                score += 2;
+        }
+        return score;
+    }
+
+    private static bool SharesSameStem(string a, string b)
+    {
+        var la = a.ToLowerInvariant();
+        var lb = b.ToLowerInvariant();
+        if (la == lb) return true;
+        var min = Math.Min(la.Length, lb.Length);
+        if (min < 5) return false;
+        var stem = la.Length <= lb.Length ? la : lb;
+        var longer = la.Length <= lb.Length ? lb : la;
+        if (stem.EndsWith('e')) stem = stem[..^1];
+        return stem.Length >= 5 && longer.StartsWith(stem, StringComparison.Ordinal);
+    }
+
     private async Task<IReadOnlyList<RelatedWord>> BuildSynonymsAsync(string word, IReadOnlyList<string> rawWordNet, CancellationToken cancellationToken)
     {
         var baseEntry = dictionary.Lookup(word);
         var baseDisplay = baseEntry?.DisplayMeaning ?? "";
-        var firstPos = baseDisplay.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => DictionaryEntry.SplitDisplaySense(line).PartOfSpeech.Trim().ToLowerInvariant())
-            .FirstOrDefault() ?? "";
-        var isFunctionWord = firstPos is "prep." or "conj." or "pron." or "det." or "art." or "aux.";
-
-        var wordNetList = DescribeWords(word, rawWordNet, supplementPartOfSpeech: false, preferFrequency: true);
-
-        if (_chinese == null || !_chinese.Available || word.Contains(' ') || string.IsNullOrWhiteSpace(baseDisplay))
-            return wordNetList;
-
-        // Supplement via Chinese semantic overlap when WordNet has few synonyms or for function words (prepositions/conjunctions)
-        // where WordNet often lacks entries (e.g. "against" -> "oppose", "despite" -> "although").
-        if (!isFunctionWord && wordNetList.Count >= 8)
-            return wordNetList;
+        var targetPrimaryPos = ExtractPrimaryPosGroup(baseDisplay);
+        var targetPosGroups = ExtractPosGroups(baseDisplay);
+        var targetSenses = ExtractAlignmentSenses(baseDisplay);
+        var isFunctionWord = targetPrimaryPos is "prep" or "conj";
 
         var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { word };
         if (!string.IsNullOrWhiteSpace(baseEntry?.exchange))
@@ -301,64 +435,189 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
             }
         }
 
-        var coreGlosses = ExtractCoreChineseGlosses(baseDisplay);
-        if (coreGlosses.Count == 0) return wordNetList;
-
-        var stem = word.ToLowerInvariant();
-        if (stem.Length > 4 && stem.EndsWith('e')) stem = stem[..^1];
-        var supplemental = new List<(string Word, string Meaning, int GlossIndex, double Score, int Rank)>();
-        var seenSup = new HashSet<string>(excluded, StringComparer.OrdinalIgnoreCase);
-
-        for (var gi = 0; gi < Math.Min(3, coreGlosses.Count); gi++)
+        // 1. Curated high-frequency usage/direction synonym siblings come first.
+        var curatedSiblings = WordSynonymBank.GetSiblings(word);
+        var curatedList = new List<RelatedWord>();
+        var curatedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var sib in curatedSiblings)
         {
-            var gloss = coreGlosses[gi];
-            cancellationToken.ThrowIfCancellationRequested();
-            ChineseSearchPage page;
-            try { page = await _chinese.SearchAsync(gloss, 18, cancellationToken); }
-            catch (Exception ex) when (ex is ArgumentException or IOException) { continue; }
+            if (excluded.Contains(sib) || !curatedSet.Add(sib)) continue;
+            var entry = dictionary.Lookup(sib);
+            if (entry == null || string.IsNullOrWhiteSpace(entry.DisplayMeaning)) continue;
+            curatedList.Add(new RelatedWord(entry.word, entry.DisplayMeaning));
+        }
 
-            foreach (var hit in page.Items)
+        // 2. Clean & semantically align WordNet candidates against the target word's displayed definition.
+        var alignedWordNet = new List<(RelatedWord Item, int PosMatch, int Overlap, int Rank)>();
+        var unalignedWordNet = new List<(RelatedWord Item, int PosMatch, int Rank)>();
+        var seenWn = new HashSet<string>(excluded, StringComparer.OrdinalIgnoreCase);
+        seenWn.UnionWith(curatedSet);
+
+        foreach (var raw in rawWordNet)
+        {
+            var candidate = raw.Trim();
+            if (candidate.Length is < 2 or > 40 || !char.IsAsciiLetter(candidate[0]) || char.IsUpper(candidate[0])
+                || !candidate.All(ch => char.IsAsciiLetter(ch) || ch is ' ' or '-'))
+                continue;
+
+            var entry = dictionary.Lookup(candidate);
+            if (entry == null || entry.HasHistoricalDefinition || NonstandardSpelling.IsMatch(entry.translation)) continue;
+            if (LooksLikeProperName(entry)) continue;
+
+            // Normalize inflected forms (e.g. hijacked -> hijack, abductions -> abduction) to their base lemma.
+            if (TryGetInflectionLemma(entry, out var lemma))
             {
-                var w = hit.Word.Trim();
-                if (w.Length is < 2 or > 28 || w.Contains(' ') || w.Contains('-') || !w.All(char.IsAsciiLetter)) continue;
-                var lowW = w.ToLowerInvariant();
-                if (stem.Length >= 5 && lowW.StartsWith(stem, StringComparison.Ordinal)) continue;
-                if (!seenSup.Add(w)) continue;
-                var entry = dictionary.Lookup(w);
-                if (entry == null || entry.HasHistoricalDefinition || NonstandardSpelling.IsMatch(entry.translation)) continue;
-                var rank = dictionary.FrequencyRank(w);
-                if (rank > 45000 && !hit.IsExactMatch) continue;
-                var display = entry.DisplayMeaning;
-                if (string.IsNullOrWhiteSpace(display)) continue;
-                supplemental.Add((entry.word, display, gi, hit.Score, rank));
+                if (excluded.Contains(lemma) || curatedSet.Contains(lemma)) continue;
+                var lemmaEntry = dictionary.Lookup(lemma);
+                if (lemmaEntry != null && !lemmaEntry.HasHistoricalDefinition && !NonstandardSpelling.IsMatch(lemmaEntry.translation) && !LooksLikeProperName(lemmaEntry))
+                    entry = lemmaEntry;
+                else if (InflectionGlossPattern.IsMatch(entry.translation))
+                    continue;
+            }
+
+            if (char.IsUpper(entry.word[0]) || !seenWn.Add(entry.word)) continue;
+            if (entry.word.Contains(' ')) continue;
+            if (!IsRecognizedLearnerWord(entry)) continue;
+
+            var display = entry.DisplayMeaning;
+            if (string.IsNullOrWhiteSpace(display)) continue;
+
+            var candPosGroups = ExtractPosGroups(display);
+            var candPrimaryPos = ExtractPrimaryPosGroup(display);
+            var posMatch = targetPrimaryPos.Length > 0 && candPrimaryPos == targetPrimaryPos ? 2
+                : (targetPosGroups.Count > 0 && candPosGroups.Overlaps(targetPosGroups) ? 1 : 0);
+
+            var primaryOverlap = SenseOverlapScore(targetSenses, ExtractAlignmentSenses(display, maxLines: 1));
+            var overlap = SenseOverlapScore(targetSenses, ExtractAlignmentSenses(display));
+            var rank = dictionary.FrequencyRank(entry.word);
+            // Reject candidates whose primary POS differs and only match via a single buried secondary sense (e.g. spirit "vt. 诱拐" for kidnap).
+            var semanticallyAligned = targetSenses.Count == 0
+                || (posMatch == 2 && overlap > 0)
+                || (posMatch == 1 && (primaryOverlap > 0 || overlap >= 5))
+                || (isFunctionWord && overlap > 0);
+            if (semanticallyAligned)
+                alignedWordNet.Add((new RelatedWord(entry.word, display), posMatch, overlap, rank));
+            else if (posMatch >= 1 || isFunctionWord)
+                unalignedWordNet.Add((new RelatedWord(entry.word, display), posMatch, rank));
+        }
+
+        var orderedAlignedWn = alignedWordNet
+            .OrderByDescending(x => x.PosMatch)
+            .ThenByDescending(x => x.Overlap)
+            .ThenBy(x => x.Rank)
+            .Select(x => x.Item)
+            .ToList();
+
+        // 3. Supplement via Chinese semantic overlap whenever curated + aligned WordNet has fewer than 8 items.
+        var rankedSup = new List<RelatedWord>();
+        if (_chinese != null && _chinese.Available && !word.Contains(' ') && !string.IsNullOrWhiteSpace(baseDisplay)
+            && (isFunctionWord || curatedList.Count + orderedAlignedWn.Count < 8))
+        {
+            var coreGlosses = ExtractCoreChineseGlosses(baseDisplay);
+            if (coreGlosses.Count > 0)
+            {
+                var stem = word.ToLowerInvariant();
+                if (stem.Length > 4 && stem.EndsWith('e')) stem = stem[..^1];
+                var supplemental = new List<(string Word, string Meaning, int PosMatch, int Overlap, int GlossIndex, double Score, int Rank)>();
+                var seenSup = new HashSet<string>(excluded, StringComparer.OrdinalIgnoreCase);
+                seenSup.UnionWith(curatedSet);
+                foreach (var w in orderedAlignedWn) seenSup.Add(w.Word);
+
+                for (var gi = 0; gi < Math.Min(3, coreGlosses.Count); gi++)
+                {
+                    var gloss = coreGlosses[gi];
+                    cancellationToken.ThrowIfCancellationRequested();
+                    ChineseSearchPage page;
+                    try { page = await _chinese.SearchAsync(gloss, 24, cancellationToken); }
+                    catch (Exception ex) when (ex is ArgumentException or IOException) { continue; }
+
+                    foreach (var hit in page.Items)
+                    {
+                        var w = hit.Word.Trim();
+                        if (w.Length is < 2 or > 26 || w.Contains(' ') || w.Contains('-') || !w.All(char.IsAsciiLetter)) continue;
+                        if (char.IsUpper(w[0])) continue;
+                        var entry = dictionary.Lookup(w);
+                        if (entry == null || entry.HasHistoricalDefinition || NonstandardSpelling.IsMatch(entry.translation)) continue;
+                        if (LooksLikeProperName(entry)) continue;
+
+                        if (TryGetInflectionLemma(entry, out var lemma))
+                        {
+                            if (excluded.Contains(lemma) || curatedSet.Contains(lemma)) continue;
+                            var lemmaEntry = dictionary.Lookup(lemma);
+                            if (lemmaEntry != null && !lemmaEntry.HasHistoricalDefinition && !NonstandardSpelling.IsMatch(lemmaEntry.translation)
+                                && !LooksLikeProperName(lemmaEntry) && !char.IsUpper(lemmaEntry.word[0]))
+                                entry = lemmaEntry;
+                            else
+                                continue;
+                        }
+
+                        var candWord = entry.word;
+                        if (char.IsUpper(candWord[0]) || SharesSameStem(candWord, word)) continue;
+                        if (!seenSup.Add(candWord)) continue;
+                        if (!IsRecognizedLearnerWord(entry)) continue;
+
+                        var display = entry.DisplayMeaning;
+                        if (string.IsNullOrWhiteSpace(display)) continue;
+
+                        var primaryOverlap = SenseOverlapScore(targetSenses, ExtractAlignmentSenses(display, maxLines: 1));
+                        var overlap = SenseOverlapScore(targetSenses, ExtractAlignmentSenses(display));
+                        if (overlap == 0) continue;
+
+                        var candPosGroups = ExtractPosGroups(display);
+                        var candPrimaryPos = ExtractPrimaryPosGroup(display);
+                        var posMatch = targetPrimaryPos.Length > 0 && candPrimaryPos == targetPrimaryPos ? 2
+                            : (targetPosGroups.Count > 0 && candPosGroups.Overlaps(targetPosGroups) ? 1 : 0);
+                        if (!isFunctionWord && posMatch == 0) continue;
+                        if (!isFunctionWord && posMatch == 1 && primaryOverlap == 0 && overlap < 5) continue;
+
+                        var rank = dictionary.FrequencyRank(candWord);
+                        supplemental.Add((candWord, display, posMatch, overlap, gi, hit.Score, rank));
+                    }
+                }
+
+                rankedSup = supplemental
+                    .OrderByDescending(x => x.PosMatch)
+                    .ThenBy(x => x.GlossIndex)
+                    .ThenByDescending(x => x.Overlap)
+                    .ThenBy(x => x.Rank)
+                    .ThenByDescending(x => x.Score)
+                    .Select(x => new RelatedWord(x.Word, x.Meaning))
+                    .ToList();
             }
         }
 
-        if (supplemental.Count == 0) return wordNetList;
-
-        var rankedSup = supplemental
-            .OrderBy(x => x.GlossIndex)
-            .ThenByDescending(x => x.Score >= 1000 ? 1 : 0)
-            .ThenBy(x => x.Rank)
-            .ThenByDescending(x => x.Score)
-            .Select(x => new RelatedWord(x.Word, x.Meaning))
-            .ToList();
-
+        // 4. Merge in priority order and avoid cross-POS same-stem duplicates (e.g. abduct + abduction).
         var merged = new List<RelatedWord>(12);
         var added = new HashSet<string>(excluded, StringComparer.OrdinalIgnoreCase);
 
-        // For function words (e.g. "against", "despite"), Chinese core gloss synonyms reflect the real primary sense better than archaic WordNet noun senses.
-        var primary = isFunctionWord ? (IEnumerable<RelatedWord>)rankedSup : wordNetList;
-        var secondary = isFunctionWord ? (IEnumerable<RelatedWord>)wordNetList : rankedSup;
-
-        foreach (var item in primary.Concat(secondary))
+        void TryAppend(RelatedWord item, bool allowStemSibling)
         {
-            if (added.Add(item.Word))
+            if (merged.Count >= 12 || !added.Add(item.Word)) return;
+            if (!allowStemSibling && merged.Any(existing => SharesSameStem(existing.Word, item.Word))) return;
+            merged.Add(item);
+        }
+
+        foreach (var item in curatedList) TryAppend(item, allowStemSibling: true);
+
+        var primary = isFunctionWord ? (IEnumerable<RelatedWord>)rankedSup : orderedAlignedWn;
+        var secondary = isFunctionWord ? (IEnumerable<RelatedWord>)orderedAlignedWn : rankedSup;
+
+        foreach (var item in primary) TryAppend(item, allowStemSibling: false);
+        foreach (var item in secondary) TryAppend(item, allowStemSibling: false);
+
+        // Only fall back to unaligned WordNet entries if the word has fewer than 2 semantically aligned synonyms.
+        if (merged.Count < 2)
+        {
+            foreach (var fallback in unalignedWordNet
+                .OrderByDescending(x => x.PosMatch)
+                .ThenBy(x => x.Rank)
+                .Take(3))
             {
-                merged.Add(item);
-                if (merged.Count >= 12) break;
+                TryAppend(fallback.Item, allowStemSibling: false);
+                if (merged.Count >= 3) break;
             }
         }
+
         return merged;
     }
 
@@ -370,10 +629,12 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
         foreach (var line in lines.Take(2))
         {
             var (_, rest) = DictionaryEntry.SplitDisplaySense(line);
-            var cleaned = AnnotationPattern.Replace(rest.Length > 0 ? rest : line, "");
-            foreach (var seg in cleaned.Split(['，', ',', '；', ';', '、', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            var body = rest.Length > 0 ? rest : line;
+            foreach (var rawSeg in body.Split(['，', ',', '；', ';', '、', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                var token = seg.Trim();
+                if (DomainJargonSegmentPattern.IsMatch(rawSeg)) continue;
+                var cleaned = AnnotationPattern.Replace(rawSeg, "");
+                var token = cleaned.Trim();
                 if (token.Length > 2 && (token.EndsWith('的') || token.EndsWith('地'))) token = token[..^1];
                 if (token.Length is >= 2 and <= 4 && token.All(c => c is >= '\u4E00' and <= '\u9FFF'))
                 {

@@ -441,18 +441,11 @@ internal static class MorphemeGroupPracticeDialog
             if (picked.Word.Equals(current.Word, StringComparison.OrdinalIgnoreCase))
             {
                 answeredCorrectly = true;
-                var weightNote = "";
                 if (!missedCurrent)
                 {
                     firstTryCorrect++;
-                    if (mistakeBook != null)
-                    {
-                        var res = mistakeBook.RecordRight(current.Word);
-                        if (res.Removed) weightNote = " · 已掌握，移出错题本";
-                        else if (res.WasInBook) weightNote = " · 错题已巩固一次";
-                    }
                 }
-                feedbackText.Text = $"✓ 正确！{current.Word}：{current.Explanation}{weightNote}";
+                feedbackText.Text = $"✓ 正确！{current.Word}：{current.Explanation}";
                 feedbackText.Foreground = ThemeManager.Hex(ThemeManager.IsDark ? "#34D399" : "#0E7C55");
                 feedbackText.Visibility = Visibility.Visible;
                 if (speak != null) _ = speak(current.Word, EnglishAccent.American);
@@ -461,16 +454,9 @@ internal static class MorphemeGroupPracticeDialog
             }
             else
             {
-                var firstMiss = !missedCurrent;
                 missedCurrent = true;
                 wrongPicked.Add(picked.Word);
-                var weightNote = "";
-                if (firstMiss && mistakeBook != null)
-                {
-                    mistakeBook.RecordWrong(current.Word, "同根辨析", picked.Word);
-                    weightNote = "（已记入错题本）";
-                }
-                feedbackText.Text = $"✗ {picked.Word} 表示「{picked.PromptMeaning}」，再看看其他词缀！{weightNote}";
+                feedbackText.Text = $"✗ {picked.Word} 表示「{picked.PromptMeaning}」，再看看其他词缀！";
                 feedbackText.Foreground = ThemeManager.Hex(ThemeManager.IsDark ? "#FB7185" : "#C4253F");
                 feedbackText.Visibility = Visibility.Visible;
                 Render();

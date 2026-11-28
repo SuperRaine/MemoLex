@@ -1,4 +1,4 @@
-using System.Text;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace MemoLex.Core;
@@ -23,7 +23,9 @@ public sealed record WordContrastEntry(
     string[] TargetPhrases,
     string[] CandidatePhrases,
     string? CandidateMnemonic,
-    string MemoryHook = "");
+    string MemoryHook = "",
+    string TargetUsageNote = "",
+    string CandidateUsageNote = "");
 
 public sealed record WordContrastReport(
     string Mode,
@@ -44,8 +46,11 @@ public static partial class WordContrast
     [GeneratedRegex(@"[\u4E00-\u9FFF]", RegexOptions.CultureInvariant)]
     private static partial Regex ChineseCharPattern();
 
-    [GeneratedRegex(@"\[[^\]]*\]|\([^)]*\)|（[^）]*）", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\[[^\]]*\]|［[^］]*］|【[^】]*】|\([^)]*\)|（[^）]*）", RegexOptions.CultureInvariant)]
     private static partial Regex AnnotationPattern();
+
+    [GeneratedRegex(@"^(?:［[^］]{1,6}］|\[[^\]]{1,6}\]|【[^】]{1,6}】)", RegexOptions.CultureInvariant)]
+    private static partial Regex DomainTagPrefixPattern();
 
     private static readonly (string Prefix, string Meaning)[] CommonPrefixes =
     [
@@ -105,7 +110,7 @@ public static partial class WordContrast
         var targetPosGroup = NormalizePosBucket(targetPrimaryPos);
         var targetAllPosGroups = ExtractAllPosGroups(targetMeaning);
         var targetCore = BriefPrimarySense(targetMeaning);
-        var targetSenses = ExtractSenseTokens(targetMeaning);
+        var targetSenses = ExtractSenseTokens(targetMeaning, posGroupFilter: null);
         var targetMnemonic = ReadMnemonicSummary(mnemonics, targetWord, accountKey);
         var targetPhrases = relatedWords.LookupPhrases(targetWord, cancellationToken)
             .Select(p => p.Word)
@@ -134,9 +139,9 @@ public static partial class WordContrast
             }
         }
 
-        var curatedGroup = normalizedMode == "similar" ? WordConfusionBank.FindGroup(targetWord) : null;
+        var targetCuratedGroup = normalizedMode == "similar" ? WordConfusionBank.FindGroup(targetWord) : null;
         var targetMemoryHook = normalizedMode == "similar"
-            ? BuildMemoryHook(targetWord, targetCore, targetPrimaryPos, targetMnemonic, curatedGroup)
+            ? BuildMemoryHook(targetWord, targetCore, targetPrimaryPos, targetMnemonic, targetCuratedGroup)
             : "";
 
         if (sourceList.Count == 0)
@@ -151,21 +156,15 @@ public static partial class WordContrast
                 targetMnemonic,
                 targetPhrases,
                 [],
-                curatedGroup?.SharedAnchor ?? "",
+                "",
                 targetMemoryHook,
-                BuildOverviewSpans(targetWord, "", WordConfusionBank.FindHook(targetWord)?.HighlightPart));
+                null);
         }
 
         var taken = sourceList.Take(12).ToList();
-        var sharedStem = normalizedMode == "similar" ? DetectSharedStem(targetWord, taken.Select(t => t.Word)) : "";
-        var groupAnchor = normalizedMode == "similar"
-            ? BuildGroupAnchor(targetWord, curatedGroup, sharedStem, mnemonics, accountKey)
-            : "";
-        var targetOverviewSpans = normalizedMode == "similar"
-            ? BuildOverviewSpans(targetWord, sharedStem, WordConfusionBank.FindHook(targetWord)?.HighlightPart)
-            : null;
-
+        var targetRegister = DescribeRegister(targetEntry, dictionary.FrequencyRank(targetWord));
         var items = new List<WordContrastEntry>(taken.Count);
+
         foreach (var rel in taken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -178,26 +177,66 @@ public static partial class WordContrast
             var candAllPos = ExtractAllPosLabels(candMeaning);
             var candAllPosGroups = ExtractAllPosGroups(candMeaning);
             var candCore = BriefPrimarySense(candMeaning);
-            var candSenses = ExtractSenseTokens(candMeaning);
 
+            var sharedPosGroup = targetPosGroup.Length > 0 && candAllPosGroups.Contains(targetPosGroup)
+                ? targetPosGroup
+                : (candPosGroup.Length > 0 && targetAllPosGroups.Contains(candPosGroup) ? candPosGroup : null);
+
+            var candSenses = ExtractSenseTokens(candMeaning, posGroupFilter: null);
             var shared = FindSharedSenses(targetSenses, candSenses);
-            var targetUnique = targetSenses.Where(s => !shared.Contains(s)).Take(3).ToArray();
-            var candUnique = candSenses.Where(s => !shared.Contains(s)).Take(3).ToArray();
 
-            var candHookMeta = normalizedMode == "similar" ? WordConfusionBank.FindHook(candWord) : null;
-            var (targetSpans, candSpans, spellingDiff) = BuildSpellingComparison(targetWord, candWord, sharedStem, candHookMeta?.HighlightPart);
+            // For non-curated usage contrast, prefer clean senses within the shared POS so unrelated
+            // cross-POS meanings (e.g. noun glosses when comparing verbs) don't pollute the comparison.
+            var tScopedSenses = sharedPosGroup != null ? ExtractSenseTokens(targetMeaning, sharedPosGroup) : targetSenses;
+            var cScopedSenses = sharedPosGroup != null ? ExtractSenseTokens(candMeaning, sharedPosGroup) : candSenses;
+            if (tScopedSenses.Length == 0) tScopedSenses = targetSenses;
+            if (cScopedSenses.Length == 0) cScopedSenses = candSenses;
+
+            var targetUnique = tScopedSenses.Where(s => !IsCoveredByShared(s, shared)).Take(3).ToArray();
+            var candUnique = cScopedSenses.Where(s => !IsCoveredByShared(s, shared)).Take(3).ToArray();
+
             var posSummary = BuildPosSummary(targetWord, targetPrimaryPos, targetPosGroup, targetAllPosGroups, candWord, candPrimaryPos, candPosGroup, candAllPosGroups);
             var candPhrases = normalizedMode == "synonym"
                 ? relatedWords.LookupPhrases(candWord, cancellationToken).Select(p => p.Word).Distinct(StringComparer.OrdinalIgnoreCase).Take(3).ToArray()
                 : [];
             var candMnemonic = ReadMnemonicSummary(mnemonics, candWord, accountKey);
+
+            // Pairwise spelling diff: strictly between targetWord and THIS specific candWord!
+            var sharedConfGroup = normalizedMode == "similar" ? FindSharedConfusionGroup(targetWord, candWord) : null;
+            var (targetSpans, candSpans, spellingDiff) = BuildPairwiseSpellingComparison(targetWord, candWord, sharedConfGroup);
+
             var memoryHook = normalizedMode == "similar"
-                ? BuildMemoryHook(candWord, candCore, candPrimaryPos, candMnemonic, curatedGroup)
+                ? BuildMemoryHook(candWord, candCore, candPrimaryPos, candMnemonic, sharedConfGroup ?? WordConfusionBank.FindGroup(candWord))
                 : "";
 
-            var verdict = normalizedMode == "similar"
-                ? BuildSimilarMemorySummary(targetWord, candWord, targetPhonetic, candPhonetic, targetPrimaryPos, candPrimaryPos, memoryHook)
-                : BuildSynonymVerdict(targetWord, targetPrimaryPos, targetPosGroup, targetAllPosGroups, targetCore, targetUnique, candWord, candPrimaryPos, candPosGroup, candAllPosGroups, candCore, candUnique, shared);
+            string verdict;
+            string targetUsageNote = "";
+            string candUsageNote = "";
+            string[] sharedDisplay = shared.Take(3).ToArray();
+
+            if (normalizedMode == "similar")
+            {
+                verdict = "";
+            }
+            else
+            {
+                var curatedPair = WordSynonymBank.FindPair(targetWord, candWord);
+                if (curatedPair is { } pair)
+                {
+                    sharedDisplay = [pair.Group.SharedMeaning];
+                    targetUsageNote = pair.Target.UsageDirection;
+                    candUsageNote = pair.Candidate.UsageDirection;
+                    verdict = $"两者都含「{pair.Group.SharedMeaning}」之意，区别在于{pair.Group.DifferenceAxis}：{targetWord} {pair.Target.UsageDirection}；而 {candWord} {pair.Candidate.UsageDirection}。";
+                }
+                else
+                {
+                    var candRegister = DescribeRegister(entry, dictionary.FrequencyRank(candWord));
+                    (verdict, targetUsageNote, candUsageNote) = BuildSynonymUsageVerdict(
+                        targetWord, targetPrimaryPos, targetPosGroup, targetAllPosGroups, targetCore, targetUnique, targetRegister,
+                        candWord, candPrimaryPos, candPosGroup, candAllPosGroups, candCore, candUnique, candRegister,
+                        shared);
+                }
+            }
 
             items.Add(new WordContrastEntry(
                 candWord,
@@ -206,7 +245,7 @@ public static partial class WordContrast
                 candAllPos,
                 CompactMeaning(candMeaning),
                 candCore,
-                shared.Take(3).ToArray(),
+                sharedDisplay,
                 targetUnique,
                 candUnique,
                 posSummary,
@@ -217,7 +256,9 @@ public static partial class WordContrast
                 targetPhrases,
                 candPhrases,
                 candMnemonic,
-                memoryHook));
+                memoryHook,
+                targetUsageNote,
+                candUsageNote));
         }
 
         return new WordContrastReport(
@@ -230,44 +271,16 @@ public static partial class WordContrast
             targetMnemonic,
             targetPhrases,
             items,
-            groupAnchor,
+            "",
             targetMemoryHook,
-            targetOverviewSpans);
+            null);
     }
 
-    private static string BuildGroupAnchor(
-        string targetWord,
-        ConfusionGroup? curatedGroup,
-        string sharedStem,
-        MnemonicStore? mnemonics,
-        string? accountKey)
+    private static ConfusionGroup? FindSharedConfusionGroup(string a, string b)
     {
-        if (curatedGroup != null && !string.IsNullOrWhiteSpace(curatedGroup.SharedAnchor))
-            return curatedGroup.SharedAnchor;
-
-        // Try pulling a leading root clue from the target word's local mnemonic breakdown
-        if (mnemonics != null)
-        {
-            var note = mnemonics.Get(targetWord, accountKey).FirstOrDefault();
-            if (note != null)
-            {
-                var parts = MnemonicParts.Parse(targetWord, note.NoteType, note.Text);
-                var firstPart = parts.FirstOrDefault()?.Parts.FirstOrDefault(p => p.Meaning.Length > 0);
-                if (firstPart != null && sharedStem.Length >= 2)
-                {
-                    var normForm = MnemonicParts.NormalizeFormKey(firstPart.Form).Trim('-');
-                    if (normForm.Length >= 2 && (normForm.StartsWith(sharedStem, StringComparison.OrdinalIgnoreCase)
-                        || sharedStem.StartsWith(normForm, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        return $"共同线索 {firstPart.Form}（{firstPart.Meaning}）· 对比高亮差异部分来串记";
-                    }
-                }
-            }
-        }
-
-        if (sharedStem.Length >= 3)
-            return $"共同字形片段「{sharedStem}-」· 抓高亮差异部分，结合拆解助记一口气分清";
-        return "抓每个词的高亮差异字母与拆解线索，对比串记更不容易混";
+        var group = WordConfusionBank.FindGroup(a);
+        if (group == null) return null;
+        return group.Members.Any(m => m.Word.Equals(b, StringComparison.OrdinalIgnoreCase)) ? group : null;
     }
 
     private static string BuildMemoryHook(
@@ -277,17 +290,14 @@ public static partial class WordContrast
         string? localMnemonic,
         ConfusionGroup? group)
     {
-        // 1. Curated memory-first hook (highest quality: associative / root-suffix / visual letter cue)
         var curated = group?.Members.FirstOrDefault(m => m.Word.Equals(word, StringComparison.OrdinalIgnoreCase))
             ?? WordConfusionBank.FindHook(word);
         if (curated != null && !string.IsNullOrWhiteSpace(curated.Hook))
             return curated.Hook;
 
-        // 2. Local 10,614-word mnemonic formula (already rich with root/affix + associative explanations!)
         if (!string.IsNullOrWhiteSpace(localMnemonic))
             return localMnemonic;
 
-        // 3. Structural prefix/suffix cue for words without a local mnemonic
         var low = word.ToLowerInvariant();
         foreach (var (prefix, pMeaning) in CommonPrefixes)
         {
@@ -310,85 +320,6 @@ public static partial class WordContrast
         return string.IsNullOrWhiteSpace(coreSense) ? "" : $"{posTag}{coreSense}";
     }
 
-    private static string BuildSimilarMemorySummary(
-        string targetWord,
-        string candWord,
-        string targetPhonetic,
-        string candPhonetic,
-        string targetPos,
-        string candPos,
-        string memoryHook)
-    {
-        if (!string.IsNullOrWhiteSpace(memoryHook))
-            return memoryHook;
-
-        if (targetPhonetic.Length > 0 && candPhonetic.Length > 0)
-        {
-            var sameSound = string.Equals(
-                targetPhonetic.Trim('/').Replace("ˈ", "").Replace("ˌ", ""),
-                candPhonetic.Trim('/').Replace("ˈ", "").Replace("ˌ", ""),
-                StringComparison.Ordinal);
-            if (sameSound)
-                return $"与 {targetWord} 读音极近，建议结合词性（{(candPos.Length > 0 ? candPos : "注意词性")}）与拼写亮点区分记忆。";
-        }
-        return "";
-    }
-
-    private static string DetectSharedStem(string targetWord, IEnumerable<string> candidates)
-    {
-        var a = targetWord.ToLowerInvariant();
-        var list = candidates.Select(c => c.ToLowerInvariant()).Take(6).ToArray();
-        if (list.Length == 0) return "";
-
-        var best = "";
-        for (var len = Math.Min(a.Length - 1, 9); len >= 2; len--)
-        {
-            var prefix = a[..len];
-            var matchCount = list.Count(c => c.StartsWith(prefix, StringComparison.Ordinal));
-            if (matchCount >= Math.Max(2, (list.Length + 1) / 2))
-            {
-                best = prefix;
-                break;
-            }
-        }
-        return best;
-    }
-
-    private static LetterSpan[] BuildOverviewSpans(string word, string sharedStem, string? curatedHighlight)
-    {
-        if (!string.IsNullOrWhiteSpace(curatedHighlight))
-        {
-            var startSearch = sharedStem.Length >= 2
-                && word.StartsWith(sharedStem, StringComparison.OrdinalIgnoreCase)
-                && sharedStem.Length < word.Length
-                    ? sharedStem.Length
-                    : 0;
-            var idx = word.IndexOf(curatedHighlight, startSearch, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0 && startSearch > 0)
-                idx = word.IndexOf(curatedHighlight, 0, StringComparison.OrdinalIgnoreCase);
-            if (idx >= 0 && curatedHighlight.Length < word.Length)
-            {
-                var spans = new List<LetterSpan>(3);
-                if (idx > 0) spans.Add(new LetterSpan(word[..idx], false));
-                spans.Add(new LetterSpan(word.Substring(idx, curatedHighlight.Length), true));
-                var end = idx + curatedHighlight.Length;
-                if (end < word.Length) spans.Add(new LetterSpan(word[end..], false));
-                return spans.ToArray();
-            }
-        }
-
-        if (sharedStem.Length >= 2 && word.StartsWith(sharedStem, StringComparison.OrdinalIgnoreCase) && word.Length > sharedStem.Length)
-        {
-            return
-            [
-                new LetterSpan(word[..sharedStem.Length], false),
-                new LetterSpan(word[sharedStem.Length..], true)
-            ];
-        }
-
-        return [new LetterSpan(word, false)];
-    }
-
     private static string BuildPosSummary(
         string targetWord, string targetPos, string targetGroup, HashSet<string> targetAll,
         string candWord, string candPos, string candGroup, HashSet<string> candAll)
@@ -403,53 +334,125 @@ public static partial class WordContrast
         return $"词性不同：{tName}（{targetPos}） vs {cName}（{candPos}）";
     }
 
-    private static string BuildSynonymVerdict(
-        string targetWord, string targetPos, string targetGroup, HashSet<string> targetAll, string targetCore, string[] targetUnique,
-        string candWord, string candPos, string candGroup, HashSet<string> candAll, string candCore, string[] candUnique,
+    private readonly record struct RegisterProfile(string Label, int Level);
+
+    private static RegisterProfile DescribeRegister(DictionaryEntry? entry, int frequencyRank)
+    {
+        if (entry == null) return new("常用表达", 2);
+        var tags = (entry.tag ?? "").ToLowerInvariant();
+        if (tags.Contains("zk") || tags.Contains("gk") || frequencyRank <= 2500)
+            return new("日常高频通用词", 1);
+        if (tags.Contains("cet4") || entry.oxford == "1" || frequencyRank <= 7500)
+            return new("常用中性表达", 2);
+        if (tags.Contains("gre") || tags.Contains("toefl") || frequencyRank > 16000)
+            return new("书面/正式高阶词", 3);
+        return new("常见书面表达", 2);
+    }
+
+    private static (string Verdict, string TargetUsage, string CandUsage) BuildSynonymUsageVerdict(
+        string targetWord, string targetPos, string targetGroup, HashSet<string> targetAll, string targetCore, string[] targetUnique, RegisterProfile targetReg,
+        string candWord, string candPos, string candGroup, HashSet<string> candAll, string candCore, string[] candUnique, RegisterProfile candReg,
         List<string> shared)
     {
         var tName = PosName(targetGroup);
         var cName = PosName(candGroup);
         var sharedStr = string.Join("、", shared.Take(2));
-        var strictPosDiff = targetGroup.Length > 0 && candGroup.Length > 0 && !candAll.Contains(targetGroup);
+        var strictPosDiff = targetGroup.Length > 0 && candGroup.Length > 0 && !candAll.Contains(targetGroup) && !targetAll.Contains(candGroup);
 
         if (strictPosDiff)
         {
-            var commonPart = shared.Count > 0 ? $"两者都含「{sharedStr}」之意，但词性不同：" : "两者语义相近但词性不同：";
-            var usageTip = (targetGroup, candGroup) switch
+            var commonPart = shared.Count > 0 ? $"两者都含「{sharedStr}」之意，但词性与句法用法不同：" : "两者语义相近但词性与句法位置不同：";
+            var (tUse, cUse, tip) = (targetGroup, candGroup) switch
             {
-                ("prep", "v") => $"{targetWord} 是介词，后接名词/代词短语；{candWord} 是动词，直接作谓语，句中不可直接互换。",
-                ("v", "prep") => $"{targetWord} 是动词，在句中作谓语；{candWord} 是介词，引导介词短语，不可直接互换。",
-                ("prep", "conj") => $"{targetWord} 是介词，后接名词或动名词短语；{candWord} 是连词，后接完整从句。",
-                ("conj", "prep") => $"{targetWord} 是连词，后接完整从句；{candWord} 是介词，后接名词短语。",
-                ("prep", "n") or ("v", "n") => $"{targetWord} 为{tName}，而 {candWord} 为名词（常作主语、宾语或与介词搭配）。",
-                _ => $"{targetWord} 为{tName}（{targetCore}），{candWord} 为{cName}（{candCore}），在句子中充当的语法成分不同。"
+                ("prep", "v") => ("介词，后接名词或动名词短语，不能单独作谓语", "动词，在句中直接作谓语接宾语", $"{targetWord} 是介词，后接名词/代词短语；{candWord} 是动词，直接作谓语，句中不可直接互换。"),
+                ("v", "prep") => ("动词，在句中直接作谓语", "介词，引导介词短语，不能作谓语", $"{targetWord} 是动词，在句中作谓语；{candWord} 是介词，引导介词短语，不可直接互换。"),
+                ("prep", "conj") => ("介词，后接名词或动名词短语", "连词，后接完整主谓从句", $"{targetWord} 是介词，后接名词短语；{candWord} 是连词，后接完整从句。"),
+                ("conj", "prep") => ("连词，后接完整主谓从句", "介词，后接名词或动名词短语", $"{targetWord} 是连词，后接完整从句；{candWord} 是介词，后接名词短语。"),
+                ("v", "n") => ($"动词，直接表达「{targetCore}」动作", $"名词，常作主语、宾语或与介词搭配", $"{targetWord} 为动词，表达具体动作；{candWord} 为名词，常作主语、宾语或介词宾语。"),
+                ("n", "v") => ($"名词，常作主语或宾语指称「{targetCore}」", $"动词，在句中直接作谓语动作", $"{targetWord} 为名词，用于指称概念；{candWord} 为动词，在句中直接作谓语。"),
+                _ => ($"{tName}（{targetPos}），用于表达「{targetCore}」", $"{cName}（{candPos}），用于表达「{candCore}」", $"{targetWord} 为{tName}，{candWord} 为{cName}，在句中充当的语法成分不同。")
             };
-            return commonPart + usageTip;
+            return (commonPart + tip, tUse, cUse);
+        }
+
+        // Same verb category: check transitivity (vt. vs vi.)
+        var tIsVt = targetPos.StartsWith("vt", StringComparison.OrdinalIgnoreCase);
+        var tIsVi = targetPos.StartsWith("vi", StringComparison.OrdinalIgnoreCase);
+        var cIsVt = candPos.StartsWith("vt", StringComparison.OrdinalIgnoreCase);
+        var cIsVi = candPos.StartsWith("vi", StringComparison.OrdinalIgnoreCase);
+        if (targetGroup == "v" && candGroup == "v" && ((tIsVt && cIsVi) || (tIsVi && cIsVt)))
+        {
+            var tUse = tIsVt ? $"及物动词（vt.），可直接接宾语；{targetReg.Label}" : $"不及物动词（vi.），接对象时通常需配介词；{targetReg.Label}";
+            var cUse = cIsVt ? $"及物动词（vt.），可直接接宾语；{candReg.Label}" : $"不及物动词（vi.），接对象时通常需配介词；{candReg.Label}";
+            var head = shared.Count > 0 ? $"两者同为动词且都含「{sharedStr}」之意，但及物性与用法不同：" : "两者同为动词，但及物性与句式搭配不同：";
+            var verdict = tIsVt
+                ? $"{head}{targetWord} 主作及物动词可直接接宾语；{candWord} 主作不及物动词，接对象时通常需搭配介词。"
+                : $"{head}{targetWord} 主作不及物动词，接对象时常需配介词；{candWord} 主作及物动词，可直接接宾语。";
+            return (verdict, tUse, cUse);
         }
 
         if (targetGroup != candGroup && targetGroup.Length > 0 && candGroup.Length > 0)
         {
-            var commonPart = shared.Count > 0 ? $"两者都涉及「{sharedStr}」：" : "";
-            return $"{commonPart}{targetWord} 主作{tName}（{targetCore}），而 {candWord} 常用作{cName}（{candCore}），使用时注意词性与主从语义差别。";
+            var commonPart = shared.Count > 0 ? $"两者都涉及「{sharedStr}」，但主要词性与用法方向不同：" : "两者词性侧重不同：";
+            var tUse = $"主作{tName}（{targetPos}），{targetReg.Label}" + (targetUnique.Length > 0 ? $"；也延伸至「{string.Join("、", targetUnique.Take(2))}」" : "");
+            var cUse = $"主作{cName}（{candPos}），{candReg.Label}" + (candUnique.Length > 0 ? $"；也延伸至「{string.Join("、", candUnique.Take(2))}」" : "");
+            return ($"{commonPart}{targetWord} 主作{tName}（{targetCore}），而 {candWord} 更常作{cName}（{candCore}），使用时需注意句法角色与主从语义。", tUse, cUse);
         }
 
-        if (shared.Count > 0 && (targetUnique.Length > 0 || candUnique.Length > 0))
-        {
-            var tFocus = targetUnique.Length > 0 ? string.Join("、", targetUnique.Take(2)) : targetCore;
-            var cFocus = candUnique.Length > 0 ? string.Join("、", candUnique.Take(2)) : candCore;
-            return $"同为{tName}且都含「{sharedStr}」之意，但侧重点不同：{targetWord} 更强调「{tFocus}」，而 {candWord} 更偏向「{cFocus}」。";
-        }
-
+        // Same primary POS: compare register + semantic direction
+        var registerDiff = targetReg.Level != candReg.Level;
         if (shared.Count > 0)
-            return $"同为{tName}，核心含义均指向「{sharedStr}」，语义高度接近，可结合下方固定搭配与常见语境区分使用习惯。";
+        {
+            var tExtend = targetUnique.Length > 0 ? $"还可延伸表达「{string.Join("、", targetUnique.Take(2))}」" : "";
+            var cExtend = candUnique.Length > 0 ? $"还可延伸表达「{string.Join("、", candUnique.Take(2))}」" : "";
+            var tUse = targetReg.Label + (tExtend.Length > 0 ? $"，{tExtend}" : $"，侧重「{sharedStr}」");
+            var cUse = candReg.Label + (cExtend.Length > 0 ? $"，{cExtend}" : $"，侧重「{sharedStr}」");
 
-        return $"{targetWord} 核心侧重「{targetCore}」，而 {candWord} 侧重「{candCore}」，在具体语境和搭配对象上有所区别。";
+            if (registerDiff)
+            {
+                var verdict = $"两者同为{tName}且都含「{sharedStr}」之意，区别主要在语域与延伸方向：{targetWord} 偏{targetReg.Label}" +
+                    (tExtend.Length > 0 ? $"（{tExtend}）" : "") +
+                    $"；{candWord} 偏{candReg.Label}" +
+                    (cExtend.Length > 0 ? $"（{cExtend}）" : "") + "。";
+                return (verdict, tUse, cUse);
+            }
+            if (targetUnique.Length > 0 || candUnique.Length > 0)
+            {
+                var tDir = targetUnique.Length > 0 ? $"兼有「{string.Join("、", targetUnique.Take(2))}」方向" : $"语义更聚焦于「{sharedStr}」";
+                var cDir = candUnique.Length > 0 ? $"兼有「{string.Join("、", candUnique.Take(2))}」方向" : $"语义更聚焦于「{sharedStr}」";
+                return ($"两者同为{tName}，核心均表达「{sharedStr}」，但语义延伸方向不同：{targetWord} {tDir}；{candWord} {cDir}，可结合下方固定搭配选用。", tUse, cUse);
+            }
+            return ($"两者同为{tName}，核心含义均指向「{sharedStr}」，语域相近，可结合下方常见搭配与上下文语境区分习惯用法。", tUse, cUse);
+        }
+
+        var fallbackT = $"{targetReg.Label}，核心义为「{targetCore}」";
+        var fallbackC = $"{candReg.Label}，核心义为「{candCore}」";
+        return ($"{targetWord}（{targetCore}）与 {candWord}（{candCore}）在具体语境、修辞引申或搭配方向上有所不同，注意避免直接互换。", fallbackT, fallbackC);
     }
 
-    public static (LetterSpan[] TargetSpans, LetterSpan[] CandidateSpans, string Summary) BuildSpellingComparison(
-        string target, string candidate, string sharedStem = "", string? curatedHighlight = null)
+    /// <summary>
+    /// Computes an exact pairwise visual diff strictly between target and candidate.
+    /// Curated pinpoint highlights are applied only when both words belong to the same curated family.
+    /// </summary>
+    public static (LetterSpan[] TargetSpans, LetterSpan[] CandidateSpans, string Summary) BuildPairwiseSpellingComparison(
+        string target, string candidate, ConfusionGroup? sharedGroup = null)
     {
+        if (sharedGroup != null)
+        {
+            var tHook = sharedGroup.Members.FirstOrDefault(m => m.Word.Equals(target, StringComparison.OrdinalIgnoreCase));
+            var cHook = sharedGroup.Members.FirstOrDefault(m => m.Word.Equals(candidate, StringComparison.OrdinalIgnoreCase));
+            if (tHook?.HighlightPart is { Length: > 0 } tPart
+                && cHook?.HighlightPart is { Length: > 0 } cPart
+                && !tPart.Equals(cPart, StringComparison.OrdinalIgnoreCase))
+            {
+                var commonPrefix = CommonPrefixLen(target, candidate);
+                var tSpansCurated = BuildCuratedSpan(target, tPart, commonPrefix);
+                var cSpansCurated = BuildCuratedSpan(candidate, cPart, commonPrefix);
+                if (tSpansCurated != null && cSpansCurated != null && UnhighlightedContextMatches(tSpansCurated, cSpansCurated))
+                    return (tSpansCurated, cSpansCurated, "");
+            }
+        }
+
         var a = target.ToLowerInvariant();
         var b = candidate.ToLowerInvariant();
 
@@ -477,16 +480,39 @@ public static partial class WordContrast
             cSpans.Add(new LetterSpan(candidate[(candidate.Length - suffix)..], false));
         }
 
-        // If a curated highlight part exists for the candidate (e.g. statu[re], des[s]ert, compl[e]ment),
-        // prefer that pinpoint highlight so the visual cue directly matches the memory hook!
-        if (!string.IsNullOrWhiteSpace(curatedHighlight))
-        {
-            var curatedSpans = BuildOverviewSpans(candidate, sharedStem, curatedHighlight);
-            if (curatedSpans.Any(s => s.Highlight))
-                cSpans = curatedSpans.ToList();
-        }
-
         return (tSpans.ToArray(), cSpans.ToArray(), "");
+    }
+
+    private static bool UnhighlightedContextMatches(LetterSpan[] a, LetterSpan[] b)
+    {
+        static string ContextOf(LetterSpan[] spans) =>
+            string.Concat(spans.Select(s => s.Highlight ? "|" : s.Text.ToLowerInvariant()));
+        return string.Equals(ContextOf(a), ContextOf(b), StringComparison.Ordinal);
+    }
+
+    private static int CommonPrefixLen(string a, string b)
+    {
+        var n = Math.Min(a.Length, b.Length);
+        var i = 0;
+        while (i < n && char.ToLowerInvariant(a[i]) == char.ToLowerInvariant(b[i])) i++;
+        return i;
+    }
+
+    private static LetterSpan[]? BuildCuratedSpan(string word, string part, int commonPrefix)
+    {
+        if (part.Length >= word.Length) return null;
+        var startSearch = commonPrefix >= 2 && commonPrefix < word.Length ? commonPrefix : 0;
+        var idx = word.IndexOf(part, startSearch, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0 && startSearch > 0)
+            idx = word.IndexOf(part, 0, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return null;
+
+        var spans = new List<LetterSpan>(3);
+        if (idx > 0) spans.Add(new LetterSpan(word[..idx], false));
+        spans.Add(new LetterSpan(word.Substring(idx, part.Length), true));
+        var end = idx + part.Length;
+        if (end < word.Length) spans.Add(new LetterSpan(word[end..], false));
+        return spans.ToArray();
     }
 
     private static string? ReadMnemonicSummary(MnemonicStore? mnemonics, string word, string? accountKey)
@@ -494,7 +520,6 @@ public static partial class WordContrast
         if (mnemonics == null) return null;
         var first = mnemonics.Get(word, accountKey).FirstOrDefault()?.Text;
         if (string.IsNullOrWhiteSpace(first)) return null;
-        // Take the first informative line so multi-line notes stay clean and punchy
         var lines = first.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var joined = lines.Length > 0 ? lines[0] : first.Trim();
         var clean = Regex.Replace(joined, @"\s+", " ");
@@ -510,7 +535,7 @@ public static partial class WordContrast
         var lines = displayMeaning.Replace("\r\n", "\n").Replace('\r', '\n')
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var joined = string.Join("；", lines.Take(2));
-        return joined.Length <= 72 ? joined : joined[..70].TrimEnd('；', '，', '、', ' ') + "…";
+        return joined.Length <= 76 ? joined : joined[..74].TrimEnd('；', '，', '、', ' ') + "…";
     }
 
     private static string BriefPrimarySense(string? displayMeaning)
@@ -518,13 +543,20 @@ public static partial class WordContrast
         if (string.IsNullOrWhiteSpace(displayMeaning)) return "";
         var first = displayMeaning.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "";
         var (_, rest) = DictionaryEntry.SplitDisplaySense(first);
-        var cleaned = AnnotationPattern().Replace(rest.Length > 0 ? rest : first, "");
-        var pieces = cleaned.Split(['；', ';', '，', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(p => p.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .Take(3)
-            .ToArray();
-        var joined = pieces.Length > 0 ? string.Join("、", pieces) : first;
+        var body = rest.Length > 0 ? rest : first;
+        var pieces = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var rawSeg in body.Split(['；', ';', '，', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (DomainTagPrefixPattern().IsMatch(rawSeg)) continue;
+            var cleaned = AnnotationPattern().Replace(rawSeg, "").Trim();
+            if (cleaned.Length > 0 && seen.Add(cleaned))
+            {
+                pieces.Add(cleaned);
+                if (pieces.Count >= 3) break;
+            }
+        }
+        var joined = pieces.Count > 0 ? string.Join("、", pieces) : AnnotationPattern().Replace(body, "").Trim();
         return joined.Length <= 26 ? joined : joined[..24].TrimEnd('、', '，', '；', ' ') + "…";
     }
 
@@ -579,18 +611,25 @@ public static partial class WordContrast
         _ => ""
     };
 
-    private static string[] ExtractSenseTokens(string? displayMeaning)
+    private static string[] ExtractSenseTokens(string? displayMeaning, string? posGroupFilter)
     {
         if (string.IsNullOrWhiteSpace(displayMeaning)) return [];
         var list = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var line in displayMeaning.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            var (_, rest) = DictionaryEntry.SplitDisplaySense(line);
-            var cleaned = AnnotationPattern().Replace(rest.Length > 0 ? rest : line, "");
-            foreach (var piece in cleaned.Split(['，', ',', '；', ';', '、', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            var (pos, rest) = DictionaryEntry.SplitDisplaySense(line);
+            if (!string.IsNullOrEmpty(posGroupFilter))
             {
-                var token = piece.Trim();
+                var lineGroup = NormalizePosBucket(pos);
+                if (lineGroup.Length > 0 && lineGroup != posGroupFilter) continue;
+            }
+            var body = rest.Length > 0 ? rest : line;
+            foreach (var rawPiece in body.Split(['，', ',', '；', ';', '、', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                // Skip domain-specific / archaic jargon entries like "［生］使外展" or "［古］..."
+                if (DomainTagPrefixPattern().IsMatch(rawPiece)) continue;
+                var token = AnnotationPattern().Replace(rawPiece, "").Trim();
                 if (token.Length > 2 && (token.EndsWith('的') || token.EndsWith('地'))) token = token[..^1];
                 if (token.Length >= 2 && ChineseCharPattern().IsMatch(token) && seen.Add(token))
                 {
@@ -601,6 +640,9 @@ public static partial class WordContrast
         }
         return list.ToArray();
     }
+
+    private static bool IsCoveredByShared(string token, List<string> shared) =>
+        shared.Any(s => s == token || (s.Length >= 2 && (token.Contains(s, StringComparison.Ordinal) || s.Contains(token, StringComparison.Ordinal))));
 
     private static List<string> FindSharedSenses(string[] targetSenses, string[] candSenses)
     {

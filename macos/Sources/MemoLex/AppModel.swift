@@ -447,7 +447,8 @@ enum EnglishAccent: String, CaseIterable {
         reason: String,
         wrongInput: String? = nil,
         contextSentence: String? = nil,
-        contextTranslation: String? = nil
+        contextTranslation: String? = nil,
+        contextItemId: String? = nil
     ) async -> J? {
         let trimmed = targetWord.trimmed
         guard !trimmed.isEmpty else { return nil }
@@ -458,30 +459,35 @@ enum EnglishAccent: String, CaseIterable {
         if let wrongInput, !wrongInput.trimmed.isEmpty { params["wrongInput"] = .string(wrongInput.trimmed) }
         if let contextSentence, !contextSentence.trimmed.isEmpty { params["contextSentence"] = .string(contextSentence.trimmed) }
         if let contextTranslation, !contextTranslation.trimmed.isEmpty { params["contextTranslation"] = .string(contextTranslation.trimmed) }
+        if let contextItemId, !contextItemId.trimmed.isEmpty { params["contextItemId"] = .string(contextItemId.trimmed) }
         let result = try? await core.request("mistakes.recordWrong", params)
         await refreshMistakeBook()
         return result
     }
 
-    func recordMistakeRight(word targetWord: String) async -> J? {
+    func recordMistakeRight(word targetWord: String, category: String? = nil) async -> J? {
         let trimmed = targetWord.trimmed
         guard !trimmed.isEmpty else { return nil }
-        let result = try? await core.request("mistakes.recordRight", ["word": .string(trimmed)])
+        var params: [String: J] = ["word": .string(trimmed)]
+        if let category, !category.trimmed.isEmpty { params["category"] = .string(category.trimmed) }
+        let result = try? await core.request("mistakes.recordRight", params)
         if result?["wasInBook"].flag == true {
             await refreshMistakeBook()
         }
         return result
     }
 
-    func removeMistake(word targetWord: String) async {
+    func removeMistake(word targetWord: String, category: String? = nil) async {
         let trimmed = targetWord.trimmed
         guard !trimmed.isEmpty else { return }
-        _ = try? await core.request("mistakes.remove", ["word": .string(trimmed)])
+        var params: [String: J] = ["word": .string(trimmed)]
+        if let category, !category.trimmed.isEmpty { params["category"] = .string(category.trimmed) }
+        _ = try? await core.request("mistakes.remove", params)
         await refreshMistakeBook()
         status = "已将「\(trimmed)」移出错题本。"
     }
 
-    func sampleMistakeWords(filterWords: [String]? = nil, limit: Int = 0) async -> [String] {
+    func sampleMistakeWords(filterWords: [String]? = nil, limit: Int = 0, category: String? = nil) async -> [String] {
         var params: [String: J] = [:]
         if let filterWords, !filterWords.isEmpty {
             params["words"] = J.strings(filterWords)
@@ -489,8 +495,20 @@ enum EnglishAccent: String, CaseIterable {
         if limit > 0 {
             params["limit"] = .number(Double(limit))
         }
+        if let category, !category.trimmed.isEmpty {
+            params["category"] = .string(category.trimmed)
+        }
         guard let result = try? await core.request("mistakes.sample", params) else { return [] }
         return result.list.map(\.text).filter { !$0.isEmpty }
+    }
+
+    func buildSentenceMistakeQuiz(words: [String]? = nil) async -> [J] {
+        var params: [String: J] = [:]
+        if let words, !words.isEmpty {
+            params["words"] = J.strings(words)
+        }
+        guard let result = try? await core.request("mistakes.buildSentenceQuiz", params) else { return [] }
+        return result.list
     }
 
     func saveContextSentence(word targetWord: String, sentence: String, translation: String, source: String, matchedForm: String? = nil) async {
@@ -846,7 +864,7 @@ enum EnglishAccent: String, CaseIterable {
             CacheCategoryInfo(
                 id: "mistakes",
                 title: "错题本记录",
-                description: "例句自测、卡片自测、拼写默写与同根辨析累计的待巩固错词。",
+                description: "拼写默写与例句四选一自测累计的待巩固错题。",
                 summary: mistakeCount > 0 ? "\(mistakeCount) 个错词 · \(formatCacheBytes(mistakeBytes))" : "暂无错词",
                 hasData: mistakeCount > 0,
                 confirmMessage: "将清空错题本中的全部待巩固错词记录，不会影响云词本和账号数据。"
