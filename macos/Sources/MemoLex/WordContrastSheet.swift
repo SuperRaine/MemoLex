@@ -20,17 +20,8 @@ struct WordContrastSheet: View {
         VStack(spacing: 0) {
             DialogHeader(title: "\(modeTitle) · \(targetWord)") { model.sheet = nil }
 
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("\(modeTitle) · \(targetWord)")
-                        .font(.system(size: 20, weight: .bold))
-                    Text(subtitleText)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Palette.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                targetSummaryCard
+            VStack(alignment: .leading, spacing: 10) {
+                headerArea
 
                 if items.count > 1 {
                     MorphemeFlowLayout(spacing: 6, lineSpacing: 5, expandLast: false) {
@@ -49,10 +40,54 @@ struct WordContrastSheet: View {
                             .foregroundStyle(Palette.muted)
                             .frame(maxWidth: .infinity)
                             .padding(.top, 42)
+                    } else if isSimilar {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            let targetSpans: [J] = {
+                                if visibleItems.count == 1, !visibleItems[0]["targetSpans"].list.isEmpty {
+                                    return visibleItems[0]["targetSpans"].list
+                                }
+                                let overview = report["targetOverviewSpans"].list
+                                if !overview.isEmpty { return overview }
+                                return [.object(["text": .string(targetWord), "highlight": .bool(false)])]
+                            }()
+
+                            similarMemoryRow(
+                                word: targetWord,
+                                spans: targetSpans,
+                                phonetic: report["targetPhonetic"].text,
+                                meaning: report["targetMeaning"].text,
+                                memoryHook: report["targetMemoryHook"].text,
+                                badge: "当前词",
+                                isTarget: true,
+                                isFocused: false
+                            )
+
+                            ForEach(Array(visibleItems.enumerated()), id: \.offset) { _, item in
+                                let w = item["word"].text
+                                let isFocused: Bool = {
+                                    guard let focus = model.contrastFocusWord, !focus.isEmpty else { return false }
+                                    return w.caseInsensitiveCompare(focus) == .orderedSame
+                                }()
+                                let spans = item["candidateSpans"].list.isEmpty
+                                    ? [J.object(["text": .string(w), "highlight": .bool(false)])]
+                                    : item["candidateSpans"].list
+                                similarMemoryRow(
+                                    word: w,
+                                    spans: spans,
+                                    phonetic: item["phonetic"].text,
+                                    meaning: item["meaning"].text,
+                                    memoryHook: item["memoryHook"].text,
+                                    badge: isFocused ? "已定位" : nil,
+                                    isTarget: false,
+                                    isFocused: isFocused
+                                )
+                            }
+                        }
+                        .padding(.trailing, 4)
                     } else {
                         LazyVStack(alignment: .leading, spacing: 10) {
                             ForEach(Array(visibleItems.enumerated()), id: \.offset) { _, item in
-                                contrastCard(item)
+                                synonymCard(item)
                             }
                         }
                         .padding(.trailing, 4)
@@ -68,13 +103,50 @@ struct WordContrastSheet: View {
         .noFocusRing()
     }
 
-    private var subtitleText: String {
-        if items.isEmpty {
-            return isSimilar ? "当前词条暂无可对比的形近词。" : "当前词条暂无可对比的近义词。"
+    private var headerArea: some View {
+        let anchor = report["groupAnchor"].text
+        let phonetic = report["targetPhonetic"].text
+        let meaning = report["targetMeaning"].text
+
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Text("\(modeTitle) · \(targetWord)")
+                    .font(.system(size: 19, weight: .bold))
+                if !isSimilar && !phonetic.isEmpty {
+                    Text(phonetic)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Palette.muted)
+                }
+                if !isSimilar && !meaning.isEmpty {
+                    Text(meaning)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Palette.muted)
+                        .lineLimit(1)
+                }
+                Spacer()
+                if !isSimilar {
+                    Button("英音") { model.speakWord(targetWord, accent: .british) }
+                        .buttonStyle(PillButtonStyle())
+                    Button("美音") { model.speakWord(targetWord, accent: .american) }
+                        .buttonStyle(PillButtonStyle())
+                }
+            }
+
+            if isSimilar && !anchor.isEmpty {
+                Text(anchor)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(Palette.deep)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.wash, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.accent.opacity(0.32), lineWidth: 0.9))
+            } else if !isSimilar && !items.isEmpty {
+                Text("共 \(items.count) 个近义词 · 对比词性边界、语义侧重与常见搭配（点击单词跳转查词）")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+            }
         }
-        return isSimilar
-            ? "共 \(items.count) 个形近词 · 高亮标出差异字母并对比读音、词性与释义（点击任意单词可跳转查词）"
-            : "共 \(items.count) 个近义词 · 对比词性边界、语义侧重与常见搭配（点击任意单词可跳转查词）"
     }
 
     private func chipButton(label: String, value: String?) -> some View {
@@ -95,75 +167,120 @@ struct WordContrastSheet: View {
         .buttonStyle(.plain)
     }
 
-    private var targetSummaryCard: some View {
-        let phonetic = report["targetPhonetic"].text
-        let pos = report["targetPrimaryPos"].text
-        let meaning = report["targetMeaning"].text
-        let phrases = report["targetPhrases"].list.map(\.text).filter { !$0.isEmpty }
-        let mnemonic = report["targetMnemonic"].text
+    private func similarMemoryRow(
+        word: String,
+        spans: [J],
+        phonetic: String,
+        meaning: String,
+        memoryHook: String,
+        badge: String?,
+        isTarget: Bool,
+        isFocused: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .center, spacing: 8) {
+                if let badge, !badge.isEmpty {
+                    softPill(badge, accent: true)
+                }
 
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                softPill("当前词", accent: true)
-                Text(targetWord)
-                    .font(.system(size: 17, weight: .bold))
+                if isTarget {
+                    highlightedWord(spans: spans, isTarget: true)
+                } else {
+                    Button {
+                        model.sheet = nil
+                        model.lookup(word)
+                    } label: {
+                        highlightedWord(spans: spans, isTarget: false)
+                    }
+                    .buttonStyle(.plain)
+                    .help("点击查词「\(word)」")
+                }
+
                 if !phonetic.isEmpty {
                     Text(phonetic)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.muted)
+                }
+
+                if !meaning.isEmpty {
+                    Text(meaning)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 4)
+
+                if isTarget {
+                    Button("英音") { model.speakWord(word, accent: .british) }
+                        .buttonStyle(PillButtonStyle())
+                    Button("美音") { model.speakWord(word, accent: .american) }
+                        .buttonStyle(PillButtonStyle())
+                } else {
+                    Button("朗读") { model.speakWord(word, accent: .british) }
+                        .buttonStyle(PillButtonStyle())
+                        .help("朗读 \(word)")
+                }
+            }
+
+            if !memoryHook.trimmed.isEmpty {
+                HStack(alignment: .top, spacing: 7) {
+                    statusPill(
+                        "巧记",
+                        bg: isTarget ? Palette.wash : Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.14),
+                        border: isTarget ? Palette.accent.opacity(0.36) : Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.45),
+                        fg: isTarget ? Palette.deep : Color(red: 0.70, green: 0.38, blue: 0.03)
+                    )
+                    Text(memoryHook)
                         .font(.system(size: 12.5))
-                        .foregroundStyle(Palette.muted)
+                        .foregroundStyle(Palette.ink)
+                        .lineSpacing(2.5)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                if !pos.isEmpty {
-                    softPill(pos, accent: false)
-                }
-                Spacer()
-                Button("英音") { model.speakWord(targetWord, accent: .british) }
-                    .buttonStyle(PillButtonStyle())
-                Button("美音") { model.speakWord(targetWord, accent: .american) }
-                    .buttonStyle(PillButtonStyle())
-            }
-
-            if !meaning.isEmpty {
-                Text(meaning)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Palette.ink)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if !isSimilar && !phrases.isEmpty {
-                HStack(alignment: .center, spacing: 5) {
-                    Text("常见搭配：")
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(Palette.muted)
-                    MorphemeFlowLayout(spacing: 5, lineSpacing: 4, expandLast: false) {
-                        ForEach(Array(phrases.enumerated()), id: \.offset) { _, p in
-                            softPill(p, accent: false)
-                        }
-                    }
-                }
-            }
-
-            if !mnemonic.isEmpty {
-                Text("助记：\(mnemonic)")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.accent.opacity(0.32), lineWidth: 1))
+        .background(isTarget ? Palette.canvas : Palette.paper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(isTarget || isFocused ? Palette.accent : Palette.border, lineWidth: isTarget || isFocused ? 1.3 : 0.85)
+        )
     }
 
-    private func contrastCard(_ item: J) -> some View {
+    private func highlightedWord(spans: [J], isTarget: Bool) -> some View {
+        let hlBg = isTarget
+            ? Palette.accent.opacity(0.18)
+            : Color(red: 0.90, green: 0.22, blue: 0.32).opacity(0.16)
+        let hlFg = isTarget
+            ? Palette.deep
+            : Color(red: 0.76, green: 0.14, blue: 0.24)
+
+        return HStack(spacing: 1.5) {
+            ForEach(Array(spans.enumerated()), id: \.offset) { _, span in
+                let text = span["text"].text
+                let hl = span["highlight"].flag
+                if hl {
+                    Text(text)
+                        .font(.system(size: 16.5, weight: .bold, design: .monospaced))
+                        .foregroundStyle(hlFg)
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(hlBg, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                } else {
+                    Text(text)
+                        .font(.system(size: 16.5, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Palette.ink)
+                }
+            }
+        }
+    }
+
+    private func synonymCard(_ item: J) -> some View {
         let word = item["word"].text
         let phonetic = item["phonetic"].text
         let posSummary = item["posSummary"].text
         let verdict = item["verdict"].text
-        let diffSummary = item["spellingDiffSummary"].text
-        let targetSpans = item["targetSpans"].list
-        let candSpans = item["candidateSpans"].list
         let shared = item["sharedSenses"].list.map(\.text).filter { !$0.isEmpty }
         let targetUnique = item["targetUniqueSenses"].list.map(\.text).filter { !$0.isEmpty }
         let candUnique = item["candidateUniqueSenses"].list.map(\.text).filter { !$0.isEmpty }
@@ -172,7 +289,6 @@ struct WordContrastSheet: View {
         let candMeaning = item["meaning"].text
         let candMnemonic = item["candidateMnemonic"].text
         let targetMeaning = report["targetMeaning"].text
-        let targetMnemonic = report["targetMnemonic"].text
 
         let isFocused: Bool = {
             guard let focus = model.contrastFocusWord, !focus.isEmpty else { return false }
@@ -213,30 +329,6 @@ struct WordContrastSheet: View {
                     .help("朗读 \(word)")
             }
 
-            if isSimilar && !targetSpans.isEmpty && !candSpans.isEmpty {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 12) {
-                        spellingRow(label: "当前词", spans: targetSpans, isTarget: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("↔")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Palette.muted)
-                        spellingRow(label: "形近词", spans: candSpans, isTarget: false)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if !diffSummary.isEmpty {
-                        Text("拼写差异：\(diffSummary)")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color(red: 0.70, green: 0.38, blue: 0.03))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(.horizontal, 12).padding(.vertical, 9)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35), lineWidth: 0.9))
-            }
-
             if !verdict.isEmpty {
                 Text(verdict)
                     .font(.system(size: 12.5))
@@ -249,7 +341,7 @@ struct WordContrastSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
             }
 
-            if !isSimilar && !shared.isEmpty {
+            if !shared.isEmpty {
                 HStack(alignment: .center, spacing: 5) {
                     Text("共通义：")
                         .font(.system(size: 11.5, weight: .semibold))
@@ -270,21 +362,17 @@ struct WordContrastSheet: View {
             HStack(alignment: .top, spacing: 9) {
                 sideColumn(
                     title: targetWord,
-                    primary: isSimilar
-                        ? targetMeaning
-                        : (targetUnique.isEmpty ? targetMeaning : "侧重：\(targetUnique.joined(separator: "、"))"),
-                    fullMeaning: isSimilar ? nil : targetMeaning,
-                    phrases: isSimilar ? [] : targetPhrases,
-                    mnemonic: isSimilar ? targetMnemonic : "",
+                    primary: targetUnique.isEmpty ? targetMeaning : "侧重：\(targetUnique.joined(separator: "、"))",
+                    fullMeaning: targetMeaning,
+                    phrases: targetPhrases,
+                    mnemonic: "",
                     isTarget: true
                 )
                 sideColumn(
                     title: word,
-                    primary: isSimilar
-                        ? candMeaning
-                        : (candUnique.isEmpty ? candMeaning : "侧重：\(candUnique.joined(separator: "、"))"),
-                    fullMeaning: isSimilar ? nil : candMeaning,
-                    phrases: isSimilar ? [] : candPhrases,
+                    primary: candUnique.isEmpty ? candMeaning : "侧重：\(candUnique.joined(separator: "、"))",
+                    fullMeaning: candMeaning,
+                    phrases: candPhrases,
                     mnemonic: candMnemonic,
                     isTarget: false
                 )
@@ -297,38 +385,6 @@ struct WordContrastSheet: View {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .strokeBorder(isFocused ? Palette.accent : Palette.border, lineWidth: isFocused ? 1.3 : 0.85)
         )
-    }
-
-    private func spellingRow(label: String, spans: [J], isTarget: Bool) -> some View {
-        let hlBg = isTarget
-            ? Palette.accent.opacity(0.18)
-            : Color(red: 0.90, green: 0.22, blue: 0.32).opacity(0.16)
-        let hlFg = isTarget
-            ? Palette.deep
-            : Color(red: 0.76, green: 0.14, blue: 0.24)
-
-        return VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(Palette.muted)
-            HStack(spacing: 1.5) {
-                ForEach(Array(spans.enumerated()), id: \.offset) { _, span in
-                    let text = span["text"].text
-                    let hl = span["highlight"].flag
-                    if hl {
-                        Text(text)
-                            .font(.system(size: 17, weight: .bold, design: .monospaced))
-                            .foregroundStyle(hlFg)
-                            .padding(.horizontal, 4).padding(.vertical, 1)
-                            .background(hlBg, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    } else {
-                        Text(text)
-                            .font(.system(size: 17, weight: .bold, design: .monospaced))
-                            .foregroundStyle(Palette.ink)
-                    }
-                }
-            }
-        }
     }
 
     private func sideColumn(
