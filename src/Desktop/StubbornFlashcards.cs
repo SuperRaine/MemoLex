@@ -1029,6 +1029,15 @@ internal static class StubbornFlashcards
             {
                 CancelAutoFlip();
                 var typed = inputBox.Text.Trim();
+                if (typed.Length == 0 || !typed.Any(char.IsAsciiLetter))
+                {
+                    ShowSpellingHint(
+                        typed.Length == 0 ? "请先输入单词拼写后再核对" : "请输入英文字母后再核对拼写",
+                        "info");
+                    inputBox.Focus();
+                    inputBox.CaretIndex = inputBox.Text.Length;
+                    return;
+                }
                 if (typed.Equals(word, StringComparison.OrdinalIgnoreCase))
                 {
                     CompleteSpellingAndFlip();
@@ -1094,12 +1103,7 @@ internal static class StubbornFlashcards
             {
                 e.Handled = true;
                 CancelAutoFlip();
-                if (!mistakeEvaluatedOnCard && mistakeBook != null)
-                {
-                    mistakeEvaluatedOnCard = true;
-                    mistakeBook.RecordWrong(word, "拼写错误", inputBox.Text.Trim());
-                    mistakeNotice = "已记入错题本";
-                }
+                hadMistakeOnCurrentWord = true;
                 spellingFeedback = "";
                 Flip();
             };
@@ -1364,7 +1368,7 @@ internal static class StubbornFlashcards
             if (!revealed || flipping || swiping || practice.Current == null) return;
             var answeredWord = practice.Current;
             if (currentContext != null) contextSentences?.RecordReview(currentContext.Id);
-            if (!mistakeEvaluatedOnCard && mistakeBook != null)
+            if (!spellingMode && !mistakeEvaluatedOnCard && mistakeBook != null)
             {
                 mistakeEvaluatedOnCard = true;
                 if (answer == FlashcardAnswer.Known)

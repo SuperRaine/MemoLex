@@ -32,11 +32,17 @@ public sealed partial class MaiMemoClient
         return studied switch{StudyRecordState.Unstudied=>TodayStudyStatus.Planned,StudyRecordState.Absent=>TodayStudyStatus.NotAdded,_=>TodayStudyStatus.SyncRequired};
     }
 
-    public async Task<IReadOnlyList<TodayStudyItem>> GetTodayItemsAsync(CancellationToken cancellationToken=default)
+    public Task<IReadOnlyList<TodayStudyItem>> GetTodayItemsAsync(CancellationToken cancellationToken=default) =>
+        GetTodayItemsAsync(isFinished: null, isNew: null, cancellationToken);
+
+    public async Task<IReadOnlyList<TodayStudyItem>> GetTodayItemsAsync(bool? isFinished,bool? isNew,CancellationToken cancellationToken=default)
     {
         using var accountScope=BeginAccountOperation();
-        var data=await SendAsync(HttpMethod.Post,"memo/study/get_today_items",new {limit=1000},cancellationToken);
-        return ParseToday(data,1000).OrderBy(item=>item.Order).ToArray();
+        var body=new Dictionary<string,object>{{"limit",StudyBatchLimit}};
+        if(isFinished.HasValue)body["is_finished"]=isFinished.Value;
+        if(isNew.HasValue)body["is_new"]=isNew.Value;
+        var data=await SendAsync(HttpMethod.Post,"memo/study/get_today_items",body,cancellationToken);
+        return ParseToday(data,20000).OrderBy(item=>item.Order).ToArray();
     }
 
     /// <summary>Adds an unstudied word, advances it to today and verifies the server's new-word flag.</summary>
@@ -96,10 +102,14 @@ public sealed partial class MaiMemoClient
         var output=new List<TodayStudyItem>();var ids=new HashSet<string>(StringComparer.Ordinal);
         foreach(var item in items.EnumerateArray())
         {
-            if(item.ValueKind!=JsonValueKind.Object||Text(item,"voc_id").Length==0||!ids.Add(Text(item,"voc_id"))||!item.TryGetProperty("is_new",out var isNew)||isNew.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
-                ||!item.TryGetProperty("is_finished",out var finished)||finished.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new MaiMemoException("今日学习数据不完整，请稍后重试。");
+            if(item.ValueKind!=JsonValueKind.Object)throw new MaiMemoException("今日学习数据不完整，请稍后重试。");
+            var vocId=Text(item,"voc_id");
+            if(vocId.Length==0||!item.TryGetProperty("is_new",out var isNew)||isNew.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+                ||!item.TryGetProperty("is_finished",out var finished)||finished.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new MaiMemoException("今日学习数据不完整，请稍后重试。");
+            if(!ids.Add(vocId))continue;
             var response=Text(item,"first_response");
-            output.Add(new(Text(item,"voc_id"),Text(item,"voc_spelling"),isNew.GetBoolean(),finished.GetBoolean(),HasStudyResponse(response),item.TryGetProperty("order",out var order)&&order.TryGetInt32(out var n)?n:output.Count));
+            output.Add(new(vocId,Text(item,"voc_spelling"),isNew.GetBoolean(),finished.GetBoolean(),HasStudyResponse(response),item.TryGetProperty("order",out var order)&&order.TryGetInt32(out var n)?n:output.Count));
         }
         return output;
     }

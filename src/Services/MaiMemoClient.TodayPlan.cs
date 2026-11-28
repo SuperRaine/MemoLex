@@ -5,11 +5,24 @@ using MemoLex.Core;
 
 namespace MemoLex.Services;
 
-public sealed record TodayStudyPlan(string Day, int Target, int Finished, IReadOnlyList<TodayStudyItem> Items)
+public sealed record TodayStudyPlan(
+    string Day,
+    int Target,
+    int Finished,
+    IReadOnlyList<TodayStudyItem> Items,
+    bool NewTruncated = false,
+    bool ReviewTruncated = false,
+    bool SyncMismatch = false)
 {
-    public int? NewWordsNeeded => Target > 0 && Finished == Items.Count(item => item.IsFinished)
-        && (Items.Count < 1000 || Target <= Items.Count) && Items.Count > 0
-        ? Math.Max(0, Target - Items.Count) : null;
+    public int PendingNewCount => Items.Count(item => item.IsNew && !item.IsFinished);
+    public int PendingReviewCount => Items.Count(item => !item.IsNew && !item.IsFinished);
+    public bool IsTruncated => NewTruncated || ReviewTruncated;
+    public int TotalKnownCount => Finished + PendingNewCount + PendingReviewCount;
+    public bool NeedsSync => SyncMismatch || (Target > 0 && TotalKnownCount == 0);
+    public int? NewWordsNeeded =>
+        Target > 0 && !NeedsSync && (!IsTruncated || Target <= TotalKnownCount)
+            ? Math.Max(0, Target - TotalKnownCount)
+            : null;
 }
 
 public sealed record TodayStudyCandidates(IReadOnlyList<Vocabulary> Words, int Excluded);
@@ -36,9 +49,35 @@ public sealed partial class MaiMemoClient
             || !progress.TryGetProperty("total", out var total) || total.ValueKind != JsonValueKind.Number || !total.TryGetInt32(out var target) || target < 0)
             throw new MaiMemoException("墨墨未返回完整的今日学习进度");
 
-        var items = await GetTodayItemsAsync(cancellationToken);
+        // Fast path: when daily target <= 1000, a single unfiltered fetch usually returns every item.
+        if (target <= StudyBatchLimit)
+        {
+            var singleBatch = await GetTodayItemsAsync(cancellationToken);
+            if (singleBatch.Count < StudyBatchLimit)
+            {
+                CheckStudyDay(day);
+                var syncMismatch = finished != singleBatch.Count(item => item.IsFinished);
+                return new(day, target, finished, singleBatch, NewTruncated: false, ReviewTruncated: false, SyncMismatch: syncMismatch);
+            }
+        }
+
+        // Partitioned path (> 1000 target or >= 1000 total items): fetch unfinished new & review separately
+        // so completed words never consume the 1000-item API cap and new words are never hidden behind reviews.
+        var pendingNew = await GetTodayItemsAsync(isFinished: false, isNew: true, cancellationToken);
+        var pendingReview = await GetTodayItemsAsync(isFinished: false, isNew: false, cancellationToken);
+
+        var merged = new List<TodayStudyItem>(pendingNew.Count + pendingReview.Count);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in pendingNew.Concat(pendingReview))
+        {
+            if (seen.Add(item.Id)) merged.Add(item);
+        }
+        var ordered = merged.OrderBy(item => item.Order).ToArray();
+        var newTruncated = pendingNew.Count == StudyBatchLimit;
+        var reviewTruncated = pendingReview.Count == StudyBatchLimit;
+
         CheckStudyDay(day);
-        return new(day, target, finished, items);
+        return new(day, target, finished, ordered, NewTruncated: newTruncated, ReviewTruncated: reviewTruncated, SyncMismatch: false);
     }
 
     public async Task<TodayStudyCandidates> GetTodayCandidatesAsync(string? notepadId, string? input, CancellationToken cancellationToken = default)

@@ -529,7 +529,6 @@ struct StubbornFlashcardView: View {
                     Button("直接看答案") {
                         autoFlipTask?.cancel()
                         hadMistakeOnCurrentWord = true
-                        recordCardMistakeWrong(word, reason: "拼写错误", wrongInput: typedSpelling.trimmed)
                         spellingFeedback = ""
                         flip()
                     }.buttonStyle(MemoButtonStyle(compact: true))
@@ -617,6 +616,13 @@ struct StubbornFlashcardView: View {
     private func submitSpelling(_ word: String) {
         autoFlipTask?.cancel()
         let trimmed = typedSpelling.trimmed
+        let hasValidLetters = !trimmed.isEmpty && trimmed.contains { $0.isASCII && $0.isLetter }
+        guard hasValidLetters else {
+            spellingClue = trimmed.isEmpty ? "请先输入单词拼写后再核对" : "请输入英文字母后再核对拼写"
+            spellingClueTone = "info"
+            spellingFocused = true
+            return
+        }
         if trimmed.caseInsensitiveCompare(word) == .orderedSame {
             if !hadMistakeOnCurrentWord && spellingHintLevel == 0 {
                 Task {
@@ -631,18 +637,17 @@ struct StubbornFlashcardView: View {
         }
 
         hadMistakeOnCurrentWord = true
+        let willRecordMistake = trackMistakes && !mistakeEvaluatedOnCard
         recordCardMistakeWrong(word, reason: "拼写错误", wrongInput: trimmed)
         let (message, isProgress) = buildSpellingHint(word: word, typed: trimmed)
-        spellingClue = message
+        spellingClue = willRecordMistake ? "\(message) · 已记入错题本" : message
         spellingClueTone = isProgress ? "info" : "warn"
         spellingFocused = true
-        if !trimmed.isEmpty {
-            Task { @MainActor in
-                if let rec = try? await core.request("spelling.recordMistake", ["word": .string(word), "typed": .string(trimmed)]),
-                   rec != .null, practice.current == word, !revealed,
-                   !spellingClue.contains("已记下易错点") {
-                    spellingClue += " · 已记下易错点"
-                }
+        Task { @MainActor in
+            if let rec = try? await core.request("spelling.recordMistake", ["word": .string(word), "typed": .string(trimmed)]),
+               rec != .null, practice.current == word, !revealed,
+               !spellingClue.contains("已记入错题本"), !spellingClue.contains("已记下易错点") {
+                spellingClue += " · 已记下易错点"
             }
         }
     }
@@ -961,10 +966,12 @@ struct StubbornFlashcardView: View {
             if let ctx = contextItem(for: current), !ctx["id"].text.isEmpty {
                 onContextReviewed?(ctx["id"].text)
             }
-            if value == .forgotten {
-                recordCardMistakeWrong(current, reason: spellingMode ? "拼写错误" : "卡片忘记")
-            } else if value == .known && !hadMistakeOnCurrentWord {
-                Task { await recordCardMistakeRightAsync(current) }
+            if !spellingMode {
+                if value == .forgotten {
+                    recordCardMistakeWrong(current, reason: "卡片忘记")
+                } else if value == .known && !hadMistakeOnCurrentWord {
+                    Task { await recordCardMistakeRightAsync(current) }
+                }
             }
         }
         autoFlipTask?.cancel()

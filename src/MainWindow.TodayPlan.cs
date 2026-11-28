@@ -157,7 +157,9 @@ public partial class MainWindow
         void RenderSelection()
         {
             var length = choices.SelectedItems.Count;
-            selection.Text = $"已选 {length} 词 · Ctrl / Shift 多选";
+            selection.Text = length > MaiMemoClient.StudyBatchLimit
+                ? $"已选 {length} 词（单次最多提交 {MaiMemoClient.StudyBatchLimit} 词，请缩小筛选）"
+                : $"已选 {length} 词 · Ctrl / Shift 多选";
             confirm.IsEnabled = !busy && length is > 0 and <= MaiMemoClient.StudyBatchLimit;
             selectAll.IsEnabled = !busy && choices.Items.Count > 0;
             clear.IsEnabled = !busy && length > 0;
@@ -242,16 +244,31 @@ public partial class MainWindow
             Desktop.UiMotion.AnimateWidth(studyFill, studyTrack.ActualWidth * ratio, 320);
         }
         studyTrack.SizeChanged += (_, _) => UpdateStudyBar();
+        static string TruncationStatusHint(TodayStudyPlan p)
+        {
+            if (p.NewTruncated && p.ReviewTruncated)
+                return $"当前待新学与待复习均超过 {MaiMemoClient.StudyBatchLimit} 词（墨墨接口单类最多返回 {MaiMemoClient.StudyBatchLimit} 条），可正常搜索或加入新学";
+            if (p.ReviewTruncated)
+                return $"当前待复习超过 {MaiMemoClient.StudyBatchLimit} 词（墨墨接口单类最多返回 {MaiMemoClient.StudyBatchLimit} 条），可正常搜索或加入新学";
+            if (p.NewTruncated)
+                return $"当前待新学超过 {MaiMemoClient.StudyBatchLimit} 词（墨墨接口单类最多返回 {MaiMemoClient.StudyBatchLimit} 条），可正常搜索或加入新学";
+            return "";
+        }
+
         async Task Refresh()
         {
             plan = await _api.GetTodayPlanAsync(cancellation);
-            var remainingNew = plan.Items.Count(item => item.IsNew && !item.IsFinished);
-            var remainingReview = plan.Items.Count(item => !item.IsNew && !item.IsFinished);
-            var gap = plan.NewWordsNeeded is int needed ? $"还需加入 {needed} 词" : "新词缺口待同步";
-            overview.Text = $"{plan.Day} · 已完成 {plan.Finished}/{plan.Target} · 待新学 {remainingNew} · 待复习 {remainingReview} · {gap}"
-                + (plan.Items.Count == MaiMemoClient.StudyBatchLimit ? " · 词表最多显示前 1000 条" : "");
+            var newText = plan.NewTruncated ? $"{plan.PendingNewCount}+" : plan.PendingNewCount.ToString();
+            var reviewText = plan.ReviewTruncated ? $"{plan.PendingReviewCount}+" : plan.PendingReviewCount.ToString();
+            var tail = plan.NewWordsNeeded is int needed
+                ? $"还需加入 {needed} 词" + (plan.IsTruncated ? $" · 单类最多显示 {MaiMemoClient.StudyBatchLimit} 条" : "")
+                : plan.NeedsSync
+                    ? "新词缺口待同步"
+                    : $"单类最多显示 {MaiMemoClient.StudyBatchLimit} 条";
+            overview.Text = $"{plan.Day} · 已完成 {plan.Finished}/{plan.Target} · 待新学 {newText} · 待复习 {reviewText} · {tail}";
             UpdateStudyBar();
-            if (plan.NewWordsNeeded is int shortage) count.Text = Math.Min(shortage, MaiMemoClient.StudyBatchLimit).ToString();
+            if (plan.NewWordsNeeded is int shortage && shortage > 0)
+                count.Text = Math.Min(shortage, MaiMemoClient.StudyBatchLimit).ToString();
             var entries = plan.Items.Where(item => !item.IsFinished).ToArray();
             await LoadMeanings(entries.Select(item => item.Spelling));
             dueRows = entries.Select(item => Row(item.Id, item.Spelling, item.Kind)).ToArray();
@@ -297,7 +314,9 @@ public partial class MainWindow
         {
             try { await Refresh(); }
             finally { if (!cancellation.IsCancellationRequested) await ReadBooks(); }
-            status.Text = plan!.NewWordsNeeded == null ? "请打开墨墨背单词并同步今日学习数据" : "";
+            status.Text = plan!.NeedsSync
+                ? "请打开墨墨背单词并同步今日学习数据"
+                : plan.IsTruncated ? TruncationStatusHint(plan) : "";
         });
         refresh.Click += async (_, _) => await Run("正在刷新今日学习…", async () =>
         {

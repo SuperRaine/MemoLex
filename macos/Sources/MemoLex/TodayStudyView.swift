@@ -93,7 +93,13 @@ struct TodayStudyView: View {
                     throw error
                 }
                 try await readBooks()
-                status = plan["newWordsNeeded"] == .null ? "请打开墨墨背单词并同步今日学习数据" : ""
+                if plan["needsSync"].flag {
+                    status = "请打开墨墨背单词并同步今日学习数据"
+                } else if plan["isTruncated"].flag {
+                    status = truncationStatusHint
+                } else {
+                    status = ""
+                }
             }
         }
         .alert("添加到今日新学", isPresented: $confirming) {
@@ -115,13 +121,37 @@ struct TodayStudyView: View {
         let target = max(1, plan["target"].integer)
         return min(1, max(0, CGFloat(plan["finished"].integer) / CGFloat(target)))
     }
+    private var truncationStatusHint: String {
+        let newCut = plan["newTruncated"].flag
+        let revCut = plan["reviewTruncated"].flag
+        if newCut && revCut {
+            return "当前待新学与待复习均超过 1000 词（墨墨接口单类最多返回 1000 条），可正常搜索或加入新学"
+        }
+        if revCut {
+            return "当前待复习超过 1000 词（墨墨接口单类最多返回 1000 条），可正常搜索或加入新学"
+        }
+        if newCut {
+            return "当前待新学超过 1000 词（墨墨接口单类最多返回 1000 条），可正常搜索或加入新学"
+        }
+        return ""
+    }
     private var summary: String {
         guard plan != .null else { return "今日学习进度待获取" }
-        let new = unfinished.filter { $0["isNew"].flag }.count
+        let newCount = unfinished.filter { $0["isNew"].flag }.count
+        let revCount = unfinished.count - newCount
+        let newText = plan["newTruncated"].flag ? "\(newCount)+" : "\(newCount)"
+        let revText = plan["reviewTruncated"].flag ? "\(revCount)+" : "\(revCount)"
         let needed = plan["newWordsNeeded"]
-        let gap = needed == .null ? "新词缺口待同步" : "还需加入 \(needed.integer) 词"
-        let limit = plan["items"].list.count == 1000 ? " · 词表最多显示前 1000 条" : ""
-        return "\(plan["day"].text) · 已完成 \(plan["finished"].integer)/\(plan["target"].integer) · 待新学 \(new) · 待复习 \(unfinished.count - new) · \(gap)\(limit)"
+        let isTruncated = plan["isTruncated"].flag
+        let tail: String
+        if needed != .null {
+            tail = "还需加入 \(needed.integer) 词" + (isTruncated ? " · 单类最多显示 1000 条" : "")
+        } else if plan["needsSync"].flag {
+            tail = "新词缺口待同步"
+        } else {
+            tail = "单类最多显示 1000 条"
+        }
+        return "\(plan["day"].text) · 已完成 \(plan["finished"].integer)/\(plan["target"].integer) · 待新学 \(newText) · 待复习 \(revText) · \(tail)"
     }
 
     private var duePage: some View {
@@ -172,7 +202,9 @@ struct TodayStudyView: View {
             HStack(spacing: 8) {
                 Button("全选当前结果") { selected = Set(visible) }.disabled(busy || visible.isEmpty)
                 Button("清除选择") { selected.removeAll() }.disabled(busy || selected.isEmpty)
-                Text("已选 \(selected.count) 词 · ⌘ / Shift 多选").foregroundStyle(Palette.muted)
+                Text(selected.count > 1000
+                     ? "已选 \(selected.count) 词（单次最多提交 1000 词，请缩小筛选）"
+                     : "已选 \(selected.count) 词 · ⌘ / Shift 多选").foregroundStyle(Palette.muted)
                 Spacer()
                 Button("确认添加") { confirming = true }.buttonStyle(MemoButtonStyle(accent: true, compact: true))
                     .disabled(busy || selected.isEmpty || selected.count > 1000)
@@ -277,7 +309,7 @@ struct TodayStudyView: View {
     private func refresh() async throws {
         plan = try await model.core.request("study.todayPlan")
         let needed = plan["newWordsNeeded"]
-        if needed != .null { randomCount = String(min(needed.integer, 1000)) }
+        if needed != .null && needed.integer > 0 { randomCount = String(min(needed.integer, 1000)) }
         await loadMeanings(unfinished.map(\.spellingText))
     }
 
