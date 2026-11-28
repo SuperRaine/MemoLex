@@ -382,6 +382,8 @@ public partial class MainWindow
     private void OpenMistakeBookDialog()
     {
         if (!_ready) return;
+        _mistakeBook.MarkViewed();
+        UpdateContextReviewButtons();
         var activePad = NotepadCombo.SelectedItem as CloudNotepad;
         Func<IReadOnlyList<string>, Task<string>>? cloudAdd = _allowCloud && _tokens.HasToken && activePad != null
             ? async words =>
@@ -437,6 +439,7 @@ public partial class MainWindow
             addToCloudNotepad: cloudAdd,
             activeNotepadTitle: activePad?.Title);
         dialog.ShowDialog();
+        _mistakeBook.MarkViewed();
         UpdateContextReviewButtons();
     }
 
@@ -627,7 +630,7 @@ public partial class MainWindow
                 ? $"错题本（当前 {mistakes} 词待巩固 · 支持随机抽测）"
                 : "错题本（答错自动收录与随机抽测）";
         if (MistakeBookDot != null)
-            MistakeBookDot.Visibility = mistakes > 0 ? Visibility.Visible : Visibility.Collapsed;
+            MistakeBookDot.Visibility = _mistakeBook.HasUnread ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async Task OpenContextSentenceReviewAsync(IReadOnlyList<ContextSentenceItem> deck, Window? dialogOwner = null, bool persistProgress = false)

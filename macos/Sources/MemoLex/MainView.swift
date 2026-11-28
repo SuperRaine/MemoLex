@@ -76,6 +76,7 @@ struct MainView: View {
             case .contextReview: ContextReviewSheet(model: model)
             case .contextEditor: ContextSentenceEditorView(model: model)
             case .mistakeBook: MistakeBookSheet(model: model)
+            case .wordContrast: WordContrastSheet(model: model)
             case .morphemePractice:
                 if let group = model.morphemePracticeGroup {
                     MorphemeGroupPracticeView(model: model, group: group)
@@ -156,7 +157,7 @@ struct MainView: View {
                     Button { model.openMistakeBook() } label: {
                         HStack(spacing: 4) {
                             Text("错题本")
-                            if !model.mistakeItems.isEmpty {
+                            if model.mistakeHasUnread {
                                 Circle()
                                     .fill(Color(red: 0.90, green: 0.22, blue: 0.32))
                                     .frame(width: 5.5, height: 5.5)
@@ -941,12 +942,23 @@ private struct RelationsView: View {
             }
             ForEach(groups, id: \.0) { key, title in if model.expandedRelations.contains(key) {
                 VStack(alignment: .leading, spacing: 9) {
-                    Text(title).font(.system(size: 11, weight: .semibold))
                     let rows = model.relations[key].list
+                    HStack(spacing: 8) {
+                        Text(title).font(.system(size: 11, weight: .semibold))
+                        Spacer()
+                        if !rows.isEmpty && (key == "synonyms" || key == "similar") {
+                            let mode = key == "similar" ? "similar" : "synonym"
+                            Button(key == "similar" ? "形近区分" : "近义辨析") {
+                                model.openWordContrast(word: model.word, mode: mode)
+                            }
+                            .buttonStyle(PillButtonStyle())
+                            .help(key == "similar" ? "逐字母高亮标出拼写差异，并对比读音、词性与助记" : "对比各近义词的词性边界、语义侧重与常见搭配")
+                        }
+                    }
                     if rows.isEmpty {
                         Text("暂无相关词条").foregroundStyle(Palette.muted)
                     } else {
-                        relatedEntries(rows)
+                        relatedEntries(rows, kind: key)
                     }
                 }.padding(13).frame(maxWidth: .infinity, alignment: .leading)
                     .background(Palette.wash, in: RoundedRectangle(cornerRadius: 9))
@@ -954,8 +966,9 @@ private struct RelationsView: View {
             } }
         }
     }
-    private func relatedEntries(_ rows: [J]) -> some View {
+    private func relatedEntries(_ rows: [J], kind: String) -> some View {
         let hasLabels = rows.contains { $0["senses"].list.contains { !$0["partOfSpeech"].text.isEmpty } }
+        let contrastMode: String? = kind == "synonyms" ? "synonym" : (kind == "similar" ? "similar" : nil)
         return Grid(alignment: .topLeading, horizontalSpacing: 15, verticalSpacing: 7) {
             ForEach(Array(rows.enumerated()), id: \.offset) { index, related in
                 if index > 0 { Divider().overlay(Palette.border).gridCellUnsizedAxes(.horizontal) }
@@ -979,6 +992,13 @@ private struct RelationsView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
+                    }
+                    if let contrastMode {
+                        Button(contrastMode == "similar" ? "区分" : "辨析") {
+                            model.openWordContrast(word: model.word, mode: contrastMode, focusWord: related.wordText)
+                        }
+                        .buttonStyle(PillButtonStyle())
+                        .help(contrastMode == "similar" ? "将 \(model.word) 与 \(related.wordText) 进行形近区分" : "将 \(model.word) 与 \(related.wordText) 进行近义辨析")
                     }
                 }
             }
@@ -1227,7 +1247,7 @@ private struct TranslationPage: View {
                                             Button("收藏所在例句") {
                                                 Task {
                                                     await model.saveFromTranslation(word: w)
-                                                    batchStatus = "✓ 已收藏「\(w)」的例句，可在顶部「我的例句」中查看与自测。"
+                                                    batchStatus = "✓ 已收藏「\(w)」的例句，可在左侧「我的例句」中查看与自测。"
                                                 }
                                             }
                                         }

@@ -408,13 +408,11 @@ internal static class ContextSentenceQuizDialog
                 DockPanel.SetDock(letterBadge, Dock.Left);
                 rowDock.Children.Add(letterBadge);
 
-                if (answered)
+                if (answered && (opt.IsCorrect || isChosen))
                 {
                     var rightTag = opt.IsCorrect
-                        ? MakePill("✓ 正确答案", "正确答案")
-                        : isChosen
-                            ? MakePill($"✗ {opt.DistractorKind}", "你的选择")
-                            : MakePill(opt.DistractorKind, opt.DistractorKind);
+                        ? MakePill("✓ 正确", "正确答案")
+                        : MakePill("✗ 你的选择", "你的选择");
                     DockPanel.SetDock(rightTag, Dock.Right);
                     rowDock.Children.Add(rightTag);
                 }
@@ -607,7 +605,7 @@ internal static class ContextSentenceQuizDialog
                         rowTop.Children.Add(ipa);
                     }
 
-                    rowTop.Children.Add(MakePill(opt.DistractorKind, opt.DistractorKind));
+                    if (opt.IsCorrect) rowTop.Children.Add(MakePill("正确答案", "正确答案"));
                     if (isUserWrong) rowTop.Children.Add(MakePill("你的选择", "你的选择"));
 
                     rowStack.Children.Add(rowTop);
@@ -735,16 +733,6 @@ internal static class ContextSentenceQuizDialog
             kpiStack.Children.Add(pctBlock);
             kpiStack.Children.Add(subBlock);
 
-            if (mistakeKinds.Count > 0)
-            {
-                var kindLine = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0) };
-                foreach (var (kind, count) in mistakeKinds.OrderByDescending(kv => kv.Value))
-                {
-                    kindLine.Children.Add(MakePill($"{kind}误选 {count} 次", kind));
-                }
-                kpiStack.Children.Add(kindLine);
-            }
-
             var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) };
             if (wrongRecords.Count > 0)
             {
@@ -841,7 +829,7 @@ internal static class ContextSentenceQuizDialog
                     wHead.Children.Add(wordBtn);
 
                     wHead.Children.Add(MakePill($"正解：{q.AnswerDisplay}", "正确答案"));
-                    wHead.Children.Add(MakePill($"误选：{chosen.DisplayText}（{chosen.DistractorKind}）", "你的选择"));
+                    wHead.Children.Add(MakePill($"误选：{chosen.DisplayText}", "你的选择"));
                     wStack.Children.Add(wHead);
 
                     var sentTb = new TextBlock

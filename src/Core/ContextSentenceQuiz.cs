@@ -87,6 +87,45 @@ public static partial class ContextSentenceQuiz
         ("ist", "名词", "常指「从事者/主义者」")
     ];
 
+    private static readonly string[][] InterchangeableChineseGroups =
+    [
+        ["维持", "保持", "维护", "保留", "持续", "继续"],
+        ["影响", "作用", "波及", "冲击"],
+        ["支持", "支撑", "支援", "拥护", "赞成", "扶助", "帮助", "协助", "援助"],
+        ["适应", "使适应", "顺应", "调整", "调节"],
+        ["获得", "得到", "取得", "获取", "赢得"],
+        ["需要", "要求", "需求", "必要"],
+        ["改变", "变化", "更改", "修改", "转变", "变更"],
+        ["重要", "重大", "要紧", "关键", "核心", "主要"],
+        ["快速", "迅速", "飞快", "快捷", "敏捷"],
+        ["困难", "艰难", "艰巨", "棘手", "不易"],
+        ["增加", "增长", "增大", "加大", "提高", "提升", "增强", "扩大", "扩张"],
+        ["改善", "改进", "改良", "增进", "完善", "变好", "更好"],
+        ["减少", "降低", "削减", "缩小", "减轻", "下降"],
+        ["建立", "设立", "创建", "创立", "成立", "构建"],
+        ["完成", "实现", "达成", "达到", "做到"],
+        ["认为", "觉得", "以为", "相信", "主张"],
+        ["发现", "找到", "发觉", "察觉", "揭露"],
+        ["显示", "表明", "展示", "表现", "呈现", "反映"],
+        ["提供", "供给", "供应", "给予", "赋予"],
+        ["允许", "准许", "许可", "容许", "批准", "同意"],
+        ["保护", "守护", "保全", "防卫", "防御"],
+        ["开始", "启动", "开启", "着手", "发起"],
+        ["停止", "中止", "终止", "结束", "暂停"],
+        ["使用", "利用", "运用", "采用", "应用"],
+        ["理解", "明白", "懂得", "领会", "了解"],
+        ["决定", "决心", "裁定", "确定", "判定"],
+        ["包含", "包括", "含有", "容纳", "涵盖"],
+        ["产生", "造成", "引起", "导致", "引发"],
+        ["尊重", "尊敬", "敬重", "推崇", "看重"],
+        ["反对", "对抗", "抗争", "抵制", "反抗"],
+        ["尽管", "虽然", "即使", "纵然", "哪怕"],
+        ["明显", "显著", "清晰", "清楚", "显而易见"],
+        ["准确", "精确", "精准", "确切", "正确"],
+        ["有效", "奏效", "管用", "高效"],
+        ["通常", "一般", "往往", "常常", "经常"]
+    ];
+
     [GeneratedRegex(@"^\s*(?:abbr|pref|suf|comb|contr)\.|^(?:\[[^\]]*\]\s*)?(?:[a-z]+\.\s*)?(?:\[\s*)?(?:古英语|古义|古语|古用法|方言|古(?:\s|\]))", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NonstandardGlossPattern();
 
@@ -142,6 +181,7 @@ public static partial class ContextSentenceQuiz
         var answerMeaningCompact = CompactMeaning(answerMeaningFull);
         var answerPos = ExtractPrimaryPos(answerMeaningFull);
         var answerPosGroup = NormalizePosBucket(answerPos);
+        var answerAllPosGroups = ExtractAllPosGroups(answerMeaningFull);
         var answerPhonetic = FormatPhonetic(baseEntry?.phonetic);
         var answerSenses = ExtractSenseTokens(answerMeaningFull);
         var slot = AnalyzeBlankSlot(blankedSentence, answerPosGroup, inflectionTag, dictionary);
@@ -162,18 +202,29 @@ public static partial class ContextSentenceQuiz
         {
             foreach (var rel in relations.Synonyms)
             {
-                if (TryMakeCandidate(rel.Word, rel.Meaning, "近义词", excludedBases, answerMeaningCompact, dictionary, out var c))
-                    synonymCandidates.Add(c);
+                if (!TryMakeCandidate(rel.Word, rel.Meaning, "近义词", excludedBases, answerMeaningCompact, dictionary, out var c))
+                    continue;
+                // Exclude same-POS synonyms that could directly substitute for the answer in the blank
+                // (so every 4-choice question has a single unambiguous correct answer).
+                if (IsInterchangeableSynonym(c, answerMeaningFull, answerPosGroup, answerAllPosGroups))
+                    continue;
+                synonymCandidates.Add(c);
             }
             foreach (var rel in relations.Similar)
             {
-                if (TryMakeCandidate(rel.Word, rel.Meaning, "形近词", excludedBases, answerMeaningCompact, dictionary, out var c))
-                    similarCandidates.Add(c);
+                if (!TryMakeCandidate(rel.Word, rel.Meaning, "形近词", excludedBases, answerMeaningCompact, dictionary, out var c))
+                    continue;
+                if (IsInterchangeableSynonym(c, answerMeaningFull, answerPosGroup, answerAllPosGroups))
+                    continue;
+                similarCandidates.Add(c);
             }
             foreach (var rel in relations.Derivatives)
             {
-                if (TryMakeCandidate(rel.Word, rel.Meaning, "派生词", excludedBases, answerMeaningCompact, dictionary, out var c))
-                    derivativeCandidates.Add(c);
+                if (!TryMakeCandidate(rel.Word, rel.Meaning, "派生词", excludedBases, answerMeaningCompact, dictionary, out var c))
+                    continue;
+                if (IsInterchangeableSynonym(c, answerMeaningFull, answerPosGroup, answerAllPosGroups))
+                    continue;
+                derivativeCandidates.Add(c);
             }
         }
 
@@ -183,7 +234,7 @@ public static partial class ContextSentenceQuiz
         synonymCandidates = synonymCandidates
             .Select((c, idx) => (Cand: c, Idx: idx))
             .OrderBy(x => x.Cand.BaseWord.Contains(' ') ? 1 : 0)
-            .ThenBy(x => isFunctionTarget ? 0 : (x.Cand.PosGroup == answerPosGroup ? 0 : x.Cand.AllPosGroups.Contains(answerPosGroup) ? 1 : 2))
+            .ThenBy(x => isFunctionTarget ? 0 : (x.Cand.PosGroup != answerPosGroup && !x.Cand.AllPosGroups.Contains(answerPosGroup) ? 0 : 1))
             .ThenBy(x => x.Cand.IdenticalGloss ? 1 : 0)
             .ThenBy(x => isFunctionTarget ? x.Idx : x.Idx / 2)
             .ThenBy(x => dictionary.FrequencyRank(x.Cand.BaseWord))
@@ -234,6 +285,7 @@ public static partial class ContextSentenceQuiz
             {
                 if (chosen.Count >= 3) break;
                 if (!TryMakeCandidate(spelling, null, "形近词", excludedBases, answerMeaningCompact, dictionary, out var c)) continue;
+                if (IsInterchangeableSynonym(c, answerMeaningFull, answerPosGroup, answerAllPosGroups)) continue;
                 if (usedBases.Contains(c.BaseWord)) continue;
                 var display = FormatDistractorSurface(c, inflectionTag, wasCapitalized, answerPosGroup);
                 if (!usedDisplays.Add(display)) continue;
@@ -250,6 +302,7 @@ public static partial class ContextSentenceQuiz
                 if (chosen.Count >= 3) break;
                 if (other.Contains(' ') && !isPhraseTarget) continue;
                 if (!TryMakeCandidate(other, null, "已收藏词", excludedBases, answerMeaningCompact, dictionary, out var c)) continue;
+                if (IsInterchangeableSynonym(c, answerMeaningFull, answerPosGroup, answerAllPosGroups)) continue;
                 if (usedBases.Contains(c.BaseWord)) continue;
                 var display = FormatDistractorSurface(c, inflectionTag, wasCapitalized, answerPosGroup);
                 if (!usedDisplays.Add(display)) continue;
@@ -270,6 +323,7 @@ public static partial class ContextSentenceQuiz
                 {
                     if (chosen.Count >= 3) break;
                     if (!TryMakeCandidate(word, null, "高频辨析", excludedBases, answerMeaningCompact, dictionary, out var c)) continue;
+                    if (IsInterchangeableSynonym(c, answerMeaningFull, answerPosGroup, answerAllPosGroups)) continue;
                     if (usedBases.Contains(c.BaseWord)) continue;
                     var display = FormatDistractorSurface(c, inflectionTag, wasCapitalized, answerPosGroup);
                     if (!usedDisplays.Add(display)) continue;
@@ -837,6 +891,135 @@ public static partial class ContextSentenceQuiz
                 return $"后缀 -{suffix}（{meaningHint}）使其";
         }
         return "词形派生后";
+    }
+
+    private static readonly HashSet<string> UnmarkedVerbHomographs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "better", "further", "narrow", "lower", "clear", "calm", "empty", "clean", "open", "close", "free", "dry", "warm", "cool", "slow"
+    };
+
+    private static bool IsInterchangeableSynonym(
+        Candidate cand,
+        string targetFullMeaning,
+        string targetPosGroup,
+        HashSet<string> targetAllPosGroups)
+    {
+        var sharedPos = targetAllPosGroups.Where(p => cand.AllPosGroups.Contains(p)).ToList();
+        if (sharedPos.Count == 0 && targetPosGroup.Length > 0 && cand.AllPosGroups.Contains(targetPosGroup))
+            sharedPos.Add(targetPosGroup);
+
+        if (cand.IdenticalGloss && (sharedPos.Count > 0 || targetAllPosGroups.Count == 0))
+            return true;
+
+        // Cross-POS synonyms (e.g. prep. "against" vs vt. "oppose", prep. "despite" vs conj. "although")
+        // cannot grammatically substitute for each other, so they are unambiguous, high-value distractors.
+        var isUnmarkedVerbHomograph = cand.Kind == "近义词"
+            && targetAllPosGroups.Contains("v")
+            && UnmarkedVerbHomographs.Contains(cand.BaseWord);
+
+        if (sharedPos.Count == 0 && targetAllPosGroups.Count > 0 && !isUnmarkedVerbHomograph)
+            return false;
+
+        var posScopes = sharedPos.Count > 0 ? sharedPos : [""];
+        foreach (var pos in posScopes)
+        {
+            var targetSenses = pos.Length > 0
+                ? ExtractMatchingPosSenses(targetFullMeaning, pos)
+                : ExtractSenseTokens(targetFullMeaning);
+            var candSenses = pos.Length > 0
+                ? ExtractMatchingPosSenses(cand.FullMeaning, pos)
+                : ExtractSenseTokens(cand.FullMeaning);
+            if (targetSenses.Length == 0 || candSenses.Length == 0) continue;
+
+            var targetLead = targetSenses.Take(3).ToArray();
+            var candLead = candSenses.Take(3).ToArray();
+
+            foreach (var t in targetLead)
+            {
+                foreach (var c in candLead)
+                {
+                    if (t == c) return true;
+                    if (t == targetLead[0] && c == candLead[0] && t.Length >= 2 && c.Length >= 2 &&
+                        (t.Contains(c, StringComparison.Ordinal) || c.Contains(t, StringComparison.Ordinal)))
+                        return true;
+                    if (SharesInterchangeableGroup(t, c))
+                        return true;
+                }
+            }
+
+            var primary = targetLead[0];
+            if (primary.Length >= 2 && candSenses.Any(s => s == primary || SharesInterchangeableGroup(primary, s)))
+                return true;
+        }
+
+        if (isUnmarkedVerbHomograph)
+        {
+            var targetAllSenses = ExtractSenseTokens(targetFullMeaning);
+            var candAllSenses = ExtractSenseTokens(cand.FullMeaning);
+            foreach (var t in targetAllSenses)
+            {
+                foreach (var c in candAllSenses)
+                {
+                    if (t == c || SharesInterchangeableGroup(t, c))
+                        return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool SharesInterchangeableGroup(string a, string b)
+    {
+        if (a.Length < 2 || b.Length < 2) return false;
+        foreach (var group in InterchangeableChineseGroups)
+        {
+            var hasA = false;
+            var hasB = false;
+            foreach (var term in group)
+            {
+                if (!hasA && (a == term || a.Contains(term, StringComparison.Ordinal))) hasA = true;
+                if (!hasB && (b == term || b.Contains(term, StringComparison.Ordinal))) hasB = true;
+                if (hasA && hasB) return true;
+            }
+        }
+        return false;
+    }
+
+    private static string[] ExtractMatchingPosSenses(string? displayMeaning, string targetPosGroup)
+    {
+        if (string.IsNullOrWhiteSpace(displayMeaning)) return [];
+        var lines = displayMeaning.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var line in lines)
+        {
+            var pos = NormalizePosBucket(DictionaryEntry.SplitDisplaySense(line).PartOfSpeech.Trim());
+            if (targetPosGroup.Length > 0 && pos.Length > 0 && pos != targetPosGroup) continue;
+            foreach (var token in ExtractSensesFromLine(line))
+            {
+                if (seen.Add(token)) list.Add(token);
+            }
+        }
+        if (list.Count == 0 && lines.Length > 0)
+            return ExtractSensesFromLine(lines[0]);
+        return list.ToArray();
+    }
+
+    private static string[] ExtractSensesFromLine(string line)
+    {
+        var (_, rest) = DictionaryEntry.SplitDisplaySense(line);
+        var cleaned = AnnotationPattern().Replace(rest.Length > 0 ? rest : line, "");
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var piece in cleaned.Split(['，', ',', '；', ';', '、', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var token = piece.Trim();
+            if (token.Length > 2 && (token.EndsWith('的') || token.EndsWith('地'))) token = token[..^1];
+            if (token.Length >= 2 && ChineseCharPattern().IsMatch(token) && seen.Add(token))
+                list.Add(token);
+        }
+        return list.ToArray();
     }
 
     private static string[] ExtractSenseTokens(string? displayMeaning)

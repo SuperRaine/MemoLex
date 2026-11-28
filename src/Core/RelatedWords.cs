@@ -33,6 +33,7 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
     private static readonly Lazy<Dictionary<string, string>> DerivativeParts = new(LoadDerivativeParts);
     public bool Available => _data!=null;
     public void AttachChineseSearch(ChineseReverseSearch chinese) => _chinese = chinese;
+    public IReadOnlyList<RelatedWord> LookupPhrases(string word, CancellationToken cancellationToken = default) => _phrases.Lookup(word, cancellationToken);
     private sealed class Record
     {
         public string[] synonyms {get;set;}=[];

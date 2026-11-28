@@ -73,7 +73,10 @@ struct MistakeBookSheet: View {
                     onMistakeChanged: { Task { await model.refreshMistakeBook() } }
                 ) {
                     practiceSession = nil
-                    Task { await model.refreshMistakeBook() }
+                    Task {
+                        await model.markMistakeBookViewed()
+                        await model.refreshMistakeBook()
+                    }
                 }
                 .padding(22)
             } else {
@@ -85,7 +88,10 @@ struct MistakeBookSheet: View {
         .foregroundStyle(Palette.ink)
         .font(.system(size: 13))
         .noFocusRing()
-        .task { await model.refreshMistakeBook() }
+        .task {
+            await model.markMistakeBookViewed()
+            await model.refreshMistakeBook()
+        }
     }
 
     private var listContent: some View {

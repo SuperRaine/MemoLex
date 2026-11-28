@@ -136,7 +136,7 @@ struct LearningDashboardView: View {
                         }
                         Spacer(minLength: 6)
                         Button(model.mistakeItems.isEmpty ? "打开错题本" : "抽测错题 (\(model.mistakeItems.count))") {
-                            model.sheet = .mistakeBook
+                            model.openMistakeBook()
                         }
                         .buttonStyle(MemoButtonStyle(accent: !model.mistakeItems.isEmpty, compact: true))
                     }

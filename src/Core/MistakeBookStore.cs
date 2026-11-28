@@ -33,7 +33,14 @@ public sealed class MistakeBookStore
     private readonly string _path;
     private readonly object _gate = new();
     private Dictionary<string, MistakeBookItem> _items = new(StringComparer.OrdinalIgnoreCase);
+    private DateTimeOffset _lastWrongAt;
+    private DateTimeOffset _lastViewedAt;
     private bool _loaded;
+
+    private sealed record MistakeBookEnvelope(
+        DateTimeOffset LastWrongAt,
+        DateTimeOffset LastViewedAt,
+        MistakeBookItem[] Items);
 
     public MistakeBookStore(string? path = null)
     {
@@ -45,6 +52,32 @@ public sealed class MistakeBookStore
     public int Count
     {
         get { lock (_gate) { EnsureLoaded(); return _items.Count; } }
+    }
+
+    public bool HasUnread
+    {
+        get
+        {
+            lock (_gate)
+            {
+                EnsureLoaded();
+                return _items.Count > 0 && _lastWrongAt > _lastViewedAt;
+            }
+        }
+    }
+
+    public void MarkViewed()
+    {
+        lock (_gate)
+        {
+            EnsureLoaded();
+            var now = DateTimeOffset.UtcNow;
+            if (now <= _lastWrongAt) now = _lastWrongAt.AddTicks(1);
+            if (_lastViewedAt >= _lastWrongAt && _lastViewedAt != default) return;
+            _lastViewedAt = now;
+            if (_items.Count > 0 || File.Exists(_path))
+                PersistLocked();
+        }
     }
 
     public int TotalWeight
@@ -172,6 +205,8 @@ public sealed class MistakeBookStore
                     UpdatedAt: now);
             }
             _items[cleanWord] = updated;
+            _lastWrongAt = now >= _lastWrongAt ? now : _lastWrongAt.AddTicks(1);
+            if (_lastWrongAt <= _lastViewedAt) _lastWrongAt = _lastViewedAt.AddTicks(1);
             TrimLocked();
             PersistLocked();
             return updated;
@@ -227,6 +262,8 @@ public sealed class MistakeBookStore
             EnsureLoaded();
             var removed = _items.Count;
             _items.Clear();
+            _lastWrongAt = default;
+            _lastViewedAt = DateTimeOffset.UtcNow;
             try { if (File.Exists(_path)) File.Delete(_path); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             return removed;
@@ -250,13 +287,36 @@ public sealed class MistakeBookStore
         try
         {
             if (!File.Exists(_path)) return;
-            var raw = JsonSerializer.Deserialize<List<MistakeBookItem>>(File.ReadAllText(_path), JsonOptions);
+            var text = File.ReadAllText(_path).TrimStart();
+            if (text.Length == 0) return;
+
+            List<MistakeBookItem>? raw = null;
+            if (text[0] == '{')
+            {
+                var env = JsonSerializer.Deserialize<MistakeBookEnvelope>(text, JsonOptions);
+                if (env != null)
+                {
+                    _lastWrongAt = env.LastWrongAt;
+                    _lastViewedAt = env.LastViewedAt;
+                    raw = env.Items?.ToList();
+                }
+            }
+            else
+            {
+                raw = JsonSerializer.Deserialize<List<MistakeBookItem>>(text, JsonOptions);
+            }
+
             if (raw == null) return;
             _items = new Dictionary<string, MistakeBookItem>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in raw)
             {
                 if (item != null && !string.IsNullOrWhiteSpace(item.Word) && item.Weight > 0)
                     _items[item.Word.Trim()] = item;
+            }
+            if (_items.Count > 0 && _lastWrongAt == default)
+            {
+                var maxUpdated = _items.Values.Max(i => i.UpdatedAt);
+                _lastWrongAt = maxUpdated != default ? maxUpdated : DateTimeOffset.UtcNow;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -272,7 +332,8 @@ public sealed class MistakeBookStore
             var dir = Path.GetDirectoryName(Path.GetFullPath(_path));
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             var tmp = _path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(_items.Values.ToArray(), JsonOptions));
+            var envelope = new MistakeBookEnvelope(_lastWrongAt, _lastViewedAt, _items.Values.ToArray());
+            File.WriteAllText(tmp, JsonSerializer.Serialize(envelope, JsonOptions));
             File.Move(tmp, _path, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }

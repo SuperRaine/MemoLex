@@ -4,7 +4,7 @@ import Combine
 import Foundation
 import SwiftUI
 
-enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan, dashboard, contextReview, contextEditor, morphemePractice, mistakeBook; var id: String { rawValue } }
+enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan, dashboard, contextReview, contextEditor, morphemePractice, mistakeBook, wordContrast; var id: String { rawValue } }
 struct PendingWordContext: Equatable {
     let word: String
     let matchedForm: String
@@ -41,6 +41,9 @@ enum EnglishAccent: String, CaseIterable {
     @Published var contextSentences: [J] = []
     @Published var activeSpellingMistakes: [J] = []
     @Published var mistakeItems: [J] = []
+    @Published var mistakeHasUnread = false
+    @Published var contrastReport: J? = nil
+    @Published var contrastFocusWord: String? = nil
     @Published var pendingContext: PendingWordContext? = nil
     @Published var editingContextSentence: J? = nil
     @Published var morphemePracticeGroup: J? = nil
@@ -405,10 +408,38 @@ enum EnglishAccent: String, CaseIterable {
         if let result = try? await core.request("mistakes.list") {
             mistakeItems = result.list
         }
+        if let st = try? await core.request("mistakes.status") {
+            mistakeHasUnread = st["hasUnread"].flag
+        }
+    }
+
+    func markMistakeBookViewed() async {
+        mistakeHasUnread = false
+        _ = try? await core.request("mistakes.markViewed")
     }
 
     func openMistakeBook() {
+        mistakeHasUnread = false
         sheet = .mistakeBook
+    }
+
+    func openWordContrast(word targetWord: String, mode: String, focusWord: String? = nil) {
+        let trimmed = targetWord.trimmed
+        guard ready, !trimmed.isEmpty else { return }
+        Task {
+            var params: [String: J] = [
+                "word": .string(trimmed),
+                "mode": .string(mode)
+            ]
+            if let focusWord, !focusWord.trimmed.isEmpty {
+                params["focusWord"] = .string(focusWord.trimmed)
+            }
+            if let result = try? await core.request("dictionary.contrast", params), result != .null {
+                contrastReport = result
+                contrastFocusWord = focusWord?.trimmed
+                sheet = .wordContrast
+            }
+        }
     }
 
     func recordMistakeWrong(

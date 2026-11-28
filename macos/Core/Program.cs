@@ -395,6 +395,11 @@ internal sealed class CoreService : IDisposable
                 }).ToArray();
             case "mistakes.get":
                 return _mistakeBook.Get(word);
+            case "mistakes.status":
+                return new { count = _mistakeBook.Count, hasUnread = _mistakeBook.HasUnread };
+            case "mistakes.markViewed":
+                _mistakeBook.MarkViewed();
+                return new { ok = true, hasUnread = _mistakeBook.HasUnread };
             case "mistakes.recordWrong":
                 return _mistakeBook.RecordWrong(
                     word,
@@ -450,6 +455,16 @@ internal sealed class CoreService : IDisposable
                 return list;
             }
             case "dictionary.related": return await _related.LookupAsync(word, cancellation);
+            case "dictionary.contrast":
+                return await WordContrast.BuildAsync(
+                    word,
+                    T(p, "mode", "synonym"),
+                    _dictionary,
+                    _related,
+                    _notes,
+                    _tokens.CredentialKey,
+                    Null(T(p, "focusWord")),
+                    cancellation);
             case "dictionary.reverse": return await _chinese.SearchAsync(T(p, "query"), Number(p, "limit", 160, 1, 3000), cancellation);
             case "dictionary.batch": return NotepadContent.Describe(T(p, "content"), value => _dictionary.Lookup(value)?.translation, cancellation);
             case "text.classify": return ClipboardLookup.Classify(T(p, "text"), value => _dictionary.Lookup(value) != null);

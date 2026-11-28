@@ -276,7 +276,6 @@ struct ContextQuizView: View {
         let label = opt["label"].text
         let display = opt["displayText"].text
         let isCorrect = opt["isCorrect"].flag
-        let kind = opt["distractorKind"].text
         let isChosen = selectedLabel == label
 
         let colors: (bg: Color, border: Color, fg: Color) = {
@@ -311,11 +310,9 @@ struct ContextQuizView: View {
 
                 if answered {
                     if isCorrect {
-                        kindPill("✓ 正确答案", key: "正确答案")
+                        kindPill("✓ 正确", key: "正确答案")
                     } else if isChosen {
-                        kindPill("✗ \(kind)", key: "你的选择")
-                    } else {
-                        kindPill(kind, key: kind)
+                        kindPill("✗ 你的选择", key: "你的选择")
                     }
                 }
             }
@@ -408,7 +405,9 @@ struct ContextQuizView: View {
                             if !ipa.isEmpty {
                                 Text(ipa).font(.system(size: 11.5)).foregroundStyle(Palette.muted)
                             }
-                            kindPill(opt["distractorKind"].text, key: opt["distractorKind"].text)
+                            if isCorrect {
+                                kindPill("正确答案", key: "正确答案")
+                            }
                             if isUserWrong {
                                 kindPill("你的选择", key: "你的选择")
                             }
@@ -439,9 +438,7 @@ struct ContextQuizView: View {
     }
 
     private var summaryContent: some View {
-        let sortedMistakes = mistakeKinds.sorted { $0.value > $1.value }
-
-        return VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 14) {
             VStack(spacing: 10) {
                 Text("\(accuracyPercent)%")
                     .font(.system(size: 38, weight: .bold))
@@ -450,14 +447,6 @@ struct ContextQuizView: View {
                                      : accuracyPercent >= 60 ? Palette.deep : Color(red: 0.85, green: 0.47, blue: 0.03))
                 Text("共完成 \(questions.count) 道四选一语境填空 · 答对 \(correctCount) 题 · 答错 \(wrongCount) 题")
                     .font(.system(size: 13))
-
-                if !sortedMistakes.isEmpty {
-                    MorphemeFlowLayout(spacing: 6, lineSpacing: 6, expandLast: false) {
-                        ForEach(sortedMistakes, id: \.key) { item in
-                            kindPill("\(item.key)误选 \(item.value) 次", key: item.key)
-                        }
-                    }
-                }
 
                 HStack(spacing: 8) {
                     if !wrongRecords.isEmpty {
@@ -518,7 +507,7 @@ struct ContextQuizView: View {
                             .help("点击查词「\(word)」")
 
                             kindPill("正解：\(q["answerDisplay"].text)", key: "正确答案")
-                            kindPill("误选：\(chosen["displayText"].text)（\(chosen["distractorKind"].text)）", key: "你的选择")
+                            kindPill("误选：\(chosen["displayText"].text)", key: "你的选择")
                             Spacer()
                         }
                         Text(q["fullSentence"].text)
