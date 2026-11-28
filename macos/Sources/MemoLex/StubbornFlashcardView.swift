@@ -12,6 +12,8 @@ struct StubbornFlashcardView: View {
     let contextItemsByWord: [String: J]
     let contextMode: Bool
     let onContextReviewed: ((String) -> Void)?
+    let trackMistakes: Bool
+    let onMistakeChanged: (() -> Void)?
     let close: () -> Void
     @State private var practice: FlashcardPractice
     @State private var revealed = false
@@ -34,6 +36,9 @@ struct StubbornFlashcardView: View {
     @State private var microDrillDone = false
     @State private var microChoices: [String] = []
     @State private var hadMistakeOnCurrentWord = false
+    @State private var mistakeEvaluatedOnCard = false
+    @State private var currentMistakeWeight: Int? = nil
+    @State private var mistakeNotice = ""
     @State private var microDrillFeedback = ""
     @State private var microDrillWasCorrect = false
     @State private var autoSpeak: String
@@ -53,6 +58,9 @@ struct StubbornFlashcardView: View {
         contextItemsByWord: [String: J] = [:],
         contextMode: Bool = false,
         onContextReviewed: ((String) -> Void)? = nil,
+        startInSpellingMode: Bool = false,
+        trackMistakes: Bool = true,
+        onMistakeChanged: (() -> Void)? = nil,
         close: @escaping () -> Void
     ) {
         self.core = core
@@ -66,8 +74,11 @@ struct StubbornFlashcardView: View {
         self.contextItemsByWord = contextItemsByWord
         self.contextMode = contextMode
         self.onContextReviewed = onContextReviewed
+        self.trackMistakes = trackMistakes
+        self.onMistakeChanged = onMistakeChanged
         self.close = close
         _practice = State(initialValue: FlashcardPractice(words: words, saved: persistsProgress ? savedProgress : nil))
+        _spellingMode = State(initialValue: startInSpellingMode)
         _autoSpeak = State(initialValue: preferences?.flashcardAutoSpeak ?? "off")
     }
 
@@ -149,7 +160,7 @@ struct StubbornFlashcardView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.system(size: 22, weight: .semibold)).lineLimit(1)
-                    Text("第 \(practice.groupNumber) / \(practice.groupCount) 组 · 剩余 \(practice.queue.count) / \(practice.groupWordCount) 词 · 已掌握 \(practice.masteredCount) / \(practice.totalWordCount)")
+                    Text(progressLineText)
                         .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 }
                 Spacer()
@@ -312,19 +323,31 @@ struct StubbornFlashcardView: View {
         }
         .noFocusRing()
         .task(id: practice.current) {
-            resetSpellingInput()
+            resetSpellingInput(resetMistakeState: true)
             activeDrill = nil
             microChoices = []
+            currentMistakeWeight = nil
             guard let word = practice.current else { return }
             async let lookupReq = core.request("dictionary.lookup", ["word": .string(word)])
+            async let weightReq = fetchMistakeWeight(for: word)
             await loadSpellingDrill(for: word)
             let result = try? await lookupReq
+            let weight = await weightReq
             guard !Task.isCancelled, practice.current == word else { return }
             lookup = (word, result ?? .null)
+            currentMistakeWeight = weight
         }.onDisappear {
             flipTask?.cancel()
             autoFlipTask?.cancel()
         }
+    }
+
+    private func fetchMistakeWeight(for word: String) async -> Int? {
+        guard trackMistakes else { return nil }
+        guard let rec = try? await core.request("mistakes.get", ["word": .string(word)]),
+              rec != .null else { return nil }
+        let weight = rec["weight"].integer
+        return weight > 0 ? weight : nil
     }
 
     private func loadSpellingDrill(for word: String) async {
@@ -505,6 +528,8 @@ struct StubbornFlashcardView: View {
                     }.buttonStyle(MemoButtonStyle(compact: true))
                     Button("直接看答案") {
                         autoFlipTask?.cancel()
+                        hadMistakeOnCurrentWord = true
+                        recordCardMistakeWrong(word, reason: "拼写错误", wrongInput: typedSpelling.trimmed)
                         spellingFeedback = ""
                         flip()
                     }.buttonStyle(MemoButtonStyle(compact: true))
@@ -578,7 +603,10 @@ struct StubbornFlashcardView: View {
                 guard !Task.isCancelled, spellingMode, !revealed, !flipping, !swiping,
                       practice.current == word,
                       typedSpelling.trimmed.caseInsensitiveCompare(word) == .orderedSame else { return }
-                if cleanPass { _ = try? await core.request("spelling.recordSuccess", ["word": .string(word)]) }
+                if cleanPass {
+                    _ = try? await core.request("spelling.recordSuccess", ["word": .string(word)])
+                    await recordCardMistakeRightAsync(word)
+                }
                 flip()
             }
         } else if spellingClueTone == "warn" || spellingClueTone == "success" {
@@ -591,7 +619,10 @@ struct StubbornFlashcardView: View {
         let trimmed = typedSpelling.trimmed
         if trimmed.caseInsensitiveCompare(word) == .orderedSame {
             if !hadMistakeOnCurrentWord && spellingHintLevel == 0 {
-                Task { _ = try? await core.request("spelling.recordSuccess", ["word": .string(word)]) }
+                Task {
+                    _ = try? await core.request("spelling.recordSuccess", ["word": .string(word)])
+                    await recordCardMistakeRightAsync(word)
+                }
             }
             spellingCorrect = true
             spellingFeedback = "✓ 拼写正确"
@@ -600,6 +631,7 @@ struct StubbornFlashcardView: View {
         }
 
         hadMistakeOnCurrentWord = true
+        recordCardMistakeWrong(word, reason: "拼写错误", wrongInput: trimmed)
         let (message, isProgress) = buildSpellingHint(word: word, typed: trimmed)
         spellingClue = message
         spellingClueTone = isProgress ? "info" : "warn"
@@ -668,7 +700,56 @@ struct StubbornFlashcardView: View {
         return ("第 1 位有误 · 提示：\(maskSpellingWord(word, revealCount: spellingHintLevel))（共 \(word.count) 字母），再想想看", false)
     }
 
-    private func resetSpellingInput() {
+    private var progressLineText: String {
+        var parts = ["第 \(practice.groupNumber) / \(practice.groupCount) 组", "剩余 \(practice.queue.count) / \(practice.groupWordCount) 词", "已掌握 \(practice.masteredCount) / \(practice.totalWordCount)"]
+        if let weight = currentMistakeWeight, weight > 0 {
+            parts.append("错题权重 \(weight)")
+        }
+        if !mistakeNotice.isEmpty {
+            parts.append(mistakeNotice)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func recordCardMistakeWrong(_ word: String, reason: String, wrongInput: String? = nil) {
+        guard trackMistakes, !mistakeEvaluatedOnCard else { return }
+        mistakeEvaluatedOnCard = true
+        let ctx = contextItem(for: word)
+        var params: [String: J] = [
+            "word": .string(word),
+            "reason": .string(reason)
+        ]
+        if let wrongInput, !wrongInput.trimmed.isEmpty { params["wrongInput"] = .string(wrongInput.trimmed) }
+        if let s = ctx?["sentence"].text, !s.trimmed.isEmpty { params["contextSentence"] = .string(s) }
+        if let t = ctx?["translation"].text, !t.trimmed.isEmpty { params["contextTranslation"] = .string(t) }
+        Task { @MainActor in
+            if let rec = try? await core.request("mistakes.recordWrong", params), rec != .null {
+                let w = rec["weight"].integer
+                if practice.current == word { currentMistakeWeight = w }
+                mistakeNotice = "错题权重 +3（当前 \(w)）"
+                onMistakeChanged?()
+            }
+        }
+    }
+
+    @MainActor private func recordCardMistakeRightAsync(_ word: String) async {
+        guard trackMistakes, !mistakeEvaluatedOnCard else { return }
+        mistakeEvaluatedOnCard = true
+        if let res = try? await core.request("mistakes.recordRight", ["word": .string(word)]),
+           res["wasInBook"].flag {
+            if res["removed"].flag {
+                if practice.current == word { currentMistakeWeight = nil }
+                mistakeNotice = "错题权重归 0，已自动移出 ✓"
+            } else {
+                let rem = res["remainingWeight"].integer
+                if practice.current == word { currentMistakeWeight = rem }
+                mistakeNotice = "错题权重 -1（剩余 \(rem)）"
+            }
+            onMistakeChanged?()
+        }
+    }
+
+    private func resetSpellingInput(resetMistakeState: Bool = false) {
         autoFlipTask?.cancel()
         typedSpelling = ""
         spellingFeedback = ""
@@ -680,6 +761,9 @@ struct StubbornFlashcardView: View {
         microDrillFeedback = ""
         microDrillWasCorrect = false
         microDrillDone = false
+        if resetMistakeState {
+            mistakeEvaluatedOnCard = false
+        }
     }
 
     private func face(word: String, data: J?, back: Bool) -> some View {
@@ -872,15 +956,22 @@ struct StubbornFlashcardView: View {
 
     private func answer(_ value: FlashcardPractice.Answer) {
         guard revealed, !flipping, !swiping else { return }
-        if let current = practice.current, let ctx = contextItem(for: current), !ctx["id"].text.isEmpty {
-            onContextReviewed?(ctx["id"].text)
+        if let current = practice.current {
+            if let ctx = contextItem(for: current), !ctx["id"].text.isEmpty {
+                onContextReviewed?(ctx["id"].text)
+            }
+            if value == .forgotten {
+                recordCardMistakeWrong(current, reason: spellingMode ? "拼写错误" : "卡片忘记")
+            } else if value == .known && !hadMistakeOnCurrentWord {
+                Task { await recordCardMistakeRightAsync(current) }
+            }
         }
         autoFlipTask?.cancel()
         if reduceMotion {
             practice.answer(value)
             persistProgress()
             revealed = false
-            resetSpellingInput()
+            resetSpellingInput(resetMistakeState: true)
             if spellingMode && practice.current != nil { spellingFocused = true }
             return
         }
@@ -897,7 +988,7 @@ struct StubbornFlashcardView: View {
             practice.answer(value)
             persistProgress()
             revealed = false
-            resetSpellingInput()
+            resetSpellingInput(resetMistakeState: true)
             swipeOffset = 0
             swipeAngle = 0
             withAnimation(.spring(response: 0.24, dampingFraction: 0.88)) {
@@ -920,7 +1011,8 @@ struct StubbornFlashcardView: View {
         flipTask?.cancel()
         practice.reset(words: freshWords)
         revealed = false
-        resetSpellingInput()
+        mistakeNotice = ""
+        resetSpellingInput(resetMistakeState: true)
         swipeOffset = 0
         swipeAngle = 0
         swipeOpacity = 1

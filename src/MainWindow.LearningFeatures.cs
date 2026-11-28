@@ -15,6 +15,7 @@ public partial class MainWindow
 
     private readonly ContextSentenceStore _contextSentences = new();
     private readonly SpellingMistakeStore _spellingMistakes = new();
+    private readonly MistakeBookStore _mistakeBook = new();
     private readonly List<(Button Button, string Word, string Sentence)> _exampleSaveButtons = [];
     private PendingWordContext? _pendingContext;
 
@@ -376,6 +377,68 @@ public partial class MainWindow
     }
 
     private void MySentencesButton_Click(object sender, RoutedEventArgs e) => OpenMySentencesDialog();
+    private void MistakeBookButton_Click(object sender, RoutedEventArgs e) => OpenMistakeBookDialog();
+
+    private void OpenMistakeBookDialog()
+    {
+        if (!_ready) return;
+        var activePad = NotepadCombo.SelectedItem as CloudNotepad;
+        Func<IReadOnlyList<string>, Task<string>>? cloudAdd = _allowCloud && _tokens.HasToken && activePad != null
+            ? async words =>
+            {
+                var full = await ReadNotepadAsync(activePad.Id);
+                var existing = new HashSet<string>(NotepadContent.Words(full.Content), StringComparer.OrdinalIgnoreCase);
+                var fresh = words.Where(w => !existing.Contains(w)).ToArray();
+                if (fresh.Length == 0)
+                    return $"所选 {words.Count} 个错题均已在「{full.Title}」中。";
+                var updatedContent = NotepadContent.AddWords(full.Content, fresh);
+                var saved = await _api.UpdateNotepadAsync(full, full.Title, full.Brief, updatedContent, _accountCts.Token);
+                ApplyNotepadSnapshot(saved);
+                return $"✓ 已将 {fresh.Length} 个错题加入「{saved.Title}」" + (words.Count > fresh.Length ? $"（跳过 {words.Count - fresh.Length} 个已存在）" : "");
+            }
+            : null;
+
+        var dialog = MistakeBookDialog.Build(
+            this,
+            loadItems: () => _mistakeBook.List(),
+            lookupEntry: w => _dictionary.Lookup(w),
+            lookupWord: w => _ = LoadWordAsync(w),
+            speakWord: (w, accent) => PlaySpeechAsync(w, accent),
+            removeWord: w =>
+            {
+                var ok = _mistakeBook.Remove(w);
+                UpdateContextReviewButtons();
+                return ok;
+            },
+            startCardQuiz: (ownerWindow, words, spellingMode) =>
+            {
+                var sampled = _mistakeBook.PickWeightedRandom(words);
+                if (sampled.Count == 0) return;
+                var practice = StubbornFlashcards.Build(
+                    ownerWindow,
+                    sampled,
+                    _dictionary,
+                    _onlineDictionary,
+                    word => _mnemonics.Get(word, MnemonicAccountKey).FirstOrDefault()?.Text,
+                    persistProgress: false,
+                    title: spellingMode ? "错题本 · 拼写随机抽测" : "错题本 · 卡片随机抽测",
+                    speak: (w, accent) => PlaySpeechAsync(w, accent),
+                    getMnemonics: w => _mnemonics.Get(w, MnemonicAccountKey),
+                    mnemonicStore: _mnemonics,
+                    preferences: _preferences,
+                    spellingMistakes: _spellingMistakes,
+                    contextSentences: _contextSentences,
+                    accountKey: MnemonicAccountKey,
+                    mistakeBook: _mistakeBook,
+                    startInSpellingMode: spellingMode);
+                practice.ShowDialog();
+                UpdateContextReviewButtons();
+            },
+            addToCloudNotepad: cloudAdd,
+            activeNotepadTitle: activePad?.Title);
+        dialog.ShowDialog();
+        UpdateContextReviewButtons();
+    }
 
     private void OpenMySentencesDialog()
     {
@@ -391,7 +454,7 @@ public partial class MainWindow
                 dialogOwner: ownerWindow,
                 allowEditWord: item == null),
             deleteItem: (ownerWindow, item) => DeleteContextSentenceAsync(item, rethrowOnError: false, dialogOwner: ownerWindow),
-            startReview: (ownerWindow, deck) => OpenContextSentenceReview(deck, ownerWindow));
+            startReview: (ownerWindow, deck) => OpenContextSentenceReviewAsync(deck, ownerWindow));
         dialog.ShowDialog();
         RefreshContextSentenceViews(_word);
     }
@@ -551,9 +614,16 @@ public partial class MainWindow
             MySentencesButton.ToolTip = count > 0
                 ? $"我的例句（共 {count} 条 · 浏览、编辑与例句自测）"
                 : "我的例句（浏览、编辑与例句自测）";
+        var mistakes = _mistakeBook.Count;
+        if (MistakeBookButton != null)
+            MistakeBookButton.ToolTip = mistakes > 0
+                ? $"错题本（当前 {mistakes} 词 · 权重随机抽测）"
+                : "错题本（答错自动收录与随机抽测）";
+        if (MistakeBookDot != null)
+            MistakeBookDot.Visibility = mistakes > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void OpenContextSentenceReview(IReadOnlyList<ContextSentenceItem> deck, Window? dialogOwner = null)
+    private async Task OpenContextSentenceReviewAsync(IReadOnlyList<ContextSentenceItem> deck, Window? dialogOwner = null)
     {
         if (deck.Count == 0)
         {
@@ -561,29 +631,42 @@ public partial class MainWindow
             return;
         }
 
-        var orderedItems = deck.ToList();
-        var uniqueWords = orderedItems
-            .Select(item => item.Word.Trim())
-            .Where(w => w.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var dialog = StubbornFlashcards.Build(
-            dialogOwner ?? this,
-            uniqueWords,
+        var accountKey = MnemonicAccountKey;
+        var orderedItems = deck.ToArray();
+        var questions = await ContextSentenceQuiz.BuildQuestionsAsync(
+            orderedItems,
             _dictionary,
-            _onlineDictionary,
-            word => _mnemonics.Get(word, MnemonicAccountKey).FirstOrDefault()?.Text,
-            persistProgress: false,
-            title: "我的例句 · 例句自测",
-            speak: (w, accent) => PlaySpeechAsync(w, accent),
-            getMnemonics: w => _mnemonics.Get(w, MnemonicAccountKey),
-            mnemonicStore: _mnemonics,
-            preferences: _preferences,
-            spellingMistakes: _spellingMistakes,
-            contextSentences: _contextSentences,
-            contextDeck: orderedItems,
-            accountKey: MnemonicAccountKey);
+            _related,
+            _mnemonics,
+            accountKey);
+        if (questions.Count == 0) return;
+
+        var byId = orderedItems.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+        var dialog = ContextSentenceQuizDialog.Build(
+            dialogOwner ?? this,
+            questions,
+            rebuildForRetry: async retryQuestions =>
+            {
+                var retryItems = retryQuestions
+                    .Select(q => byId.GetValueOrDefault(q.ItemId))
+                    .Where(item => item != null)
+                    .Cast<ContextSentenceItem>()
+                    .ToArray();
+                return await ContextSentenceQuiz.BuildQuestionsAsync(
+                    retryItems.Length > 0 ? retryItems : orderedItems,
+                    _dictionary,
+                    _related,
+                    _mnemonics,
+                    accountKey);
+            },
+            onReviewed: id => _contextSentences.RecordReview(id),
+            speakSentence: (btn, text) => SpeakExampleAsync(btn, text),
+            lookupWord: w =>
+            {
+                if (dialogOwner != null && dialogOwner != this) dialogOwner.Close();
+                _ = LoadWordAsync(w);
+            },
+            mistakeBook: _mistakeBook);
         dialog.ShowDialog();
         UpdateContextReviewButtons();
         if (ValidWord(_word)) RenderSavedContexts(_word);
@@ -602,6 +685,8 @@ public partial class MainWindow
             var contextBytes = _contextSentences.FileSizeBytes;
             var spellingCount = _spellingMistakes.ActiveCount;
             var spellingBytes = _spellingMistakes.FileSizeBytes;
+            var mistakeCount = _mistakeBook.Count;
+            var mistakeBytes = _mistakeBook.FileSizeBytes;
             var (flashcardCount, flashcardBytes) = FlashcardProgressStore.MeasureAll(profile);
             var (stubbornCount, stubbornBytes) = StubbornWordCache.MeasureAll(profile);
             var memoryCount = _cloudCache.Count + _examples.CachedCount + _onlineDictionary.CachedCount + _translation.CachedCount + _pronunciation.CachedCount;
@@ -632,6 +717,13 @@ public partial class MainWindow
                     contextCount > 0 ? $"{contextCount} 条例句 · {CacheMaintenanceHost.FormatBytes(contextBytes)}" : "暂无数据",
                     contextCount > 0,
                     "仅清空本机保存与缓存的例句，不影响已同步到墨墨云端的例句。"),
+                new CacheCategoryItem(
+                    "mistakes",
+                    "错题本记录",
+                    "在卡片、拼写、例句填空与同根辨析中答错收录的单词及权重。",
+                    mistakeCount > 0 ? $"{mistakeCount} 个错题 · {CacheMaintenanceHost.FormatBytes(mistakeBytes)}" : "暂无错题",
+                    mistakeCount > 0,
+                    "将清空本机错题本中的全部单词和权重记录。"),
                 new CacheCategoryItem(
                     "spelling",
                     "拼写易错记录",
@@ -684,6 +776,10 @@ public partial class MainWindow
                         UpdateContextCaptureBanner(_word);
                     }
                     return "已清除收藏的例句。";
+                case "mistakes":
+                    _mistakeBook.Clear();
+                    UpdateContextReviewButtons();
+                    return "已清空错题本记录。";
                 case "spelling":
                     _spellingMistakes.Clear();
                     return "已清除拼写易错记录。";

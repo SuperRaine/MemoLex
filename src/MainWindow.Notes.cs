@@ -487,8 +487,10 @@ public partial class MainWindow
         var dialog=Desktop.MorphemeGroupPracticeDialog.Build(
             this,group,
             speak:(w,accent)=>PlaySpeechAsync(w,accent),
-            lookupWord:w=>_=LoadWordAsync(w));
+            lookupWord:w=>_=LoadWordAsync(w),
+            mistakeBook:_mistakeBook);
         dialog.ShowDialog();
+        UpdateContextReviewButtons();
     }
 
     private string LocalNotesHint()=>_displayedNotes.Length>0?$"本地助记 · {_displayedNotes.Length} 条":"暂无助记，点击「编辑助记」添加。";

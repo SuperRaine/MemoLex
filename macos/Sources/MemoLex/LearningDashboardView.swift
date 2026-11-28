@@ -106,22 +106,39 @@ struct LearningDashboardView: View {
                     .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
 
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("拼写易错巩固")
-                            .font(.system(size: 13.5, weight: .semibold))
-                        let mistakeSummary: String = {
-                            if model.activeSpellingMistakes.isEmpty {
-                                return "拼写默写出错时会自动记下易错位置，连续拼对 2 次后自动清除。"
-                            }
-                            let sample = model.activeSpellingMistakes.prefix(4).map {
-                                "\($0["word"].text)（\($0["correctOption"].text)/\($0["wrongOption"].text)）"
-                            }.joined(separator: "、")
-                            return "待巩固拼写 \(model.activeSpellingMistakes.count) 词：\(sample)"
-                        }()
-                        Text(mistakeSummary)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(Palette.muted)
-                            .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("错题本与拼写巩固")
+                                .font(.system(size: 13.5, weight: .semibold))
+                            let mistakeSummary: String = {
+                                var parts: [String] = []
+                                if !model.mistakeItems.isEmpty {
+                                    let topWords = model.mistakeItems.prefix(4).map {
+                                        "\($0["word"].text)(\($0["weight"].integer))"
+                                    }.joined(separator: "、")
+                                    parts.append("错题本当前 \(model.mistakeItems.count) 词：\(topWords)")
+                                }
+                                if !model.activeSpellingMistakes.isEmpty {
+                                    let sample = model.activeSpellingMistakes.prefix(3).map {
+                                        "\($0["word"].text)（\($0["correctOption"].text)/\($0["wrongOption"].text)）"
+                                    }.joined(separator: "、")
+                                    parts.append("拼写易错点 \(model.activeSpellingMistakes.count) 词：\(sample)")
+                                }
+                                if parts.isEmpty {
+                                    return "答错或拼错会自动加入错题本（权重 +3），答对权重 -1，归 0 自动移出。"
+                                }
+                                return parts.joined(separator: " · ")
+                            }()
+                            Text(mistakeSummary)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(Palette.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 6)
+                        Button(model.mistakeItems.isEmpty ? "打开错题本" : "抽测错题 (\(model.mistakeItems.count))") {
+                            model.sheet = .mistakeBook
+                        }
+                        .buttonStyle(MemoButtonStyle(accent: !model.mistakeItems.isEmpty, compact: true))
                     }
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -155,6 +172,7 @@ struct LearningDashboardView: View {
         .task {
             await model.refreshContextSentences()
             await model.refreshActiveSpellingMistakes()
+            await model.refreshMistakeBook()
         }
     }
 

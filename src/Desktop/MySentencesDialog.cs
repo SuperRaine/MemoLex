@@ -19,7 +19,7 @@ internal static class MySentencesDialog
         Func<Button, string, Task> speakSentence,
         Action<Window, ContextSentenceItem?> openEditor,
         Func<Window, ContextSentenceItem, Task<bool>> deleteItem,
-        Action<Window, IReadOnlyList<ContextSentenceItem>> startReview)
+        Func<Window, IReadOnlyList<ContextSentenceItem>, Task> startReview)
     {
         var dialog = InputDialog.Shell(owner, "我的例句", out _);
         dialog.Width = 780;
@@ -57,7 +57,7 @@ internal static class MySentencesDialog
             Padding = new Thickness(14, 6, 14, 6),
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
-            ToolTip = "使用当前列表中的例句进行翻卡与拼写自测"
+            ToolTip = "使用当前列表中的例句进行四选一语境填空自测（含近义词/形近词/派生词混淆与解析）"
         };
         if (accentStyle != null) startReviewBtn.Style = accentStyle;
 
@@ -88,10 +88,7 @@ internal static class MySentencesDialog
         filterCard.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
 
         var filterStack = new StackPanel();
-        var searchRow = new Grid { Margin = new Thickness(0, 0, 0, 9) };
-        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
+        var searchHost = new Grid { Margin = new Thickness(0, 0, 0, 9) };
         var searchBox = new TextBox
         {
             Height = 33,
@@ -109,28 +106,13 @@ internal static class MySentencesDialog
             IsHitTestVisible = false
         };
         searchOverlay.SetResourceReference(TextBlock.ForegroundProperty, "SubtleBrush");
-        var searchHost = new Grid();
         searchHost.Children.Add(searchBox);
         searchHost.Children.Add(searchOverlay);
-        searchRow.Children.Add(searchHost);
-
-        var blankToggle = new CheckBox
-        {
-            Content = "挖空自测模式",
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(14, 0, 2, 0),
-            FontSize = 12,
-            ToolTip = "开启后在列表中自动挖空目标词并隐藏译文，点击任意例句可揭晓答案"
-        };
-        blankToggle.SetResourceReference(Control.ForegroundProperty, "InkBrush");
-        Grid.SetColumn(blankToggle, 1);
-        searchRow.Children.Add(blankToggle);
-        filterStack.Children.Add(searchRow);
+        filterStack.Children.Add(searchHost);
 
         var chipsRow = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
         var filterButtons = new Dictionary<FilterKind, Button>();
         var activeFilter = FilterKind.All;
-        var revealedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         void AddFilterChip(FilterKind kind, string label)
         {
@@ -166,7 +148,7 @@ internal static class MySentencesDialog
         root.Children.Add(scroll);
 
         // 3. Footer status
-        var footerHint = InputDialog.Text("点击单词可跳转查词；开启「挖空自测模式」可在列表内直接练习，或点击右上角「开始自测」进入翻卡与拼写默写。", status: true);
+        var footerHint = InputDialog.Text("点击单词可跳转查词；点击右上角「开始自测」可进行四选一语境填空练习（含近义词、形近词、派生词混淆与详细解析）。", status: true);
         footerHint.FontSize = 11.5;
         footerHint.Margin = new Thickness(2, 10, 2, 0);
         Grid.SetRow(footerHint, 3);
@@ -193,7 +175,7 @@ internal static class MySentencesDialog
             }
         }
 
-        TextBlock BuildSentenceBlock(ContextSentenceItem item, bool blanked)
+        TextBlock BuildSentenceBlock(ContextSentenceItem item)
         {
             var tb = new TextBlock
             {
@@ -203,23 +185,6 @@ internal static class MySentencesDialog
                 TextWrapping = TextWrapping.Wrap
             };
             tb.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
-
-            if (blanked)
-            {
-                var masked = ContextSentenceHelper.BlankOutWord(item.Sentence, item.Word, item.MatchedForm);
-                var parts = masked.Split("______");
-                for (var i = 0; i < parts.Length; i++)
-                {
-                    if (parts[i].Length > 0) tb.Inlines.Add(new Run(parts[i]));
-                    if (i < parts.Length - 1)
-                    {
-                        var blankRun = new Run(" ______ ") { FontWeight = FontWeights.Bold };
-                        blankRun.SetResourceReference(TextElement.ForegroundProperty, "AccentDeepBrush");
-                        tb.Inlines.Add(blankRun);
-                    }
-                }
-                return tb;
-            }
 
             var matchSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ExampleText.NormalizeLookup(item.Word) };
             if (!string.IsNullOrWhiteSpace(item.MatchedForm))
@@ -324,11 +289,9 @@ internal static class MySentencesDialog
                 return;
             }
 
-            var blankMode = blankToggle.IsChecked == true;
             foreach (var item in currentFiltered)
             {
                 var captured = item;
-                var isRevealed = !blankMode || revealedIds.Contains(captured.Id);
 
                 var cardStack = new StackPanel();
                 var head = new DockPanel { Margin = new Thickness(0, 0, 0, 7) };
@@ -400,23 +363,17 @@ internal static class MySentencesDialog
 
                 var wordBtn = new Button
                 {
-                    Content = isRevealed ? captured.Word : "点击揭晓单词",
+                    Content = captured.Word,
                     FontSize = 12,
                     FontWeight = FontWeights.Bold,
                     Padding = new Thickness(9, 2.5, 9, 2.5),
                     Margin = new Thickness(0, 0, 6, 2),
-                    ToolTip = isRevealed ? $"点击跳转到「{captured.Word}」词条页" : "点击卡片揭晓目标词与译文"
+                    ToolTip = $"点击跳转到「{captured.Word}」词条页"
                 };
                 if (pillStyle != null) wordBtn.Style = pillStyle;
                 wordBtn.Click += (_, e) =>
                 {
                     e.Handled = true;
-                    if (!isRevealed)
-                    {
-                        revealedIds.Add(captured.Id);
-                        Render();
-                        return;
-                    }
                     dialog.Close();
                     lookupWord(captured.Word);
                 };
@@ -491,45 +448,20 @@ internal static class MySentencesDialog
 
                 head.Children.Add(badges);
                 cardStack.Children.Add(head);
-                cardStack.Children.Add(BuildSentenceBlock(captured, blanked: !isRevealed));
+                cardStack.Children.Add(BuildSentenceBlock(captured));
 
                 if (!string.IsNullOrWhiteSpace(captured.Translation))
                 {
-                    if (isRevealed)
+                    var zh = new TextBlock
                     {
-                        var zh = new TextBlock
-                        {
-                            Text = captured.Translation,
-                            FontSize = 12.5,
-                            LineHeight = 20,
-                            TextWrapping = TextWrapping.Wrap,
-                            Margin = new Thickness(0, 6, 0, 0)
-                        };
-                        zh.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-                        cardStack.Children.Add(zh);
-                    }
-                    else
-                    {
-                        var hint = new TextBlock
-                        {
-                            Text = "点击卡片揭晓目标词与中文译文",
-                            FontSize = 11.5,
-                            Margin = new Thickness(0, 6, 0, 0)
-                        };
-                        hint.SetResourceReference(TextBlock.ForegroundProperty, "SubtleBrush");
-                        cardStack.Children.Add(hint);
-                    }
-                }
-                else if (!isRevealed)
-                {
-                    var hint = new TextBlock
-                    {
-                        Text = "点击卡片揭晓目标词",
-                        FontSize = 11.5,
+                        Text = captured.Translation,
+                        FontSize = 12.5,
+                        LineHeight = 20,
+                        TextWrapping = TextWrapping.Wrap,
                         Margin = new Thickness(0, 6, 0, 0)
                     };
-                    hint.SetResourceReference(TextBlock.ForegroundProperty, "SubtleBrush");
-                    cardStack.Children.Add(hint);
+                    zh.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+                    cardStack.Children.Add(zh);
                 }
 
                 var cardBorder = new Border
@@ -538,21 +470,10 @@ internal static class MySentencesDialog
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(11),
                     Padding = new Thickness(14, 11, 14, 12),
-                    Margin = new Thickness(0, 0, 0, 8),
-                    Cursor = blankMode ? Cursors.Hand : Cursors.Arrow
+                    Margin = new Thickness(0, 0, 0, 8)
                 };
                 cardBorder.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
                 cardBorder.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-
-                if (blankMode)
-                {
-                    cardBorder.MouseLeftButtonUp += (_, e) =>
-                    {
-                        if (e.OriginalSource is DependencyObject dep && FindParent<ButtonBase>(dep) != null) return;
-                        if (!revealedIds.Remove(captured.Id)) revealedIds.Add(captured.Id);
-                        Render();
-                    };
-                }
 
                 listPanel.Children.Add(cardBorder);
             }
@@ -569,8 +490,6 @@ internal static class MySentencesDialog
         }
 
         searchBox.TextChanged += (_, _) => Render();
-        blankToggle.Checked += (_, _) => { revealedIds.Clear(); Render(); };
-        blankToggle.Unchecked += (_, _) => { revealedIds.Clear(); Render(); };
 
         addBtn.Click += (_, _) =>
         {
@@ -578,25 +497,25 @@ internal static class MySentencesDialog
             Render();
         };
 
-        startReviewBtn.Click += (_, _) =>
+        startReviewBtn.Click += async (_, _) =>
         {
             if (currentFiltered.Count == 0) return;
-            startReview(dialog, currentFiltered);
-            Render();
+            var deck = currentFiltered;
+            startReviewBtn.IsEnabled = false;
+            var previousLabel = startReviewBtn.Content;
+            startReviewBtn.Content = "正在出题…";
+            try
+            {
+                await startReview(dialog, deck);
+            }
+            finally
+            {
+                startReviewBtn.Content = previousLabel;
+                Render();
+            }
         };
 
         Render();
         return dialog;
-    }
-
-    private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
-    {
-        var current = child;
-        while (current != null)
-        {
-            if (current is T match) return match;
-            current = VisualTreeHelper.GetParent(current);
-        }
-        return null;
     }
 }

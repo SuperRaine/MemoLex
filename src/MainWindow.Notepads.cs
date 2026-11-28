@@ -112,8 +112,10 @@ public partial class MainWindow
                         preferences:_preferences,
                         spellingMistakes:_spellingMistakes,
                         contextSentences:_contextSentences,
-                        accountKey:MnemonicAccountKey);
+                        accountKey:MnemonicAccountKey,
+                        mistakeBook:_mistakeBook);
                     practice.ShowDialog();
+                    UpdateContextReviewButtons();
                 }).ShowDialog();
         }
         catch(Exception error){ShowError(error);}

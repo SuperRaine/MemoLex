@@ -13,7 +13,9 @@ internal static class LearningDashboardDialog
         FlashcardProgressSnapshot? stubbornProgress,
         int stubbornTotal,
         Action<string> lookupWord,
-        SpellingMistakeStore? spellingMistakes = null)
+        SpellingMistakeStore? spellingMistakes = null,
+        MistakeBookStore? mistakeBook = null,
+        Action? openMistakeBook = null)
     {
         var dialog = InputDialog.Shell(owner, "学习统计看板", out var body);
         dialog.Width = 660;
@@ -181,10 +183,11 @@ internal static class LearningDashboardDialog
         topCard.Child = topStack;
         body.Children.Add(topCard);
 
-        // Active spelling mistakes card
-        if (spellingMistakes != null)
+        // Mistake book & spelling summary card
+        if (mistakeBook != null || spellingMistakes != null)
         {
-            var activeMistakes = spellingMistakes.ListActive();
+            var mistakeCount = mistakeBook?.Count ?? 0;
+            var activeMistakes = spellingMistakes?.ListActive() ?? [];
             var practiceCard = new Border
             {
                 CornerRadius = new CornerRadius(12),
@@ -195,30 +198,58 @@ internal static class LearningDashboardDialog
             practiceCard.SetResourceReference(Border.BackgroundProperty, "CardSoftBrush");
             practiceCard.SetResourceReference(Border.BorderBrushProperty, "PillBorderBrush");
 
+            var practiceDock = new DockPanel();
+            if (openMistakeBook != null)
+            {
+                var openBtn = new Button
+                {
+                    Content = mistakeCount > 0 ? $"打开错题本（{mistakeCount}）" : "打开错题本",
+                    FontSize = 12,
+                    Padding = new Thickness(13, 6.5, 13, 6.5),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(12, 0, 0, 0)
+                };
+                if (Application.Current.TryFindResource(mistakeCount > 0 ? "AccentButton" : "PillButton") is Style btnStyle) openBtn.Style = btnStyle;
+                openBtn.Click += (_, _) =>
+                {
+                    dialog.Close();
+                    openMistakeBook();
+                };
+                DockPanel.SetDock(openBtn, Dock.Right);
+                practiceDock.Children.Add(openBtn);
+            }
+
             var practiceInfo = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             var practiceTitle = new TextBlock
             {
-                Text = "拼写易错巩固",
+                Text = "错题本与拼写巩固",
                 FontSize = 13,
                 FontWeight = FontWeights.SemiBold
             };
             practiceTitle.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
             practiceInfo.Children.Add(practiceTitle);
 
-            var descText = activeMistakes.Count > 0
-                ? $"待巩固拼写 {activeMistakes.Count} 词：{string.Join("、", activeMistakes.Take(4).Select(m => $"{m.Word}（{m.CorrectOption}/{m.WrongOption}）"))}"
-                : "拼写默写出错时会自动记下易错位置，连续拼对 2 次后自动清除。";
+            var descParts = new List<string>
+            {
+                mistakeCount > 0 ? $"当前错题本 {mistakeCount} 词（权重总计 {mistakeBook!.TotalWeight}）" : "错题本暂无待攻克单词"
+            };
+            if (activeMistakes.Count > 0)
+                descParts.Add($"易错拼写 {activeMistakes.Count} 词：{string.Join("、", activeMistakes.Take(3).Select(m => $"{m.Word}（{m.CorrectOption}/{m.WrongOption}）"))}");
+            else
+                descParts.Add("答错自动入本（权重 +3），答对减 1，归 0 自动移出");
+
             var practiceDesc = new TextBlock
             {
-                Text = descText,
+                Text = string.Join(" · ", descParts),
                 FontSize = 11.5,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 4, 0, 0)
             };
             practiceDesc.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             practiceInfo.Children.Add(practiceDesc);
+            practiceDock.Children.Add(practiceInfo);
 
-            practiceCard.Child = practiceInfo;
+            practiceCard.Child = practiceDock;
             body.Children.Add(practiceCard);
         }
 

@@ -14,7 +14,8 @@ internal static class MorphemeGroupPracticeDialog
         Window owner,
         MorphemePracticeGroup group,
         Func<string, EnglishAccent, Task>? speak = null,
-        Action<string>? lookupWord = null)
+        Action<string>? lookupWord = null,
+        MistakeBookStore? mistakeBook = null)
     {
         var dialog = InputDialog.Shell(owner, $"词根「{group.RootForm}」同组辨析", out _);
         dialog.Width = 740;
@@ -440,8 +441,18 @@ internal static class MorphemeGroupPracticeDialog
             if (picked.Word.Equals(current.Word, StringComparison.OrdinalIgnoreCase))
             {
                 answeredCorrectly = true;
-                if (!missedCurrent) firstTryCorrect++;
-                feedbackText.Text = $"✓ 正确！{current.Word}：{current.Explanation}";
+                var weightNote = "";
+                if (!missedCurrent)
+                {
+                    firstTryCorrect++;
+                    if (mistakeBook != null)
+                    {
+                        var res = mistakeBook.RecordRight(current.Word);
+                        if (res.Removed) weightNote = " · 错题权重清零已移出";
+                        else if (res.WasInBook) weightNote = $" · 错题权重 -1（余 {res.RemainingWeight}）";
+                    }
+                }
+                feedbackText.Text = $"✓ 正确！{current.Word}：{current.Explanation}{weightNote}";
                 feedbackText.Foreground = ThemeManager.Hex(ThemeManager.IsDark ? "#34D399" : "#0E7C55");
                 feedbackText.Visibility = Visibility.Visible;
                 if (speak != null) _ = speak(current.Word, EnglishAccent.American);
@@ -450,9 +461,16 @@ internal static class MorphemeGroupPracticeDialog
             }
             else
             {
+                var firstMiss = !missedCurrent;
                 missedCurrent = true;
                 wrongPicked.Add(picked.Word);
-                feedbackText.Text = $"✗ {picked.Word} 表示「{picked.PromptMeaning}」，再看看其他词缀！";
+                var weightNote = "";
+                if (firstMiss && mistakeBook != null)
+                {
+                    var rec = mistakeBook.RecordWrong(current.Word, "同根辨析", picked.Word);
+                    weightNote = $"（已入错题本，权重 {rec.Weight}）";
+                }
+                feedbackText.Text = $"✗ {picked.Word} 表示「{picked.PromptMeaning}」，再看看其他词缀！{weightNote}";
                 feedbackText.Foreground = ThemeManager.Hex(ThemeManager.IsDark ? "#FB7185" : "#C4253F");
                 feedbackText.Visibility = Visibility.Visible;
                 Render();

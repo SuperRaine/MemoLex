@@ -27,7 +27,9 @@ internal static class StubbornFlashcards
         SpellingMistakeStore? spellingMistakes = null,
         ContextSentenceStore? contextSentences = null,
         IReadOnlyList<ContextSentenceItem>? contextDeck = null,
-        string? accountKey = null)
+        string? accountKey = null,
+        MistakeBookStore? mistakeBook = null,
+        bool startInSpellingMode = false)
     {
         var freshWords = words.ToArray();
         var contextDeckMap = contextDeck == null
@@ -268,9 +270,11 @@ internal static class StubbornFlashcards
         var revealed = false;
         var flipping = false;
         var swiping = false;
-        var spellingMode = false;
+        var spellingMode = startInSpellingMode;
         var spellingFeedback = "";
         var spellingCorrect = false;
+        var mistakeEvaluatedOnCard = false;
+        string? mistakeNotice = null;
         TextBox? activeSpellingBox = null;
         System.Windows.Threading.DispatcherTimer? autoFlipTimer = null;
         DictionaryEntry? entry = null;
@@ -396,7 +400,10 @@ internal static class StubbornFlashcards
         {
             activeSpellingBox = null;
             var word = practice.Current;
-            progress.Text = $"第 {practice.GroupNumber} / {practice.GroupCount} 组 · 剩余 {practice.Remaining} / {practice.GroupWordCount} 词 · 已掌握 {practice.MasteredCount} / {practice.TotalWordCount}";
+            var currentMistake = word != null ? mistakeBook?.Get(word) : null;
+            var weightSuffix = currentMistake != null ? $" · 错题权重 {currentMistake.Weight}" : "";
+            var noticeSuffix = !string.IsNullOrWhiteSpace(mistakeNotice) ? $" · {mistakeNotice}" : "";
+            progress.Text = $"第 {practice.GroupNumber} / {practice.GroupCount} 组 · 剩余 {practice.Remaining} / {practice.GroupWordCount} 词 · 已掌握 {practice.MasteredCount} / {practice.TotalWordCount}{weightSuffix}{noticeSuffix}";
             resetButton.IsEnabled = practice.HasProgress || (word == null && !practice.HasNextGroup);
             speakNowBtn.IsEnabled = word != null;
             UpdateProgressBar();
@@ -1003,7 +1010,16 @@ internal static class StubbornFlashcards
                 CancelAutoFlip();
                 if (revealed || flipping || swiping || !string.Equals(practice.Current, word, StringComparison.Ordinal)) return;
                 if (!hadMistakeOnCurrentWord && hintLevel == 0)
+                {
                     spellingMistakes?.RecordCleanSuccess(word);
+                    if (!mistakeEvaluatedOnCard && mistakeBook != null)
+                    {
+                        mistakeEvaluatedOnCard = true;
+                        var res = mistakeBook.RecordRight(word);
+                        if (res.Removed) mistakeNotice = "✓ 权重归 0，已移出错题本";
+                        else if (res.WasInBook) mistakeNotice = $"错题权重 -1（余 {res.RemainingWeight}）";
+                    }
+                }
                 spellingCorrect = true;
                 spellingFeedback = "✓ 拼写正确";
                 Flip();
@@ -1022,8 +1038,17 @@ internal static class StubbornFlashcards
                 hadMistakeOnCurrentWord = true;
                 var recorded = spellingMistakes?.RecordMistake(word, typed);
                 var (message, isProgress) = BuildSpellingHint(word, typed, ref hintLevel);
-                if (recorded != null)
+                if (!mistakeEvaluatedOnCard && mistakeBook != null)
+                {
+                    mistakeEvaluatedOnCard = true;
+                    var rec = mistakeBook.RecordWrong(word, "拼写错误", typed);
+                    mistakeNotice = $"已入错题本（权重 {rec.Weight}）";
+                    message += $" · 已入错题本（权重 {rec.Weight}）";
+                }
+                else if (recorded != null)
+                {
                     message += " · 已记下易错点";
+                }
                 ShowSpellingHint(message, isProgress ? "info" : "warn");
                 inputBox.Focus();
                 inputBox.CaretIndex = inputBox.Text.Length;
@@ -1065,7 +1090,19 @@ internal static class StubbornFlashcards
                 inputBox.Focus();
                 inputBox.CaretIndex = inputBox.Text.Length;
             };
-            revealBtn.Click += (_, e) => { e.Handled = true; CancelAutoFlip(); spellingFeedback = ""; Flip(); };
+            revealBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                CancelAutoFlip();
+                if (!mistakeEvaluatedOnCard && mistakeBook != null)
+                {
+                    mistakeEvaluatedOnCard = true;
+                    var rec = mistakeBook.RecordWrong(word, "拼写错误", inputBox.Text.Trim());
+                    mistakeNotice = $"已入错题本（权重 {rec.Weight}）";
+                }
+                spellingFeedback = "";
+                Flip();
+            };
             inputBox.KeyDown += (_, e) =>
             {
                 if (e.Key == Key.Enter)
@@ -1274,6 +1311,7 @@ internal static class StubbornFlashcards
             revealed = false;
             spellingFeedback = "";
             spellingCorrect = false;
+            mistakeEvaluatedOnCard = false;
             entry = practice.Current is { } word ? dictionary.Lookup(word) : null;
             currentContext = practice.Current is { } cw ? ResolveContext(cw) : null;
             PrepareSpellingDrill(practice.Current);
@@ -1324,7 +1362,28 @@ internal static class StubbornFlashcards
         void Answer(FlashcardAnswer answer)
         {
             if (!revealed || flipping || swiping || practice.Current == null) return;
+            var answeredWord = practice.Current;
             if (currentContext != null) contextSentences?.RecordReview(currentContext.Id);
+            if (!mistakeEvaluatedOnCard && mistakeBook != null)
+            {
+                mistakeEvaluatedOnCard = true;
+                if (answer == FlashcardAnswer.Known)
+                {
+                    var res = mistakeBook.RecordRight(answeredWord);
+                    if (res.Removed) mistakeNotice = $"「{answeredWord}」权重归 0，已移出错题本";
+                    else if (res.WasInBook) mistakeNotice = $"「{answeredWord}」权重 -1（余 {res.RemainingWeight}）";
+                    else mistakeNotice = null;
+                }
+                else if (answer == FlashcardAnswer.Forgotten)
+                {
+                    var rec = mistakeBook.RecordWrong(answeredWord, "卡片忘记");
+                    mistakeNotice = $"「{answeredWord}」入错题本（权重 {rec.Weight}）";
+                }
+                else
+                {
+                    mistakeNotice = null;
+                }
+            }
             swiping = true;
             var toX = answer == FlashcardAnswer.Forgotten ? -110.0 : 110.0;
             var tilt = answer == FlashcardAnswer.Forgotten ? -5.5 : 5.5;

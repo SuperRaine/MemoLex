@@ -944,8 +944,11 @@ public partial class MainWindow : Window
         var dialog = LearningDashboardDialog.Build(
             this, _preferences, progress, _stubbornWords?.Total ?? 0,
             w => _ = LoadWordAsync(w),
-            spellingMistakes: _spellingMistakes);
+            spellingMistakes: _spellingMistakes,
+            mistakeBook: _mistakeBook,
+            openMistakeBook: OpenMistakeBookDialog);
         dialog.ShowDialog();
+        UpdateContextReviewButtons();
     }
     private void RenderSpellingSuggestions(string query, bool notFound)
     {

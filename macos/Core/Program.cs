@@ -98,6 +98,7 @@ internal sealed class CoreService : IDisposable
     private readonly MnemonicStore _notes;
     private readonly ContextSentenceStore _contextSentences;
     private readonly SpellingMistakeStore _spellingMistakes;
+    private readonly MistakeBookStore _mistakeBook;
     private readonly TokenStore _tokens = new();
     private readonly MaiMemoClient _api;
     private readonly ExampleSentenceClient _examples = new();
@@ -117,6 +118,7 @@ internal sealed class CoreService : IDisposable
         _notes = new(Path.Combine(profile, "mnemonics.user.json"), Path.Combine(data, "mnemonics.json"));
         _contextSentences = new(Path.Combine(profile, "context-sentences.json"));
         _spellingMistakes = new(Path.Combine(profile, "spelling-mistakes.json"));
+        _mistakeBook = new(Path.Combine(profile, "mistake-book.json"));
         _api = new(_tokens);
         _onlineDictionary = new(_translation);
         _ready = new(async () => { await _dictionary.LoadAsync(); await Task.WhenAll(_related.LoadAsync(), _chinese.LoadAsync(), _notes.LoadAsync()); });
@@ -321,6 +323,22 @@ internal sealed class CoreService : IDisposable
                 return new { cleared = _contextSentences.Clear() };
             case "contextSentences.review":
                 return _contextSentences.RecordReview(T(p, "id"));
+            case "contextSentences.buildQuiz":
+            {
+                var visible = _contextSentences.List(null, _tokens.CredentialKey);
+                IReadOnlyList<ContextSentenceItem> selected = visible;
+                if (p.ValueKind == JsonValueKind.Object && p.TryGetProperty("ids", out var idsEl) && idsEl.ValueKind == JsonValueKind.Array)
+                {
+                    var idSet = idsEl.EnumerateArray()
+                        .Where(e => e.ValueKind == JsonValueKind.String)
+                        .Select(e => e.GetString()!)
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    if (idSet.Count > 0)
+                        selected = visible.Where(item => idSet.Contains(item.Id)).ToArray();
+                }
+                return await ContextSentenceQuiz.BuildQuestionsAsync(selected, _dictionary, _related, _notes, _tokens.CredentialKey, cancellation);
+            }
             case "spelling.getDrill":
                 return _spellingMistakes.GetActiveDrill(word);
             case "spelling.recordMistake":
@@ -332,6 +350,48 @@ internal sealed class CoreService : IDisposable
                 return _spellingMistakes.ListActive();
             case "spelling.clear":
                 return new { cleared = _spellingMistakes.Clear() };
+            case "mistakes.list":
+                return _mistakeBook.List().Select(item =>
+                {
+                    var entry = _dictionary.Lookup(item.Word);
+                    return new
+                    {
+                        item.Word,
+                        item.Weight,
+                        item.WrongCount,
+                        item.RightCount,
+                        item.LastReason,
+                        item.LastWrongInput,
+                        item.ContextSentence,
+                        item.ContextTranslation,
+                        item.FirstWrongAt,
+                        item.UpdatedAt,
+                        Phonetic = string.IsNullOrWhiteSpace(entry?.phonetic) ? "" : "/" + entry.phonetic.Trim().Trim('/') + "/",
+                        Meaning = entry?.DisplayMeaning ?? ""
+                    };
+                }).ToArray();
+            case "mistakes.get":
+                return _mistakeBook.Get(word);
+            case "mistakes.recordWrong":
+                return _mistakeBook.RecordWrong(
+                    word,
+                    T(p, "reason", "拼写错误"),
+                    Null(T(p, "wrongInput")),
+                    Null(T(p, "contextSentence")),
+                    Null(T(p, "contextTranslation")));
+            case "mistakes.recordRight":
+                return _mistakeBook.RecordRight(word);
+            case "mistakes.remove":
+                return new { removed = _mistakeBook.Remove(word) };
+            case "mistakes.clear":
+                return new { cleared = _mistakeBook.Clear() };
+            case "mistakes.sample":
+            {
+                string[]? filter = null;
+                if (p.ValueKind == JsonValueKind.Object && p.TryGetProperty("words", out var wf) && wf.ValueKind == JsonValueKind.Array)
+                    filter = wf.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+                return _mistakeBook.PickWeightedRandom(filter, Number(p, "limit", 0, 0, 1000));
+            }
             case "cache.stats":
                 return new
                 {
@@ -339,6 +399,8 @@ internal sealed class CoreService : IDisposable
                     contextBytes = _contextSentences.FileSizeBytes,
                     spellingCount = _spellingMistakes.ActiveCount,
                     spellingBytes = _spellingMistakes.FileSizeBytes,
+                    mistakeCount = _mistakeBook.Count,
+                    mistakeBytes = _mistakeBook.FileSizeBytes,
                     memoryCount = _examples.CachedCount + _onlineDictionary.CachedCount + _translation.CachedCount + _pronunciation.CachedCount,
                     memoryBytes = _pronunciation.CachedBytes
                 };

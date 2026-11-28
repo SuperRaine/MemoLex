@@ -75,6 +75,7 @@ struct MainView: View {
             case .dashboard: LearningDashboardView(model: model)
             case .contextReview: ContextReviewSheet(model: model)
             case .contextEditor: ContextSentenceEditorView(model: model)
+            case .mistakeBook: MistakeBookSheet(model: model)
             case .morphemePractice:
                 if let group = model.morphemePracticeGroup {
                     MorphemeGroupPracticeView(model: model, group: group)
@@ -349,6 +350,22 @@ private struct MainTitlebar: View {
             }.buttonStyle(PillButtonStyle()).fixedSize(horizontal: true, vertical: false).layoutPriority(2)
                 .help(model.titleAccount + " · " + model.accountStatus)
             titleButton("text.quote", label: "我的例句") { model.openMySentences() }
+            Button { model.openMistakeBook() } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "checklist").font(.system(size: 13, weight: .medium))
+                        .frame(width: compact ? 25 : 29, height: 28).contentShape(Rectangle())
+                    if !model.mistakeItems.isEmpty {
+                        Circle()
+                            .fill(Color(red: 0.90, green: 0.22, blue: 0.32))
+                            .frame(width: 6, height: 6)
+                            .offset(x: -3, y: 4)
+                    }
+                }
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(Palette.ink)
+            .help(model.mistakeItems.isEmpty ? "错题本" : "错题本（\(model.mistakeItems.count) 词）")
+            .accessibilityLabel("错题本")
             titleButton("chart.bar", label: "学习统计看板") { model.sheet = .dashboard }
             titleButton("gearshape", label: "设置") { model.sheet = .settings }
             HStack(spacing: 7) {

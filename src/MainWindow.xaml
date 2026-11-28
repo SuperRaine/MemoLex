@@ -68,6 +68,12 @@
                             </StackPanel>
                         </Button>
                         <Button x:Name="MySentencesButton" Style="{StaticResource TitleButton}" Click="MySentencesButton_Click" ToolTip="我的例句（浏览、编辑与例句自测）" AutomationProperties.Name="我的例句" Margin="0,0,2,0"><TextBlock Text="&#xE8F2;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
+                        <Button x:Name="MistakeBookButton" Style="{StaticResource TitleButton}" Click="MistakeBookButton_Click" ToolTip="错题本（答错自动收录与随机抽测）" AutomationProperties.Name="错题本" Margin="0,0,2,0">
+                            <Grid Width="20" Height="20">
+                                <TextBlock Text="&#xE9D5;" FontFamily="Segoe MDL2 Assets" FontSize="14.5" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Ellipse x:Name="MistakeBookDot" Width="6" Height="6" Fill="#EF4444" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,0,0" Visibility="Collapsed"/>
+                            </Grid>
+                        </Button>
                         <Button x:Name="DashboardButton" Style="{StaticResource TitleButton}" Click="DashboardButton_Click" ToolTip="学习统计看板" AutomationProperties.Name="学习统计看板" Margin="0,0,2,0"><TextBlock Text="&#xE9D2;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
                         <Button x:Name="ThemeToggleButton" Style="{StaticResource TitleButton}" Click="ThemeToggleButton_Click" ToolTip="切换深色 / 浅色模式" AutomationProperties.Name="切换主题" Margin="0,0,2,0"><TextBlock x:Name="ThemeToggleGlyph" Text="&#xE708;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
                         <Button x:Name="SettingsButton" Style="{StaticResource TitleButton}" Click="SettingsButton_Click" ToolTip="设置" AutomationProperties.Name="设置" Margin="0,0,3,0"><TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="15"/></Button>

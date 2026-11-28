@@ -4,7 +4,7 @@ import Combine
 import Foundation
 import SwiftUI
 
-enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan, dashboard, contextReview, contextEditor, morphemePractice; var id: String { rawValue } }
+enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan, dashboard, contextReview, contextEditor, morphemePractice, mistakeBook; var id: String { rawValue } }
 struct PendingWordContext: Equatable {
     let word: String
     let matchedForm: String
@@ -40,6 +40,7 @@ enum EnglishAccent: String, CaseIterable {
     @Published var extractedWords: [J] = []
     @Published var contextSentences: [J] = []
     @Published var activeSpellingMistakes: [J] = []
+    @Published var mistakeItems: [J] = []
     @Published var pendingContext: PendingWordContext? = nil
     @Published var editingContextSentence: J? = nil
     @Published var morphemePracticeGroup: J? = nil
@@ -179,6 +180,7 @@ enum EnglishAccent: String, CaseIterable {
             Task {
                 await refreshContextSentences()
                 await refreshActiveSpellingMistakes()
+                await refreshMistakeBook()
             }
             if !preferences.onboardingCompleted { startTour() }
         } catch { fail(error) }
@@ -399,6 +401,67 @@ enum EnglishAccent: String, CaseIterable {
         }
     }
 
+    func refreshMistakeBook() async {
+        if let result = try? await core.request("mistakes.list") {
+            mistakeItems = result.list
+        }
+    }
+
+    func openMistakeBook() {
+        sheet = .mistakeBook
+    }
+
+    func recordMistakeWrong(
+        word targetWord: String,
+        reason: String,
+        wrongInput: String? = nil,
+        contextSentence: String? = nil,
+        contextTranslation: String? = nil
+    ) async -> J? {
+        let trimmed = targetWord.trimmed
+        guard !trimmed.isEmpty else { return nil }
+        var params: [String: J] = [
+            "word": .string(trimmed),
+            "reason": .string(reason)
+        ]
+        if let wrongInput, !wrongInput.trimmed.isEmpty { params["wrongInput"] = .string(wrongInput.trimmed) }
+        if let contextSentence, !contextSentence.trimmed.isEmpty { params["contextSentence"] = .string(contextSentence.trimmed) }
+        if let contextTranslation, !contextTranslation.trimmed.isEmpty { params["contextTranslation"] = .string(contextTranslation.trimmed) }
+        let result = try? await core.request("mistakes.recordWrong", params)
+        await refreshMistakeBook()
+        return result
+    }
+
+    func recordMistakeRight(word targetWord: String) async -> J? {
+        let trimmed = targetWord.trimmed
+        guard !trimmed.isEmpty else { return nil }
+        let result = try? await core.request("mistakes.recordRight", ["word": .string(trimmed)])
+        if result?["wasInBook"].flag == true {
+            await refreshMistakeBook()
+        }
+        return result
+    }
+
+    func removeMistake(word targetWord: String) async {
+        let trimmed = targetWord.trimmed
+        guard !trimmed.isEmpty else { return }
+        _ = try? await core.request("mistakes.remove", ["word": .string(trimmed)])
+        await refreshMistakeBook()
+        status = "已将「\(trimmed)」移出错题本。"
+    }
+
+    func sampleMistakeWords(filterWords: [String]? = nil, limit: Int = 0) async -> [String] {
+        var params: [String: J] = [:]
+        if let filterWords, !filterWords.isEmpty {
+            params["words"] = J.strings(filterWords)
+        }
+        if limit > 0 {
+            params["limit"] = .number(Double(limit))
+        }
+        guard let result = try? await core.request("mistakes.sample", params) else { return [] }
+        return result.list.map(\.text).filter { !$0.isEmpty }
+    }
+
     func saveContextSentence(word targetWord: String, sentence: String, translation: String, source: String, matchedForm: String? = nil) async {
         var params: [String: J] = [
             "word": .string(targetWord),
@@ -510,6 +573,13 @@ enum EnglishAccent: String, CaseIterable {
 
     func openMySentences() {
         sheet = .contextReview
+    }
+
+    func buildContextSentenceQuiz(ids: [String]) async -> [J] {
+        var params: [String: J] = [:]
+        if !ids.isEmpty { params["ids"] = J.strings(ids) }
+        guard let result = try? await core.request("contextSentences.buildQuiz", params) else { return [] }
+        return result.list
     }
 
     func lookupFromTranslation(_ rawWord: String) {
@@ -645,6 +715,8 @@ enum EnglishAccent: String, CaseIterable {
         let contextBytes = Int64(stats?["contextBytes"].doubleValue ?? 0)
         let spellingCount = stats?["spellingCount"].integer ?? activeSpellingMistakes.count
         let spellingBytes = Int64(stats?["spellingBytes"].doubleValue ?? 0)
+        let mistakeCount = stats?["mistakeCount"].integer ?? mistakeItems.count
+        let mistakeBytes = Int64(stats?["mistakeBytes"].doubleValue ?? 0)
         let memoryCount = stats?["memoryCount"].integer ?? 0
         let memoryBytes = Int64(stats?["memoryBytes"].doubleValue ?? 0)
 
@@ -693,6 +765,14 @@ enum EnglishAccent: String, CaseIterable {
                 confirmMessage: "将清空已记录的拼写易错点，后续拼写练习会重新记录。"
             ),
             CacheCategoryInfo(
+                id: "mistakes",
+                title: "错题本记录",
+                description: "例句自测、卡片自测、拼写默写与同根辨析累计的错词及权重。",
+                summary: mistakeCount > 0 ? "\(mistakeCount) 个错词 · \(formatCacheBytes(mistakeBytes))" : "暂无错词",
+                hasData: mistakeCount > 0,
+                confirmMessage: "将清空错题本中的全部错词与权重记录，不会影响云词本和账号数据。"
+            ),
+            CacheCategoryInfo(
                 id: "flashcards",
                 title: "卡片自测进度",
                 description: "顽固单词与云词本的卡片自测进度。",
@@ -732,6 +812,10 @@ enum EnglishAccent: String, CaseIterable {
             _ = try? await core.request("spelling.clear")
             await refreshActiveSpellingMistakes()
             return "已清除拼写易错记录。"
+        case "mistakes":
+            _ = try? await core.request("mistakes.clear")
+            await refreshMistakeBook()
+            return "已清除错题本记录。"
         case "flashcards":
             for url in matchingProfileFiles(prefix: "flashcards-") {
                 try? FileManager.default.removeItem(at: url)
