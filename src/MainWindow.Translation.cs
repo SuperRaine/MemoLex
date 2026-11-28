@@ -143,7 +143,7 @@ public partial class MainWindow
             {
                 var ctx=ExtractCurrentTranslationContext(word,word);
                 if(ctx==null)return;
-                _contextSentences.Save(ctx.Word,ctx.Sentence,ctx.Translation,ctx.Source,ctx.MatchedForm);
+                _contextSentences.Save(ctx.Word,ctx.Sentence,ctx.Translation,ctx.Source,ctx.MatchedForm,MnemonicAccountKey);
                 UpdateContextReviewButtons();
                 TranslationExtractedStatus.Text=$"✓ 已收藏「{word}」的例句，可点击右上角「例句自测」复习。";
                 TranslationExtractedStatus.Visibility=Visibility.Visible;

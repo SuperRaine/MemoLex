@@ -322,7 +322,10 @@
                                 <Border x:Name="SavedContextDivider" Background="{DynamicResource RuleBrush}" Height="1" Margin="0,12,0,11" Visibility="Collapsed"/>
                                 <StackPanel x:Name="SavedContextSection" Visibility="Collapsed">
                                     <DockPanel Margin="0,0,0,6">
-                                        <Button x:Name="WordContextReviewButton" Content="例句自测" Style="{StaticResource PillButton}" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="WordContextReviewButton_Click" FontSize="11" Padding="10,4"/>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button x:Name="AddContextSentenceButton" Content="＋ 添加例句" Style="{StaticResource PillButton}" Click="AddContextSentenceButton_Click" FontSize="11" Padding="10,4" Margin="0,0,6,0" ToolTip="新建自定义例句，支持同步到墨墨云端"/>
+                                            <Button x:Name="WordContextReviewButton" Content="例句自测" Style="{StaticResource PillButton}" Click="WordContextReviewButton_Click" FontSize="11" Padding="10,4"/>
+                                        </StackPanel>
                                         <Border DockPanel.Dock="Left" Background="{DynamicResource PillBgBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="7" Width="24" Height="24" Margin="0,0,8,0" VerticalAlignment="Center">
                                             <TextBlock Text="句" Foreground="{DynamicResource AccentDeepBrush}" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
@@ -334,7 +337,10 @@
                                 <Border x:Name="ExamplesDivider" Background="{DynamicResource RuleBrush}" Height="1" Margin="0,12,0,11"/>
                                 <StackPanel x:Name="ExamplesSection">
                                     <DockPanel Margin="0,0,0,8">
-                                        <ComboBox x:Name="ExamplePaperCombo" DockPanel.Dock="Right" Width="126" Height="29" FontSize="12" Padding="9,3" DisplayMemberPath="Label" SelectionChanged="ExamplePaperCombo_SelectionChanged" AutomationProperties.Name="例句考试类型"/>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button x:Name="EmptyAddContextButton" Content="＋ 添加例句" Style="{StaticResource PillButton}" Click="AddContextSentenceButton_Click" FontSize="11" Padding="10,4" Margin="0,0,7,0" Visibility="Collapsed" ToolTip="为当前单词添加自定义例句，支持同步到墨墨云端"/>
+                                            <ComboBox x:Name="ExamplePaperCombo" Width="126" Height="29" FontSize="12" Padding="9,3" DisplayMemberPath="Label" SelectionChanged="ExamplePaperCombo_SelectionChanged" AutomationProperties.Name="例句考试类型"/>
+                                        </StackPanel>
                                         <Border DockPanel.Dock="Left" Background="{DynamicResource PillBgBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="7" Width="24" Height="24" Margin="0,0,8,0" VerticalAlignment="Center">
                                             <TextBlock Text="例" Foreground="{DynamicResource AccentDeepBrush}" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>

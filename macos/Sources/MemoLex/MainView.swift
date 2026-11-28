@@ -74,6 +74,7 @@ struct MainView: View {
             case .todayPlan: TodayStudyView(model: model)
             case .dashboard: LearningDashboardView(model: model)
             case .contextReview: ContextReviewSheet(model: model)
+            case .contextEditor: ContextSentenceEditorView(model: model)
             case .morphemePractice:
                 if let group = model.morphemePracticeGroup {
                     MorphemeGroupPracticeView(model: model, group: group)
@@ -641,6 +642,13 @@ private struct WordPage: View {
                             }
                         }
                         Spacer()
+                        if model.contextSentences(for: model.word).isEmpty && !model.word.isEmpty {
+                            Button("＋ 添加例句") {
+                                model.openContextSentenceEditor(nil)
+                            }
+                            .buttonStyle(PillButtonStyle())
+                            .help("为当前单词添加自定义例句，支持同步到墨墨云端")
+                        }
                         MemoPicker(title: "真题类型", selection: $model.examplePaper, options: [
                             ("ALL", "全部考试"), ("POSTGRADUATE", "考研"), ("CET4", "大学四级"),
                             ("CET6", "大学六级"), ("COLLEGE_ENTRANCE_EXAM", "高考")
@@ -736,6 +744,10 @@ private struct WordPage: View {
     @ViewBuilder private var savedContextsSection: some View {
         let wordContexts = model.contextSentences(for: model.word)
         if !wordContexts.isEmpty {
+            let cloudCount = wordContexts.filter { $0["origin"].text == "cloud" && !$0["cloudId"].text.isEmpty }.count
+            let summaryText = cloudCount > 0
+                ? "本词 \(wordContexts.count) 条（云端 \(cloudCount)）· 共 \(model.contextSentences.count) 条"
+                : "本词 \(wordContexts.count) 条 · 共 \(model.contextSentences.count) 条"
             rule
             HStack {
                 HStack(spacing: 8) {
@@ -743,31 +755,66 @@ private struct WordPage: View {
                         .background(Palette.wash, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
                     Text("我的例句").font(.system(size: 15.5, weight: .semibold))
-                    Text("本词 \(wordContexts.count) 条 · 共 \(model.contextSentences.count) 条")
+                    Text(summaryText)
                         .font(.system(size: 11.5)).foregroundStyle(Palette.muted).lineLimit(1)
                 }
                 Spacer()
-                Button("例句自测 (\(model.contextSentences.count))") {
-                    model.openContextReview(focusWord: model.word)
-                }.buttonStyle(PillButtonStyle())
+                HStack(spacing: 6) {
+                    Button("＋ 添加例句") {
+                        model.openContextSentenceEditor(nil)
+                    }.buttonStyle(PillButtonStyle())
+                        .help("新建自定义例句，支持同步到墨墨云端")
+                    Button("例句自测 (\(model.contextSentences.count))") {
+                        model.openContextReview(focusWord: model.word)
+                    }.buttonStyle(PillButtonStyle())
+                }
             }.padding(.bottom, 6)
             ForEach(Array(wordContexts.enumerated()), id: \.offset) { _, ctx in
-                let ctxId = ctx["id"].text
                 let sentence = ctx["sentence"].text
                 let trans = ctx["translation"].text
                 let reviews = ctx["reviewCount"].integer
+                let isCloud = ctx["origin"].text == "cloud" && !ctx["cloudId"].text.isEmpty
+                let hasUnsynced = ctx["origin"].text != "cloud" && !ctx["cloudId"].text.isEmpty
+                let tags = ctx["tags"].list.map(\.text).filter { !$0.isEmpty }
                 let sourceMeta = reviews > 0 ? "\(ctx["source"].text) · 已自测 \(reviews) 次" : ctx["source"].text
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text(sourceMeta)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Palette.deep)
-                            .padding(.horizontal, 8).padding(.vertical, 2)
-                            .background(Palette.paper, in: Capsule())
-                            .overlay(Capsule().strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
-                        Spacer()
-                        Button("移除") {
-                            Task { await model.removeContextSentence(id: ctxId) }
+                    HStack(alignment: .center, spacing: 6) {
+                        HStack(spacing: 5) {
+                            Text(isCloud ? "云端例句" : hasUnsynced ? "待同步" : "本地例句")
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundStyle(isCloud ? Palette.deep : hasUnsynced ? Color(red: 0.65, green: 0.34, blue: 0.03) : Palette.muted)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(isCloud ? Palette.accent.opacity(0.18) : hasUnsynced ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.16) : Palette.paper, in: Capsule())
+                                .overlay(Capsule().strokeBorder(isCloud ? Palette.accent.opacity(0.32) : hasUnsynced ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35) : Palette.border, lineWidth: 0.75))
+                            Text(sourceMeta)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Palette.deep)
+                                .padding(.horizontal, 8).padding(.vertical, 2)
+                                .background(Palette.paper, in: Capsule())
+                                .overlay(Capsule().strokeBorder(Palette.accent.opacity(0.24), lineWidth: 0.75))
+                            ForEach(Array(tags.prefix(3).enumerated()), id: \.offset) { _, tag in
+                                Text(tag)
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(Palette.muted)
+                                    .padding(.horizontal, 6).padding(.vertical, 1.5)
+                                    .background(Palette.paper, in: Capsule())
+                                    .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.7))
+                            }
+                        }
+                        Spacer(minLength: 4)
+                        Button("朗读") {
+                            model.speakSentence(sentence)
+                        }
+                        .buttonStyle(PillButtonStyle())
+                        .help("朗读例句")
+                        Button("编辑") {
+                            model.openContextSentenceEditor(ctx)
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Palette.deep)
+                        Button("删除") {
+                            Task { _ = try? await model.deleteContextSentence(ctx, rethrowOnError: false) }
                         }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))

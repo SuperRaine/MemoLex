@@ -13,7 +13,7 @@ namespace MemoLex.Services;
 public sealed record Vocabulary(string Id, string Spelling);
 public sealed record MemoNote(string Id, string NoteType, string Text, string Status);
 public sealed record MemoInterpretation(string Id, string Text, IReadOnlyList<string> Tags, string Status);
-public sealed record MemoPhrase(string Id, string Text, string Interpretation, string Origin, string Status);
+public sealed record MemoPhrase(string Id, string Text, string Interpretation, string Origin, string Status, IReadOnlyList<string>? Tags = null);
 public sealed record CloudNotepad(
     string Id, string Title, string Brief, IReadOnlyList<string> Tags, string Status,
     string Content, string Type, IReadOnlyList<string> Words, bool HasContent=true)
@@ -116,8 +116,100 @@ public sealed partial class MaiMemoClient : IDisposable
     {
         using var accountScope=BeginAccountOperation();
         var data = await SendAsync(HttpMethod.Get, "phrases?voc_id=" + Uri.EscapeDataString(vocId), null, cancellationToken);
-        return Array(data, "phrases").Select(item => new MemoPhrase(Text(item, "id"), Text(item, "phrase"),
-            Text(item, "interpretation"), Text(item, "origin"), Text(item, "status"))).Where(item => item.Status != "DELETED").ToList();
+        return Array(data, "phrases").Select(item => new MemoPhrase(
+                Text(item, "id"),
+                Text(item, "phrase"),
+                Text(item, "interpretation"),
+                Text(item, "origin"),
+                Text(item, "status"),
+                Strings(item, "tags")))
+            .Where(item => item.Status != "DELETED" && item.Text.Length > 0)
+            .ToList();
+    }
+
+    public async Task<MemoPhrase> SavePhraseAsync(
+        string vocId,
+        string? phraseId,
+        string phrase,
+        string interpretation,
+        IReadOnlyList<string>? tags,
+        string origin,
+        CancellationToken cancellationToken = default)
+    {
+        using var accountScope = BeginAccountOperation();
+        phrase = (phrase ?? "").Trim();
+        interpretation = (interpretation ?? "").Trim();
+        origin = string.IsNullOrWhiteSpace(origin) ? "墨墨搜词" : origin.Trim();
+        if (origin.Length > 100) origin = origin[..100];
+        phraseId = string.IsNullOrWhiteSpace(phraseId) ? null : phraseId.Trim();
+        if (phrase.Length is < 1 or > 2000 || interpretation.Length > 2000 || string.IsNullOrWhiteSpace(vocId))
+            throw new ArgumentException("请填写有效的英文例句内容（1–2000 个字符）。");
+        var cleanTags = (tags ?? System.Array.Empty<string>())
+            .Select(tag => (tag ?? "").Trim())
+            .Where(tag => tag.Length > 0)
+            .Select(tag => tag.Length > 30 ? tag[..30] : tag)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(10)
+            .ToArray();
+        await _writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            object body = phraseId == null
+                ? new { phrase = new { voc_id = vocId, phrase, interpretation, tags = cleanTags, origin } }
+                : new { phrase = new { phrase, interpretation, tags = cleanTags, origin } };
+            var path = phraseId == null ? "phrases" : "phrases/" + Uri.EscapeDataString(phraseId);
+            var data = await SendAsync(HttpMethod.Post, path, body, cancellationToken);
+            if (!data.TryGetProperty("phrase", out var saved) || Text(saved, "id").Length == 0 || (phraseId != null && Text(saved, "id") != phraseId))
+                throw new MaiMemoException("暂时无法确认例句是否同步成功，请重新查词查看。");
+            if (Text(saved, "status") == "DELETED")
+                throw new MaiMemoException("这条云端例句已删除，请重新查词后操作。");
+            var returnedTags = Strings(saved, "tags");
+            return new MemoPhrase(
+                Text(saved, "id"),
+                Text(saved, "phrase", phrase),
+                Text(saved, "interpretation", interpretation),
+                Text(saved, "origin", origin),
+                Text(saved, "status", "PUBLISHED"),
+                returnedTags.Count > 0 || cleanTags.Length == 0 ? returnedTags : cleanTags);
+        }
+        finally { _writeGate.Release(); }
+    }
+
+    public async Task DeletePhraseAsync(string phraseId, string? vocId = null, CancellationToken cancellationToken = default)
+    {
+        using var accountScope = BeginAccountOperation();
+        phraseId = (phraseId ?? "").Trim();
+        if (phraseId.Length == 0) throw new ArgumentException("无效云端例句 ID。", nameof(phraseId));
+        await _writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            var path = "phrases/" + Uri.EscapeDataString(phraseId);
+            JsonElement data = default;
+            try { data = await SendAsync(HttpMethod.Delete, path, null, cancellationToken); }
+            catch (MaiMemoException error) when (error.StatusCode == HttpStatusCode.NotFound) { return; }
+            catch (MaiMemoException error) when (error.StatusCode == null)
+            {
+                // Verify via list if possible; never auto-retry DELETE.
+            }
+            if (data.ValueKind == JsonValueKind.Object
+                && data.TryGetProperty("phrase", out var deleted)
+                && Text(deleted, "id") == phraseId
+                && Text(deleted, "status") == "DELETED")
+            {
+                return;
+            }
+            if (!string.IsNullOrWhiteSpace(vocId))
+            {
+                try
+                {
+                    var latest = await GetPhrasesAsync(vocId, cancellationToken);
+                    if (!latest.Any(item => item.Id == phraseId)) return;
+                }
+                catch (MaiMemoException) { }
+            }
+            throw new MaiMemoException("云端例句删除结果暂未确认，请重新查词检查后再操作。");
+        }
+        finally { _writeGate.Release(); }
     }
 
     public async Task<IReadOnlyList<CloudNotepad>> ListNotepadsAsync(CancellationToken cancellationToken = default)
@@ -391,29 +483,35 @@ public sealed partial class MaiMemoClient : IDisposable
         catch (AccountChangedException){throw;}
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            var targetName = relativePath.StartsWith("phrases", StringComparison.Ordinal) ? "例句"
+                : relativePath.StartsWith("notes", StringComparison.Ordinal) ? "助记" : "云词本";
             if(studyWrite)throw new StudyAddUncertainException("添加请求超时，结果尚未确认，请核对今日新学。");
             if(studyRequest)throw new MaiMemoException("读取学习数据超时，请确认墨墨 App 已开启自动同步后重试。");
-            if(method==HttpMethod.Delete)throw new MaiMemoException("请求超时，删除结果尚未确认。请重新加载云词本检查后再操作。");
+            if(method==HttpMethod.Delete)throw new MaiMemoException($"请求超时，删除结果尚未确认。请刷新{targetName}检查后再操作。");
             throw new MaiMemoException(method == HttpMethod.Post
-                ? "请求超时，保存结果尚未确认。请刷新云词本检查后再操作。"
+                ? $"请求超时，保存结果尚未确认。请刷新{targetName}检查后再操作。"
                 : "连接墨墨超时，请检查网络后重试。");
         }
         catch (HttpRequestException)
         {
+            var targetName = relativePath.StartsWith("phrases", StringComparison.Ordinal) ? "例句"
+                : relativePath.StartsWith("notes", StringComparison.Ordinal) ? "助记" : "云词本";
             if(studyWrite)throw new StudyAddUncertainException("添加时连接中断，结果尚未确认，请核对今日新学。");
             if(studyRequest)throw new MaiMemoException("暂时无法读取学习数据，请检查网络及墨墨 App 的自动同步。");
-            if(method==HttpMethod.Delete)throw new MaiMemoException("连接中断，删除结果尚未确认。请重新加载云词本检查后再操作。");
+            if(method==HttpMethod.Delete)throw new MaiMemoException($"连接中断，删除结果尚未确认。请刷新{targetName}检查后再操作。");
             throw new MaiMemoException(method == HttpMethod.Post
-                ? "网络连接中断，保存结果尚未确认。请刷新云词本检查后再操作。"
+                ? $"网络连接中断，保存结果尚未确认。请刷新{targetName}检查后再操作。"
                 : "暂时无法连接墨墨，请检查网络后重试。");
         }
         catch (JsonException)
         {
+            var targetName = relativePath.StartsWith("phrases", StringComparison.Ordinal) ? "例句"
+                : relativePath.StartsWith("notes", StringComparison.Ordinal) ? "助记" : "云词本";
             if(studyWrite)throw new StudyAddUncertainException("添加结果无法读取，请核对今日新学。");
             if(studyRequest)throw new MaiMemoException("墨墨的学习数据格式有变化，请稍后重试。");
-            if(method==HttpMethod.Delete)throw new MaiMemoException("删除结果无法读取，请重新加载云词本确认。");
+            if(method==HttpMethod.Delete)throw new MaiMemoException($"删除结果无法读取，请刷新{targetName}确认。");
             throw new MaiMemoException(method == HttpMethod.Post
-                ? "墨墨的保存结果无法读取。请先刷新云词本确认结果，再决定是否重试。"
+                ? $"墨墨的保存结果无法读取。请先刷新{targetName}确认结果，再决定是否重试。"
                 : "墨墨返回的数据格式有变化，请稍后重试。");
         }
         finally { _requestGate.Release(); }
@@ -423,9 +521,9 @@ public sealed partial class MaiMemoClient : IDisposable
     {
         HttpStatusCode.Unauthorized => new("墨墨登录已失效，请在设置中重新登录。", status),
         HttpStatusCode.Forbidden => new("当前账号没有此接口的访问权限，请检查墨墨开放 API 的授权。", status),
-        HttpStatusCode.NotFound => new("墨墨中未找到此单词或云词本。", status),
+        HttpStatusCode.NotFound => new("墨墨中未找到对应单词、例句或云词本。", status),
         HttpStatusCode.TooManyRequests => new("请求过于频繁，请稍等一分钟后重试。", status),
-        HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => new("墨墨未接受此次操作，请检查单词或云词本内容后重试。", status),
+        HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => new("墨墨未接受此次操作，请检查填写内容后重试。", status),
         _ when (int)status >= 500 => new("墨墨服务暂时不可用，请稍后重试。", status),
         _ => new("墨墨请求失败，请刷新后重试。", status)
     };

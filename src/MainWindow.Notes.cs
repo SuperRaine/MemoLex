@@ -513,31 +513,72 @@ public partial class MainWindow
         var studyStarted=false;var studyTask=Task.CompletedTask;
         try
         {
-            Vocabulary? voc;IReadOnlyList<MemoNote> notes;
-            if(_cloudCache.TryGetValue(cacheKey,out var cached)&&DateTime.UtcNow-cached.Time<TimeSpan.FromMinutes(5)){voc=cached.Voc;notes=cached.Notes;}
-            else
+            Vocabulary? voc; IReadOnlyList<MemoNote> notes; IReadOnlyList<MemoPhrase> phrases = []; var phrasesLoaded = false;
+            var hitCache = _cloudCache.TryGetValue(cacheKey, out var cached) && DateTime.UtcNow - cached.Time < TimeSpan.FromMinutes(5);
+            if (hitCache)
             {
-                voc=await _api.ResolveWordAsync(word,token);token.ThrowIfCancellationRequested();
-                if(!Current())return;
-                _vocabulary=voc;studyTask=LoadTodayStudyStatusAsync(word,voc);studyStarted=true;
-                notes=voc==null?[]:await _api.GetNotesAsync(voc.Id,token);
-                token.ThrowIfCancellationRequested();if(!Current())return;_cloudCache[cacheKey]=(DateTime.UtcNow,voc,notes);
-            }
-            if(!Current())return;
-            _vocabulary=voc;if(!studyStarted){studyTask=LoadTodayStudyStatusAsync(word,voc);studyStarted=true;}SetAccountStatus("已连接");
-            var usable=notes.Where(note=>!string.IsNullOrWhiteSpace(note.Text)).Select(note=>new StoredMnemonic("cloud:"+note.Id,note.NoteType,note.Text,note.Id,"cloud",accountKey)).ToArray();
-            if(usable.Length>0)
-            {
-                RenderNotes(word,usable,true);NotesHintText.Text=$"云端助记 · {usable.Length} 条";
-                try{if(accountKey!=null)_mnemonics.SaveCloud(word,usable,accountKey);}
-                catch(Exception error)when(error is System.IO.IOException or UnauthorizedAccessException){NotesHintText.Text+=" · 未能保存到本机";}
+                voc = cached.Voc;
+                notes = cached.Notes;
+                phrases = cached.Phrases;
+                phrasesLoaded = cached.PhrasesLoaded;
             }
             else
             {
-                if(accountKey!=null)_mnemonics.SaveCloud(word,[],accountKey);
-                RenderNotes(word,_mnemonics.Get(word,accountKey));NotesHintText.Text=LocalNotesHint();
+                voc = await _api.ResolveWordAsync(word, token); token.ThrowIfCancellationRequested();
+                if (!Current()) return;
+                _vocabulary = voc; studyTask = LoadTodayStudyStatusAsync(word, voc); studyStarted = true;
+                notes = voc == null ? [] : await _api.GetNotesAsync(voc.Id, token);
+                token.ThrowIfCancellationRequested(); if (!Current()) return;
+                _cloudCache[cacheKey] = (DateTime.UtcNow, voc, notes, [], voc == null);
+                phrasesLoaded = voc == null;
             }
-            StatusText.Text="查词完成";
+            if (!Current()) return;
+            _vocabulary = voc; if (!studyStarted) { studyTask = LoadTodayStudyStatusAsync(word, voc); studyStarted = true; }
+            SetAccountStatus("已连接");
+            var usable = notes.Where(note => !string.IsNullOrWhiteSpace(note.Text)).Select(note => new StoredMnemonic("cloud:" + note.Id, note.NoteType, note.Text, note.Id, "cloud", accountKey)).ToArray();
+            if (usable.Length > 0)
+            {
+                RenderNotes(word, usable, true); NotesHintText.Text = $"云端助记 · {usable.Length} 条";
+                try { if (accountKey != null) _mnemonics.SaveCloud(word, usable, accountKey); }
+                catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException) { NotesHintText.Text += " · 未能保存到本机"; }
+            }
+            else
+            {
+                if (accountKey != null) _mnemonics.SaveCloud(word, [], accountKey);
+                RenderNotes(word, _mnemonics.Get(word, accountKey)); NotesHintText.Text = LocalNotesHint();
+            }
+            StatusText.Text = "查词完成";
+
+            if (voc != null && accountKey != null)
+            {
+                if (!phrasesLoaded)
+                {
+                    try
+                    {
+                        phrases = await _api.GetPhrasesAsync(voc.Id, token);
+                        token.ThrowIfCancellationRequested();
+                        if (!Current()) return;
+                        phrasesLoaded = true;
+                        _cloudCache[cacheKey] = (DateTime.UtcNow, voc, notes, phrases, true);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception)
+                    {
+                        // Do not break notes display if phrase API permission or transient network fails.
+                    }
+                }
+                if (phrasesLoaded && Current())
+                {
+                    var cloudRecords = phrases
+                        .Select(p => new CloudPhraseRecord(p.Id, p.Text, p.Interpretation, p.Origin, p.Tags))
+                        .ToArray();
+                    _contextSentences.MergeCloud(word, cloudRecords, accountKey);
+                    RenderSavedContexts(word);
+                    RefreshExampleSaveButtons();
+                    UpdateContextCaptureBanner(word);
+                    UpdateContextReviewButtons();
+                }
+            }
         }
         catch(OperationCanceledException){ }
         catch(Exception error)

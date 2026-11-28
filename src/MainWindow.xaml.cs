@@ -20,7 +20,7 @@ public partial class MainWindow : Window
     private readonly TokenStore _tokens;
     private readonly MaiMemoClient _api;
     private readonly Preferences _preferences;
-    private readonly Dictionary<string, (DateTime Time, Vocabulary? Voc, IReadOnlyList<MemoNote> Notes)> _cloudCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (DateTime Time, Vocabulary? Voc, IReadOnlyList<MemoNote> Notes, IReadOnlyList<MemoPhrase> Phrases, bool PhrasesLoaded)> _cloudCache = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? _lookupCts;
     private bool _ready, _changingLists, _adding, _refreshing;
     private string _word = "";
@@ -436,7 +436,7 @@ public partial class MainWindow : Window
             MinWidth = 58, Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(5, 0, 0, 0)
         };
         speak.Click += async (_, _) => await SpeakExampleAsync(speak, sentence.English);
-        var alreadySavedSentence = _contextSentences.Contains(sourceWord, sentence.English);
+        var alreadySavedSentence = _contextSentences.Contains(sourceWord, sentence.English, MnemonicAccountKey);
         var saveSentenceBtn = new Button
         {
             Content = alreadySavedSentence ? "✓ 已收藏" : "收藏例句",
@@ -449,13 +449,13 @@ public partial class MainWindow : Window
         _exampleSaveButtons.Add((saveSentenceBtn, sourceWord, sentence.English));
         saveSentenceBtn.Click += (_, _) =>
         {
-            if (_contextSentences.Contains(sourceWord, sentence.English))
+            if (_contextSentences.Contains(sourceWord, sentence.English, MnemonicAccountKey))
             {
                 OpenContextSentenceReview(sourceWord);
                 return;
             }
             var srcLabel = string.IsNullOrWhiteSpace(sentence.Source) ? "真题例句" : sentence.Source;
-            _contextSentences.Save(sourceWord, sentence.English, sentence.Translation, srcLabel, sentence.MatchedWords.FirstOrDefault());
+            _contextSentences.Save(sourceWord, sentence.English, sentence.Translation, srcLabel, sentence.MatchedWords.FirstOrDefault(), MnemonicAccountKey);
             RefreshExampleSaveButtons();
             RenderSavedContexts(_word);
             UpdateContextReviewButtons();
@@ -946,7 +946,8 @@ public partial class MainWindow : Window
             w => _ = LoadWordAsync(w),
             contextSentences: _contextSentences,
             spellingMistakes: _spellingMistakes,
-            startContextReview: () => OpenContextSentenceReview());
+            startContextReview: () => OpenContextSentenceReview(),
+            accountKey: MnemonicAccountKey);
         dialog.ShowDialog();
         UpdateContextReviewButtons();
         if (ValidWord(_word)) RenderSavedContexts(_word);

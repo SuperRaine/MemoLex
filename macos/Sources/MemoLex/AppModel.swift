@@ -4,7 +4,7 @@ import Combine
 import Foundation
 import SwiftUI
 
-enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan, dashboard, contextReview, morphemePractice; var id: String { rawValue } }
+enum AppSheet: String, Identifiable { case settings, history, stubborn, mnemonic, notepad, todayPlan, dashboard, contextReview, contextEditor, morphemePractice; var id: String { rawValue } }
 struct PendingWordContext: Equatable {
     let word: String
     let matchedForm: String
@@ -42,6 +42,7 @@ enum EnglishAccent: String, CaseIterable {
     @Published var activeSpellingMistakes: [J] = []
     @Published var pendingContext: PendingWordContext? = nil
     @Published var contextReviewFocusWord: String? = nil
+    @Published var editingContextSentence: J? = nil
     @Published var morphemePracticeGroup: J? = nil
     @Published var recallMode = false
     @Published var recallProgress: Double = 0
@@ -294,6 +295,14 @@ enum EnglishAccent: String, CaseIterable {
                 notes = result.list
                 markAccountConnected(generation)
             }
+            guard currentCloudWord(query, version: version, generation: generation) else { return }
+            if let phraseResult = try? await core.request("contextSentences.cloud", ["word": .string(query)]),
+               currentCloudWord(query, version: version, generation: generation) {
+                let items = phraseResult["items"].list
+                if !items.isEmpty || phraseResult["items"] != .null {
+                    contextSentences = items
+                }
+            }
         }
     }
     private func currentCloudWord(_ query: String, version: Int, generation: Int) -> Bool {
@@ -408,7 +417,89 @@ enum EnglishAccent: String, CaseIterable {
     func removeContextSentence(id: String) async {
         _ = try? await core.request("contextSentences.remove", ["id": .string(id)])
         await refreshContextSentences()
-        status = "已移除例句"
+        status = "已删除例句。"
+    }
+
+    func openContextSentenceEditor(_ item: J? = nil) {
+        guard !word.trimmed.isEmpty else { return }
+        editingContextSentence = item
+        sheet = .contextEditor
+    }
+
+    func saveContextSentenceEdit(id: String?, sentence: String, translation: String, source: String, tags: [String], cloud: Bool, cloudID: String?) async throws {
+        let query = word.trimmed
+        guard !query.isEmpty else { return }
+        let generation = accountVersion
+        var params: [String: J] = [
+            "word": .string(query),
+            "sentence": .string(sentence),
+            "translation": .string(translation),
+            "source": .string(source),
+            "tags": J.strings(tags)
+        ]
+        if let id, !id.isEmpty { params["id"] = .string(id) }
+        if let cloudID, !cloudID.isEmpty { params["cloudId"] = .string(cloudID) }
+        if cloud {
+            do {
+                let result = try await core.request("contextSentences.publish", params)
+                if generation == accountVersion {
+                    let items = result["items"].list
+                    if !items.isEmpty || result["items"] != .null { contextSentences = items }
+                    else { await refreshContextSentences() }
+                }
+                status = "例句已同步到墨墨云端。"
+            } catch {
+                await refreshContextSentences()
+                throw error
+            }
+        } else {
+            let result = try await core.request("contextSentences.update", params)
+            let items = result["items"].list
+            if !items.isEmpty || result["items"] != .null { contextSentences = items }
+            else { await refreshContextSentences() }
+            status = (cloudID?.isEmpty == false) ? "例句已保存到本地（尚未同步到云端）。" : "例句已保存到本地。"
+        }
+    }
+
+    func deleteContextSentence(_ item: J, rethrowOnError: Bool = false) async throws -> Bool {
+        let id = item["id"].text
+        guard !id.isEmpty else { return false }
+        let cloudID = item["cloudId"].text
+        let hasCloudCopy = !cloudID.isEmpty
+        if hasCloudCopy {
+            guard confirm("删除云端例句", "这条例句已同步到墨墨云端。确认后将同时从本机和墨墨云端删除，手机端也会同步移除。", action: "确认删除") else {
+                return false
+            }
+            guard loggedIn else {
+                let msg = "当前未登录墨墨账号，无法删除云端例句。"
+                status = msg
+                if rethrowOnError { throw CoreFailure(code: "auth", message: msg) }
+                return false
+            }
+            let generation = accountVersion
+            do {
+                let result = try await core.request("contextSentences.deleteCloud", [
+                    "id": .string(id),
+                    "cloudId": .string(cloudID),
+                    "word": .string(item["word"].text.isEmpty ? word : item["word"].text)
+                ])
+                if generation == accountVersion {
+                    let items = result["items"].list
+                    if !items.isEmpty || result["items"] != .null { contextSentences = items }
+                    else { await refreshContextSentences() }
+                }
+                status = "已从本机和墨墨云端删除例句。"
+                return true
+            } catch {
+                let msg = "删除云端例句失败：\(error.localizedDescription)"
+                status = msg
+                if rethrowOnError { throw CoreFailure(code: "delete_cloud", message: msg) }
+                return false
+            }
+        } else {
+            await removeContextSentence(id: id)
+            return true
+        }
     }
 
     func recordContextReview(id: String) async {
@@ -591,11 +682,11 @@ enum EnglishAccent: String, CaseIterable {
             ),
             CacheCategoryInfo(
                 id: "contexts",
-                title: "收藏的例句",
-                description: "在翻译和真题例句中收藏的例句及自测次数。",
+                title: "我的例句（本机缓存）",
+                description: "本机保存与缓存的例句及自测次数，不影响墨墨云端例句。",
                 summary: contextCount > 0 ? "\(contextCount) 条例句 · \(formatCacheBytes(contextBytes))" : "暂无数据",
                 hasData: contextCount > 0,
-                confirmMessage: "将清空本机收藏的全部例句，例句自测列表将变为空。"
+                confirmMessage: "仅清空本机保存与缓存的例句，不影响已同步到墨墨云端的例句。"
             ),
             CacheCategoryInfo(
                 id: "spelling",
@@ -731,10 +822,16 @@ enum EnglishAccent: String, CaseIterable {
         playSpeech(text, accent: .american, exampleIndex: index)
     }
 
-    private func playSpeech(_ text: String, accent: EnglishAccent, exampleIndex: Int? = nil, requireWordPage: Bool = true) {
+    func speakSentence(_ text: String) {
+        let trimmed = text.trimmed
+        guard !trimmed.isEmpty else { return }
+        playSpeech(trimmed, accent: .american, isSentenceOverride: true)
+    }
+
+    private func playSpeech(_ text: String, accent: EnglishAccent, exampleIndex: Int? = nil, requireWordPage: Bool = true, isSentenceOverride: Bool = false) {
         stopPronunciation()
         loadingExampleIndex = exampleIndex
-        let isSentence = exampleIndex != nil
+        let isSentence = isSentenceOverride || exampleIndex != nil
         let version = wordVersion
         let label = isSentence ? "例句" : accent.label
         let method = isSentence ? "examples.pronunciation" : "pronunciation"
@@ -871,6 +968,7 @@ enum EnglishAccent: String, CaseIterable {
             try await core.setAccount(token: credential)
             guard generation == accountVersion else { return }
             loggedIn = true
+            Task { await refreshContextSentences() }
             let query = word
             if !query.isEmpty {
                 Task {
@@ -1024,6 +1122,7 @@ enum EnglishAccent: String, CaseIterable {
     private func clearWorkerAccount(_ generation: Int) async {
         guard generation == accountVersion else { return }
         try? await core.setAccount(token: nil)
+        await refreshContextSentences()
         let query = word
         guard !query.isEmpty, let value = try? await core.request("notes.local", ["word": .string(query)]),
               generation == accountVersion, query == word else { return }

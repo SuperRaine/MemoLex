@@ -184,7 +184,7 @@ struct NativeShortcut: Codable, Equatable {
 enum AppPaths {
     static let profile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MemoLex", isDirectory: true)
     static var resources: URL { Bundle.main.resourceURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath) }
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.4.4" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.5.0" }
     static let repository = "https://github.com/SuperRaine/MemoLex"
     static let homepage = "https://memolex.de5.net/"
     static let quarkDownload = homepage + "quark.html"

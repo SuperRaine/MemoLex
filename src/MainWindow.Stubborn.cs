@@ -213,7 +213,8 @@ public partial class MainWindow
                 mnemonicStore:_mnemonics,
                 preferences:_preferences,
                 spellingMistakes:_spellingMistakes,
-                contextSentences:_contextSentences);
+                contextSentences:_contextSentences,
+                accountKey:MnemonicAccountKey);
             practice.ShowDialog();
         };
         sort.SelectionChanged+=(_,_)=>

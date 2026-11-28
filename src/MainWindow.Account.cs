@@ -114,7 +114,7 @@ public partial class MainWindow
         _notepadCache.Clear();_notepadLoads.Clear();_deletedNotepads.Clear();_pendingNotepadWords.Clear();++_membershipVersion;
         _membershipWord=_membershipPad="";_refreshing=false;
         _changingLists=true;NotepadCombo.ItemsSource=Array.Empty<CloudNotepad>();_changingLists=false;
-        SetAccountStatus(_tokens.HasToken?"连接中":InactiveAccountStatus);UpdateTodayStudyButton();
+        SetAccountStatus(_tokens.HasToken?"连接中":InactiveAccountStatus);UpdateTodayStudyButton();UpdateContextReviewButtons();
         var view=CaptureView();
         if(view.Target==ViewTarget.Translation){await RefreshNotepadsAsync();RestoreTranslationView(view);}
         else if(view.Target==ViewTarget.ChineseSearch&&view.Chinese is {} chinese)await Task.WhenAll(RefreshNotepadsAsync(),SearchChineseAsync(chinese.Query,false,false,chinese));

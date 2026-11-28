@@ -15,7 +15,8 @@ internal static class LearningDashboardDialog
         Action<string> lookupWord,
         ContextSentenceStore? contextSentences = null,
         SpellingMistakeStore? spellingMistakes = null,
-        Action? startContextReview = null)
+        Action? startContextReview = null,
+        string? accountKey = null)
     {
         var dialog = InputDialog.Shell(owner, "学习统计看板", out var body);
         dialog.Width = 660;
@@ -186,7 +187,7 @@ internal static class LearningDashboardDialog
         // Saved context sentences & active spelling mistakes card
         if (contextSentences != null || spellingMistakes != null)
         {
-            var savedSentences = contextSentences?.List() ?? [];
+            var savedSentences = contextSentences?.List(null, accountKey) ?? [];
             var activeMistakes = spellingMistakes?.ListActive() ?? [];
             var practiceCard = new Border
             {

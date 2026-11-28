@@ -106,6 +106,7 @@ internal sealed class CoreService : IDisposable
     private readonly OnlineDictionaryClient _onlineDictionary;
     private readonly Lazy<Task> _ready;
     private readonly object _accountGate = new();
+    private readonly ConcurrentDictionary<string, (DateTime Time, Vocabulary? Voc)> _vocCache = new(StringComparer.OrdinalIgnoreCase);
 
     internal CoreService(string resources, string profile)
     {
@@ -128,6 +129,7 @@ internal sealed class CoreService : IDisposable
             {
                 _tokens.Set(string.IsNullOrWhiteSpace(T(p, "token")) ? null : T(p, "token"));
                 _api.ExpectedCredentialKey = _tokens.CredentialKey;
+                _vocCache.Clear();
                 return new { authenticated = _tokens.HasToken, accountKey = _tokens.CredentialKey };
             }
         }
@@ -159,7 +161,10 @@ internal sealed class CoreService : IDisposable
             return new { audio = await _pronunciation.DownloadAsync(T(p, "word"), accent, cancellation) };
         }
         await _ready.Value.WaitAsync(cancellation);
-        var authenticated = method.StartsWith("notepads.", StringComparison.Ordinal) || method.StartsWith("study.", StringComparison.Ordinal) || method is "notes.cloud" or "notes.publish" or "stubborn";
+        var authenticated = method.StartsWith("notepads.", StringComparison.Ordinal)
+            || method.StartsWith("study.", StringComparison.Ordinal)
+            || method is "notes.cloud" or "notes.publish" or "stubborn"
+                or "contextSentences.cloud" or "contextSentences.publish" or "contextSentences.deleteCloud";
         var accountKey = _tokens.CredentialKey;
         using var scope = authenticated ? _api.BindNativeAccount(T(p, "accountKey")) : null;
         var word = T(p, "word").Trim();
@@ -193,14 +198,14 @@ internal sealed class CoreService : IDisposable
                     Number(p, "limit", 6, 2, 8));
             }
             case "contextSentences.list":
-                return _contextSentences.List(Null(T(p, "word")));
+                return _contextSentences.List(Null(T(p, "word")), _tokens.CredentialKey);
             case "contextSentences.extract":
             {
                 var paragraph = T(p, "paragraph");
                 var matchedForm = Null(T(p, "matchedForm"));
                 var extracted = ContextSentenceHelper.ExtractSentenceForWord(paragraph, word, matchedForm);
                 var trans = ContextSentenceHelper.ExtractTranslationHint(paragraph, T(p, "translation"), extracted);
-                return new { sentence = extracted, translation = trans, saved = _contextSentences.Contains(word, extracted) };
+                return new { sentence = extracted, translation = trans, saved = _contextSentences.Contains(word, extracted, _tokens.CredentialKey) };
             }
             case "contextSentences.save":
             {
@@ -212,7 +217,103 @@ internal sealed class CoreService : IDisposable
                 var translation = T(p, "translation");
                 if (!string.IsNullOrWhiteSpace(paragraph) && !string.IsNullOrWhiteSpace(translation))
                     translation = ContextSentenceHelper.ExtractTranslationHint(paragraph, translation, sentence);
-                return _contextSentences.Save(word, sentence, translation, T(p, "source", "查词保存"), matchedForm);
+                return _contextSentences.Save(word, sentence, translation, T(p, "source", "查词保存"), matchedForm, _tokens.CredentialKey, ReadTags(p));
+            }
+            case "contextSentences.update":
+            {
+                var id = Null(T(p, "id"));
+                var existing = id != null ? _contextSentences.FindById(id) : null;
+                var cloudId = existing != null && existing.AccountKey == _tokens.CredentialKey ? existing.CloudId : null;
+                var savedItem = _contextSentences.SaveEdit(
+                    id,
+                    word,
+                    T(p, "sentence"),
+                    T(p, "translation"),
+                    T(p, "source", "自建例句"),
+                    ReadTags(p),
+                    cloudId: cloudId,
+                    origin: "local",
+                    accountKey: cloudId != null ? _tokens.CredentialKey : null);
+                return new { item = savedItem, items = _contextSentences.List(null, _tokens.CredentialKey) };
+            }
+            case "contextSentences.cloud":
+            {
+                var phraseVoc = await ResolveCachedWordAsync(word, accountKey!, cancellation);
+                if (phraseVoc == null)
+                    return new { items = _contextSentences.List(null, accountKey), wordItems = _contextSentences.List(word, accountKey) };
+                var cloudPhrases = await _api.GetPhrasesAsync(phraseVoc.Id, cancellation);
+                lock (_accountGate)
+                {
+                    _api.CheckNativeAccount(accountKey!);
+                    var records = cloudPhrases
+                        .Select(item => new CloudPhraseRecord(item.Id, item.Text, item.Interpretation, item.Origin, item.Tags))
+                        .ToArray();
+                    var wordItems = _contextSentences.MergeCloud(word, records, accountKey!);
+                    return new { items = _contextSentences.List(null, accountKey), wordItems };
+                }
+            }
+            case "contextSentences.publish":
+            {
+                var id = Null(T(p, "id"));
+                var sentence = T(p, "sentence");
+                var translation = T(p, "translation");
+                var source = T(p, "source", "自建例句");
+                var tags = ReadTags(p);
+                var existing = id != null ? _contextSentences.FindById(id) : null;
+                var existingCloudId = Null(T(p, "cloudId")) ?? (existing != null && existing.AccountKey == accountKey ? existing.CloudId : null);
+                var localSaved = _contextSentences.SaveEdit(
+                    id,
+                    word,
+                    sentence,
+                    translation,
+                    source,
+                    tags,
+                    cloudId: existingCloudId,
+                    origin: "local",
+                    accountKey: existingCloudId != null ? accountKey : null);
+                try
+                {
+                    var publishVoc = await RequireWord(word, cancellation);
+                    var synced = await _api.SavePhraseAsync(publishVoc.Id, existingCloudId, localSaved.Sentence, localSaved.Translation, localSaved.Tags, localSaved.Source, cancellation);
+                    lock (_accountGate)
+                    {
+                        _api.CheckNativeAccount(accountKey!);
+                        var finalItem = _contextSentences.SaveEdit(
+                            localSaved.Id,
+                            word,
+                            synced.Text,
+                            synced.Interpretation,
+                            synced.Origin,
+                            synced.Tags,
+                            cloudId: synced.Id,
+                            origin: "cloud",
+                            accountKey: accountKey);
+                        return new { item = finalItem, items = _contextSentences.List(null, accountKey) };
+                    }
+                }
+                catch (MaiMemoException error)
+                {
+                    throw new MaiMemoException("已保存到本地，未能同步到墨墨：" + error.Message, error.StatusCode);
+                }
+            }
+            case "contextSentences.deleteCloud":
+            {
+                var id = T(p, "id");
+                var existing = _contextSentences.FindById(id);
+                var cloudId = Null(T(p, "cloudId")) ?? existing?.CloudId;
+                if (string.IsNullOrWhiteSpace(cloudId))
+                {
+                    var removedLocal = _contextSentences.Remove(id);
+                    return new { removed = removedLocal, items = _contextSentences.List(null, accountKey) };
+                }
+                var deleteVoc = string.IsNullOrWhiteSpace(word) ? null : await ResolveCachedWordAsync(word, accountKey!, cancellation);
+                await _api.DeletePhraseAsync(cloudId, deleteVoc?.Id, cancellation);
+                lock (_accountGate)
+                {
+                    _api.CheckNativeAccount(accountKey!);
+                    _contextSentences.Remove(id);
+                    return new { removed = true, items = _contextSentences.List(null, accountKey) };
+                }
             }
             case "contextSentences.remove":
                 return new { removed = _contextSentences.Remove(T(p, "id")) };
@@ -234,7 +335,7 @@ internal sealed class CoreService : IDisposable
             case "cache.stats":
                 return new
                 {
-                    contextCount = _contextSentences.Count,
+                    contextCount = _contextSentences.CountForAccount(_tokens.CredentialKey),
                     contextBytes = _contextSentences.FileSizeBytes,
                     spellingCount = _spellingMistakes.ActiveCount,
                     spellingBytes = _spellingMistakes.FileSizeBytes,
@@ -242,6 +343,7 @@ internal sealed class CoreService : IDisposable
                     memoryBytes = _pronunciation.CachedBytes
                 };
             case "cache.clear":
+                _vocCache.Clear();
                 return new
                 {
                     cleared = _examples.ClearCache() + _onlineDictionary.ClearCache() + _translation.ClearCache() + _pronunciation.ClearCache()
@@ -351,7 +453,34 @@ internal sealed class CoreService : IDisposable
             };
         }).ToArray();
 
-    private async Task<Vocabulary> RequireWord(string word, CancellationToken cancellation) => await _api.ResolveWordAsync(word, cancellation) ?? throw new MaiMemoException("墨墨暂未收录这个单词。");
+    private async Task<Vocabulary?> ResolveCachedWordAsync(string word, string accountKey, CancellationToken cancellation)
+    {
+        var key = accountKey + ":" + word.Trim().ToLowerInvariant();
+        if (_vocCache.TryGetValue(key, out var cached) && DateTime.UtcNow - cached.Time < TimeSpan.FromMinutes(5))
+            return cached.Voc;
+        var voc = await _api.ResolveWordAsync(word, cancellation);
+        _vocCache[key] = (DateTime.UtcNow, voc);
+        return voc;
+    }
+
+    private async Task<Vocabulary> RequireWord(string word, CancellationToken cancellation)
+    {
+        var accountKey = _tokens.CredentialKey;
+        var voc = !string.IsNullOrWhiteSpace(accountKey)
+            ? await ResolveCachedWordAsync(word, accountKey, cancellation)
+            : await _api.ResolveWordAsync(word, cancellation);
+        return voc ?? throw new MaiMemoException("墨墨暂未收录这个单词。");
+    }
+
+    private static IReadOnlyList<string> ReadTags(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Object || !value.TryGetProperty("tags", out var field)) return [];
+        if (field.ValueKind == JsonValueKind.Array)
+            return field.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+        if (field.ValueKind == JsonValueKind.String)
+            return ContextSentenceHelper.ParseTags(field.GetString());
+        return [];
+    }
     private static string T(JsonElement value, string name, string fallback = "") => Program.Text(value, name, fallback);
     private static string? Null(string value) => value.Length == 0 ? null : value;
     private static int Number(JsonElement value, string name, int fallback, int minimum, int maximum) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var field) && field.TryGetInt32(out var number) ? Math.Clamp(number, minimum, maximum) : fallback;

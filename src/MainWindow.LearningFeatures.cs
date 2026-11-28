@@ -20,9 +20,10 @@ public partial class MainWindow
 
     private void RefreshExampleSaveButtons()
     {
+        var accountKey = MnemonicAccountKey;
         foreach (var (button, word, sentence) in _exampleSaveButtons)
         {
-            var saved = _contextSentences.Contains(word, sentence);
+            var saved = _contextSentences.Contains(word, sentence, accountKey);
             button.Content = saved ? "✓ 已收藏" : "收藏例句";
         }
     }
@@ -146,7 +147,7 @@ public partial class MainWindow
         {
             ContextCaptureSourceText.Text = $"来自「{ctx.Source}」";
             ContextCaptureSentenceText.Text = ctx.Sentence;
-            var alreadySaved = _contextSentences.Contains(ctx.Word, ctx.Sentence);
+            var alreadySaved = _contextSentences.Contains(ctx.Word, ctx.Sentence, MnemonicAccountKey);
             SavePendingContextButton.Content = alreadySaved ? "✓ 已收藏 · 去自测" : "＋ 收藏例句";
             ContextCaptureBanner.Visibility = Visibility.Visible;
         }
@@ -159,12 +160,12 @@ public partial class MainWindow
     private void SavePendingContextButton_Click(object sender, RoutedEventArgs e)
     {
         if (_pendingContext is not { } ctx) return;
-        if (_contextSentences.Contains(ctx.Word, ctx.Sentence))
+        if (_contextSentences.Contains(ctx.Word, ctx.Sentence, MnemonicAccountKey))
         {
             OpenContextSentenceReview(ctx.Word);
             return;
         }
-        _contextSentences.Save(ctx.Word, ctx.Sentence, ctx.Translation, ctx.Source, ctx.MatchedForm);
+        _contextSentences.Save(ctx.Word, ctx.Sentence, ctx.Translation, ctx.Source, ctx.MatchedForm, MnemonicAccountKey);
         SavePendingContextButton.Content = "✓ 已收藏 · 去自测";
         RenderSavedContexts(_word);
         RefreshExampleSaveButtons();
@@ -174,9 +175,12 @@ public partial class MainWindow
 
     private void UpdateSavedContextVisibility(string word)
     {
-        var hasItems = !_recallModeActive && ValidWord(word) && _contextSentences.List(word).Count > 0;
+        var valid = !_recallModeActive && ValidWord(word);
+        var hasItems = valid && _contextSentences.List(word, MnemonicAccountKey).Count > 0;
         if (SavedContextDivider != null) SavedContextDivider.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
         if (SavedContextSection != null) SavedContextSection.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
+        if (EmptyAddContextButton != null) EmptyAddContextButton.Visibility = valid && !hasItems ? Visibility.Visible : Visibility.Collapsed;
+        if (AddContextSentenceButton != null) AddContextSentenceButton.IsEnabled = valid;
     }
 
     private void RenderSavedContexts(string word)
@@ -188,14 +192,19 @@ public partial class MainWindow
             UpdateSavedContextVisibility("");
             return;
         }
-        var items = _contextSentences.List(word);
+        var accountKey = MnemonicAccountKey;
+        var items = _contextSentences.List(word, accountKey);
         if (items.Count == 0)
         {
             UpdateSavedContextVisibility(word);
             return;
         }
 
-        SavedContextHintText.Text = $"本词 {items.Count} 条 · 共 {_contextSentences.Count} 条";
+        var cloudCount = items.Count(item => item.IsCloud);
+        var totalCount = _contextSentences.CountForAccount(accountKey);
+        SavedContextHintText.Text = cloudCount > 0
+            ? $"本词 {items.Count} 条（云端 {cloudCount}）· 共 {totalCount} 条"
+            : $"本词 {items.Count} 条 · 共 {totalCount} 条";
         var pillStyle = TryFindResource("PillButton") as Style;
         foreach (var item in items)
         {
@@ -217,29 +226,72 @@ public partial class MainWindow
             if (pillStyle != null) speakBtn.Style = pillStyle;
             speakBtn.Click += async (_, _) => await SpeakExampleAsync(speakBtn, captured.Sentence);
 
-            var removeBtn = new Button
+            var editBtn = new Button
             {
-                Content = "移除",
+                Content = "编辑",
                 FontSize = 11,
                 Padding = new Thickness(8, 3, 8, 3),
                 Margin = new Thickness(6, 0, 0, 0),
                 Background = System.Windows.Media.Brushes.Transparent,
                 BorderThickness = new Thickness(0),
-                ToolTip = "移除这条收藏例句"
+                ToolTip = "编辑例句内容、译文或同步到墨墨云端"
+            };
+            editBtn.SetResourceReference(Control.ForegroundProperty, "AccentDeepBrush");
+            editBtn.Click += (_, _) => OpenContextSentenceEditor(captured);
+
+            var removeBtn = new Button
+            {
+                Content = "删除",
+                FontSize = 11,
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(2, 0, 0, 0),
+                Background = System.Windows.Media.Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                ToolTip = captured.IsCloud ? "删除这条云端例句（同步移除云端与本机）" : "删除这条本地例句"
             };
             removeBtn.SetResourceReference(Control.ForegroundProperty, "MutedBrush");
-            removeBtn.Click += (_, _) =>
+            removeBtn.Click += async (_, _) =>
             {
-                _contextSentences.Remove(captured.Id);
-                RenderSavedContexts(_word);
-                RefreshExampleSaveButtons();
-                UpdateContextCaptureBanner(_word);
-                UpdateContextReviewButtons();
-                StatusText.Text = "已移除例句";
+                removeBtn.IsEnabled = false;
+                try { await DeleteContextSentenceAsync(captured, rethrowOnError: false); }
+                finally { removeBtn.IsEnabled = true; }
             };
+
             actions.Children.Add(speakBtn);
+            actions.Children.Add(editBtn);
             actions.Children.Add(removeBtn);
             head.Children.Add(actions);
+
+            var badges = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
+            var originLabel = captured.IsCloud ? "云端例句" : captured.HasUnsyncedCloudEdit ? "待同步" : "本地例句";
+            var originBadge = new Border
+            {
+                CornerRadius = new CornerRadius(9),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(7, 2, 7, 2),
+                Margin = new Thickness(0, 0, 6, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock { Text = originLabel, FontSize = 10.5, FontWeight = FontWeights.SemiBold }
+            };
+            if (captured.IsCloud)
+            {
+                originBadge.SetResourceReference(Border.BackgroundProperty, "SelectedBgBrush");
+                originBadge.SetResourceReference(Border.BorderBrushProperty, "PillBorderBrush");
+                ((TextBlock)originBadge.Child).SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
+            }
+            else if (captured.HasUnsyncedCloudEdit)
+            {
+                originBadge.SetResourceReference(Border.BackgroundProperty, "WarnBgBrush");
+                originBadge.SetResourceReference(Border.BorderBrushProperty, "WarnBorderBrush");
+                ((TextBlock)originBadge.Child).SetResourceReference(TextBlock.ForegroundProperty, "WarnFgBrush");
+            }
+            else
+            {
+                originBadge.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+                originBadge.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+                ((TextBlock)originBadge.Child).SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            }
+            badges.Children.Add(originBadge);
 
             var meta = captured.ReviewCount > 0
                 ? $"{captured.Source} · 已自测 {captured.ReviewCount} 次"
@@ -249,6 +301,7 @@ public partial class MainWindow
                 CornerRadius = new CornerRadius(9),
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(8, 2, 8, 2),
+                Margin = new Thickness(0, 0, 5, 2),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Center,
                 Child = new TextBlock
@@ -261,7 +314,29 @@ public partial class MainWindow
             badge.SetResourceReference(Border.BackgroundProperty, "PillBgBrush");
             badge.SetResourceReference(Border.BorderBrushProperty, "PillBorderBrush");
             ((TextBlock)badge.Child).SetResourceReference(TextBlock.ForegroundProperty, "AccentDeepBrush");
-            head.Children.Add(badge);
+            badges.Children.Add(badge);
+
+            if (captured.Tags is { Count: > 0 })
+            {
+                foreach (var tag in captured.Tags.Take(4))
+                {
+                    var tagBadge = new Border
+                    {
+                        CornerRadius = new CornerRadius(8),
+                        BorderThickness = new Thickness(1),
+                        Padding = new Thickness(6, 1.5, 6, 1.5),
+                        Margin = new Thickness(0, 0, 4, 2),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Child = new TextBlock { Text = tag, FontSize = 10.5 }
+                    };
+                    tagBadge.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+                    tagBadge.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+                    ((TextBlock)tagBadge.Child).SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+                    badges.Children.Add(tagBadge);
+                }
+            }
+
+            head.Children.Add(badges);
             card.Children.Add(head);
 
             var matchSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ExampleText.NormalizeLookup(word) };
@@ -298,9 +373,148 @@ public partial class MainWindow
         UpdateSavedContextVisibility(word);
     }
 
+    private void AddContextSentenceButton_Click(object sender, RoutedEventArgs e) => OpenContextSentenceEditor(null);
+
+    private void OpenContextSentenceEditor(ContextSentenceItem? original)
+    {
+        if (!_ready || !ValidWord(_word)) return;
+        var word = _word;
+        var account = _accountVersion;
+        var accountKey = MnemonicAccountKey;
+        var canSync = _allowCloud && _tokens.HasToken;
+        var currentItem = original;
+
+        var dialog = ContextSentenceEditor.Build(
+            this,
+            word,
+            currentItem,
+            canSync,
+            async (draft, sync) =>
+            {
+                var existingCloudId = currentItem != null && currentItem.AccountKey == accountKey ? currentItem.CloudId : null;
+                var localSaved = _contextSentences.SaveEdit(
+                    currentItem?.Id,
+                    word,
+                    draft.Sentence,
+                    draft.Translation,
+                    draft.Source,
+                    draft.Tags,
+                    cloudId: existingCloudId,
+                    origin: "local",
+                    accountKey: existingCloudId != null ? accountKey : null,
+                    matchedForm: currentItem?.MatchedForm);
+                currentItem = localSaved;
+                RefreshContextSentenceViews(word);
+
+                if (!sync)
+                {
+                    StatusText.Text = existingCloudId != null
+                        ? "例句已保存到本地（尚未同步到云端）。"
+                        : "例句已保存到本地。";
+                    return;
+                }
+
+                if (account != _accountVersion || accountKey == null)
+                    throw new MaiMemoException("账号状态已变更，本地已保存，请重新打开例句后同步。");
+
+                try
+                {
+                    var voc = _vocabulary?.Spelling.Equals(word, StringComparison.OrdinalIgnoreCase) == true
+                        ? _vocabulary
+                        : await _api.ResolveWordAsync(word, _accountCts.Token);
+                    if (voc == null) throw new MaiMemoException("墨墨暂未收录这个单词。");
+                    var synced = await _api.SavePhraseAsync(
+                        voc.Id,
+                        existingCloudId,
+                        localSaved.Sentence,
+                        localSaved.Translation,
+                        localSaved.Tags,
+                        localSaved.Source,
+                        _accountCts.Token);
+                    currentItem = _contextSentences.SaveEdit(
+                        localSaved.Id,
+                        word,
+                        synced.Text,
+                        synced.Interpretation,
+                        synced.Origin,
+                        synced.Tags,
+                        cloudId: synced.Id,
+                        origin: "cloud",
+                        accountKey: accountKey,
+                        matchedForm: localSaved.MatchedForm);
+                    _cloudCache.Remove((_accountCredentialKey ?? "offline") + ":" + word.ToLowerInvariant());
+                    RefreshContextSentenceViews(word);
+                    StatusText.Text = "例句已同步到墨墨云端。";
+                }
+                catch (Exception error)
+                {
+                    SetAccountError(error);
+                    throw new MaiMemoException("已保存到本地，未能同步到墨墨：" + UserError(error));
+                }
+            },
+            delete: currentItem == null ? null : () => DeleteContextSentenceAsync(currentItem, rethrowOnError: true));
+
+        dialog.ShowDialog();
+    }
+
+    private async Task<bool> DeleteContextSentenceAsync(ContextSentenceItem item, bool rethrowOnError = false)
+    {
+        var accountKey = MnemonicAccountKey;
+        var hasCloudCopy = !string.IsNullOrWhiteSpace(item.CloudId) && item.AccountKey == accountKey;
+        if (hasCloudCopy)
+        {
+            if (!InputDialog.Confirm(
+                    this,
+                    "删除云端例句",
+                    "这条例句已同步到墨墨云端。确认后将同时从本机和墨墨云端删除，手机端也会同步移除。",
+                    "确认删除"))
+                return false;
+
+            if (!_allowCloud || !_tokens.HasToken)
+            {
+                const string message = "当前未登录墨墨账号，无法删除云端例句。";
+                StatusText.Text = message;
+                if (rethrowOnError) throw new MaiMemoException(message);
+                return false;
+            }
+            try
+            {
+                var voc = _vocabulary?.Spelling.Equals(item.Word, StringComparison.OrdinalIgnoreCase) == true
+                    ? _vocabulary
+                    : await _api.ResolveWordAsync(item.Word, _accountCts.Token);
+                await _api.DeletePhraseAsync(item.CloudId!, voc?.Id, _accountCts.Token);
+                _cloudCache.Remove((_accountCredentialKey ?? "offline") + ":" + item.Word.ToLowerInvariant());
+            }
+            catch (Exception error)
+            {
+                SetAccountError(error);
+                var message = "删除云端例句失败：" + UserError(error);
+                StatusText.Text = message;
+                if (rethrowOnError) throw new MaiMemoException(message);
+                return false;
+            }
+        }
+
+        _contextSentences.Remove(item.Id);
+        RefreshContextSentenceViews(_word);
+        StatusText.Text = hasCloudCopy ? "已从本机和墨墨云端删除例句。" : "已删除例句。";
+        return true;
+    }
+
+    private void RefreshContextSentenceViews(string word)
+    {
+        if (ValidWord(word) && word.Equals(_word, StringComparison.OrdinalIgnoreCase))
+        {
+            RenderSavedContexts(_word);
+            RefreshExampleSaveButtons();
+            UpdateContextCaptureBanner(_word);
+        }
+        UpdateContextReviewButtons();
+    }
+
     private void UpdateContextReviewButtons()
     {
-        var count = _contextSentences.Count;
+        var count = _contextSentences.CountForAccount(MnemonicAccountKey);
         if (TranslationContextReviewButton != null)
             TranslationContextReviewButton.Content = count > 0 ? $"例句自测 ({count})" : "例句自测";
         if (WordContextReviewButton != null)
@@ -312,10 +526,10 @@ public partial class MainWindow
 
     private void OpenContextSentenceReview(string? focusWord = null)
     {
-        var all = _contextSentences.List();
+        var all = _contextSentences.List(null, MnemonicAccountKey);
         if (all.Count == 0)
         {
-            StatusText.Text = "还没有收藏例句，可在翻译或真题例句中点击「收藏例句」";
+            StatusText.Text = "还没有收藏例句，可在翻译、真题例句或单词页中添加例句。";
             return;
         }
 
@@ -346,7 +560,8 @@ public partial class MainWindow
             preferences: _preferences,
             spellingMistakes: _spellingMistakes,
             contextSentences: _contextSentences,
-            contextDeck: orderedItems);
+            contextDeck: orderedItems,
+            accountKey: MnemonicAccountKey);
         dialog.ShowDialog();
         UpdateContextReviewButtons();
         if (ValidWord(_word)) RenderSavedContexts(_word);
@@ -361,7 +576,7 @@ public partial class MainWindow
         IReadOnlyList<CacheCategoryItem> Load()
         {
             var historyCount = _preferences.SearchHistory.Count;
-            var contextCount = _contextSentences.Count;
+            var contextCount = _contextSentences.CountForAccount(MnemonicAccountKey);
             var contextBytes = _contextSentences.FileSizeBytes;
             var spellingCount = _spellingMistakes.ActiveCount;
             var spellingBytes = _spellingMistakes.FileSizeBytes;
@@ -390,11 +605,11 @@ public partial class MainWindow
                     "将清空本机的全部查词历史与次数统计，不影响云词本和账号登录。"),
                 new CacheCategoryItem(
                     "contexts",
-                    "收藏的例句",
-                    "在翻译和真题例句中收藏的例句及自测次数。",
+                    "我的例句（本机缓存）",
+                    "本机保存与缓存的例句及自测次数，不影响墨墨云端例句。",
                     contextCount > 0 ? $"{contextCount} 条例句 · {CacheMaintenanceHost.FormatBytes(contextBytes)}" : "暂无数据",
                     contextCount > 0,
-                    "将清空本机收藏的全部例句，例句自测列表将变为空。"),
+                    "仅清空本机保存与缓存的例句，不影响已同步到墨墨云端的例句。"),
                 new CacheCategoryItem(
                     "spelling",
                     "拼写易错记录",

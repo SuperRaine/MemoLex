@@ -406,3 +406,235 @@ struct NotebookView: View {
     let alert = NSAlert(); alert.messageText = title; alert.informativeText = message; alert.alertStyle = .warning; alert.addButton(withTitle: action); alert.addButton(withTitle: "取消")
     return alert.runModal() == .alertFirstButtonReturn
 }
+
+struct ContextSentenceEditorView: View {
+    @ObservedObject var model: AppModel
+    @State private var itemID: String?
+    @State private var cloudID: String?
+    @State private var origin = "local"
+    @State private var sentence = ""
+    @State private var translation = ""
+    @State private var source = "自建例句"
+    @State private var tagsText = ""
+    @State private var saving = false
+    @State private var error = ""
+
+    private let quickSources = ["自建例句", "真题例句", "段落翻译", "阅读摘录"]
+    private let quickTags = ["考研", "四级", "六级", "高考", "雅思", "托福"]
+
+    private var isEdit: Bool { itemID != nil }
+    private var isCloud: Bool { origin == "cloud" && !(cloudID ?? "").isEmpty }
+    private var hasUnsyncedEdit: Bool { origin != "cloud" && !(cloudID ?? "").isEmpty }
+
+    private var badgeTitle: String {
+        if !isEdit { return "新建例句" }
+        if isCloud { return "云端例句" }
+        if hasUnsyncedEdit { return "待同步修改" }
+        return "本地例句"
+    }
+
+    private var bannerHint: String {
+        if isCloud { return "已与墨墨云端同步，点击「同步到墨墨」会直接更新云端内容。" }
+        if hasUnsyncedEdit { return "本地修改尚未同步，点击「同步到墨墨」即可更新云端例句。" }
+        if model.loggedIn { return "支持保存到本地离线自测，或一键同步到墨墨云端（手机端同步可见）。" }
+        return "当前未登录墨墨账号，可先保存到本地，登录后随时同步到墨墨云端。"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            DialogHeader(title: isEdit ? "编辑例句" : "添加例句") { model.sheet = nil }
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 10) {
+                    Text("\(model.word) · \(isEdit ? "编辑例句" : "添加例句")")
+                        .font(.system(size: 21, weight: .semibold))
+                    Spacer()
+                }
+
+                HStack(spacing: 10) {
+                    Text(badgeTitle)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(hasUnsyncedEdit ? Color(red: 0.65, green: 0.34, blue: 0.03) : Palette.deep)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(hasUnsyncedEdit ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.16) : Palette.wash, in: Capsule())
+                        .overlay(Capsule().strokeBorder(hasUnsyncedEdit ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35) : Palette.accent.opacity(0.32), lineWidth: 0.8))
+                    Text(bannerHint)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("英文例句 *").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
+                    TextEditor(text: $sentence)
+                        .font(.system(size: 14.5))
+                        .padding(6)
+                        .frame(minHeight: 88, maxHeight: 118)
+                        .background(Palette.paper, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.9))
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("中文译文").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.ink)
+                    TextEditor(text: $translation)
+                        .font(.system(size: 13.5))
+                        .padding(6)
+                        .frame(minHeight: 70, maxHeight: 96)
+                        .background(Palette.paper, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.9))
+                }
+
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(spacing: 8) {
+                        Text("来源").font(.system(size: 12, weight: .semibold)).frame(width: 34, alignment: .leading)
+                        TextField("自建例句", text: $source).inputFrame().frame(width: 170)
+                        HStack(spacing: 5) {
+                            ForEach(quickSources, id: \.self) { preset in
+                                Button(preset) { source = preset }.buttonStyle(PillButtonStyle())
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    HStack(spacing: 8) {
+                        Text("标签").font(.system(size: 12, weight: .semibold)).frame(width: 34, alignment: .leading)
+                        TextField("逗号或空格分隔", text: $tagsText).inputFrame().frame(width: 170)
+                        HStack(spacing: 5) {
+                            ForEach(quickTags, id: \.self) { tag in
+                                Button(tag) { toggleTag(tag) }.buttonStyle(PillButtonStyle())
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+                .padding(12)
+                .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.8))
+
+                Text(error.isEmpty ? "多个标签可用逗号或空格分隔；本地保存支持离线自测。" : error)
+                    .font(.system(size: 12))
+                    .foregroundStyle(error.isEmpty ? Palette.muted : .red)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    if let editing = model.editingContextSentence, isEdit {
+                        Button(isCloud ? "删除云端与本地例句" : "删除例句") {
+                            Task { await deleteItem(editing) }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color(red: 0.82, green: 0.22, blue: 0.28))
+                        .disabled(saving)
+                    }
+                    Spacer()
+                    Button("取消") { model.sheet = nil }
+                        .buttonStyle(MemoButtonStyle(compact: true))
+                        .disabled(saving)
+                    Button("保存到本地") { Task { await save(cloud: false) } }
+                        .buttonStyle(PillButtonStyle(compact: false))
+                        .disabled(saving || sentence.trimmed.isEmpty || sentence.count > 2000)
+                    Button("同步到墨墨") { Task { await save(cloud: true) } }
+                        .buttonStyle(MemoButtonStyle(accent: true))
+                        .disabled(saving || !model.loggedIn || sentence.trimmed.isEmpty || sentence.count > 2000)
+                        .help(model.loggedIn ? "保存到本地并同步到墨墨账号" : "请先在设置中登录墨墨账号")
+                }
+            }.padding(22)
+        }
+        .frame(width: 710, height: 590)
+        .background(Palette.paper)
+        .foregroundStyle(Palette.ink)
+        .font(.system(size: 13))
+        .noFocusRing()
+        .onAppear { loadInitial() }
+    }
+
+    private func loadInitial() {
+        guard let item = model.editingContextSentence else {
+            itemID = nil
+            cloudID = nil
+            origin = "local"
+            sentence = ""
+            translation = ""
+            source = "自建例句"
+            tagsText = ""
+            error = ""
+            return
+        }
+        itemID = item["id"].text.isEmpty ? nil : item["id"].text
+        cloudID = item["cloudId"].text.isEmpty ? nil : item["cloudId"].text
+        origin = item["origin"].text.isEmpty ? "local" : item["origin"].text
+        sentence = item["sentence"].text
+        translation = item["translation"].text
+        source = item["source"].text.trimmed.isEmpty ? "自建例句" : item["source"].text
+        let tags = item["tags"].list.map(\.text).filter { !$0.isEmpty }
+        tagsText = tags.joined(separator: "，")
+        error = ""
+    }
+
+    private func parsedTags() -> [String] {
+        let separators = CharacterSet(charactersIn: ",，、;； \t\n\r")
+        var seen = Set<String>()
+        var result: [String] = []
+        for raw in tagsText.components(separatedBy: separators) {
+            let trimmed = raw.trimmed
+            guard !trimmed.isEmpty else { continue }
+            let key = trimmed.lowercased()
+            if seen.insert(key).inserted {
+                result.append(String(trimmed.prefix(30)))
+                if result.count >= 10 { break }
+            }
+        }
+        return result
+    }
+
+    private func toggleTag(_ tag: String) {
+        var tags = parsedTags()
+        if let idx = tags.firstIndex(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) {
+            tags.remove(at: idx)
+        } else if tags.count < 10 {
+            tags.append(tag)
+        }
+        tagsText = tags.joined(separator: "，")
+    }
+
+    private func save(cloud: Bool) async {
+        let cleanSentence = sentence.trimmed
+        guard !cleanSentence.isEmpty else {
+            error = "请先填写英文例句内容。"
+            return
+        }
+        let cleanSource = source.trimmed.isEmpty ? "自建例句" : source.trimmed
+        saving = true
+        error = ""
+        defer { saving = false }
+        do {
+            try await model.saveContextSentenceEdit(
+                id: itemID,
+                sentence: cleanSentence,
+                translation: translation.trimmed,
+                source: cleanSource,
+                tags: parsedTags(),
+                cloud: cloud,
+                cloudID: cloudID
+            )
+            model.sheet = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func deleteItem(_ item: J) async {
+        saving = true
+        error = ""
+        defer { saving = false }
+        do {
+            if try await model.deleteContextSentence(item, rethrowOnError: true) {
+                model.sheet = nil
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}

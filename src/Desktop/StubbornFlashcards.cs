@@ -26,7 +26,8 @@ internal static class StubbornFlashcards
         Preferences? preferences = null,
         SpellingMistakeStore? spellingMistakes = null,
         ContextSentenceStore? contextSentences = null,
-        IReadOnlyList<ContextSentenceItem>? contextDeck = null)
+        IReadOnlyList<ContextSentenceItem>? contextDeck = null,
+        string? accountKey = null)
     {
         var freshWords = words.ToArray();
         var contextDeckMap = contextDeck == null
@@ -289,7 +290,7 @@ internal static class StubbornFlashcards
         ContextSentenceItem? ResolveContext(string word) =>
             contextDeckMap != null
                 ? contextDeckMap.GetValueOrDefault(word)
-                : contextSentences?.FindLatestForWord(word);
+                : contextSentences?.FindLatestForWord(word, accountKey);
 
         void PrepareSpellingDrill(string? word)
         {
