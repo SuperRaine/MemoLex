@@ -20,6 +20,7 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
 {
     private readonly string _directory = directory ?? Path.Combine(ApplicationPaths.RuntimeDirectory,"data");
     private readonly RelatedPhrases _phrases=new(dictionary);
+    private ChineseReverseSearch? _chinese;
     private readonly Dictionary<string,(long Offset,int Length)> _index = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(string Word,int Rank)> _spellings = [];
     private readonly object _gate=new();
@@ -27,8 +28,11 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
     private static readonly Regex NonstandardSpelling = new(
         @"^\s*(?:abbr|pref|suf|comb|contr)\.|^(?:\[[^\]]*\]\s*)?(?:[a-z]+\.\s*)?(?:\[\s*)?(?:古英语|古义|古语|古用法|方言|古(?:\s|\]))",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex AnnotationPattern = new(@"\[[^\]]*\]|\([^)]*\)|（[^）]*）", RegexOptions.Compiled);
+    private static readonly Regex HanTokenPattern = new(@"[\u4E00-\u9FFF]{2,4}", RegexOptions.Compiled);
     private static readonly Lazy<Dictionary<string, string>> DerivativeParts = new(LoadDerivativeParts);
     public bool Available => _data!=null;
+    public void AttachChineseSearch(ChineseReverseSearch chinese) => _chinese = chinese;
     private sealed class Record
     {
         public string[] synonyms {get;set;}=[];
@@ -75,48 +79,187 @@ public sealed class RelatedWords(LocalDictionary dictionary, string? directory =
         try{return Read(word)?.synonyms??[];}
         catch(Exception error) when(error is IOException or JsonException or ObjectDisposedException){return [];}
     }
-    public Task<WordRelations> LookupAsync(string word,CancellationToken cancellationToken=default) => Task.Run(() =>
+    public async Task<WordRelations> LookupAsync(string word,CancellationToken cancellationToken=default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var record=Read(word);
-        IReadOnlyList<RelatedWord> Describe(IEnumerable<string> words, bool supplementPartOfSpeech = false) => words.Where(value=>value.Length is >0 and <=100 && char.IsAsciiLetter(value[0])
-            && value.All(character=>char.IsAsciiLetter(character)||character is ' ' or '.' or '’' or '\'' or '-')&&!value.Equals(word,StringComparison.OrdinalIgnoreCase))
-            .Distinct(StringComparer.OrdinalIgnoreCase).Select(value=>(Word:value,Entry:dictionary.Lookup(value)))
-            .OrderBy(value=>string.IsNullOrWhiteSpace(value.Entry?.translation)?1:0).Take(12)
-            .Select(value =>
-            {
-                var meaning = value.Entry?.DisplayMeaning ?? "";
-                if (meaning.Length == 0) meaning = DictionaryEntry.FormatDisplayMeaning(Read(value.Word)?.gloss ?? "暂无释义");
-                if (supplementPartOfSpeech && meaning.Length > 0 && DerivativeParts.Value.TryGetValue(value.Word, out var partOfSpeech)
-                    && !meaning.Split('\n').Any(line => DictionaryEntry.SplitDisplaySense(line).PartOfSpeech.Length > 0))
-                    meaning = partOfSpeech + " " + meaning;
-                return new RelatedWord(value.Word, meaning);
-            }).ToArray();
-        var nearby=new List<(string Word,int Distance,int Rank)>();var normalized=word.ToLowerInvariant();
-        if(word.Length is >=3 and <=24 && word.All(char.IsAsciiLetter))
-            foreach(var item in _spellings)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if(item.Word.Equals(word,StringComparison.OrdinalIgnoreCase)||Math.Abs(item.Word.Length-word.Length)>2)continue;
-                var distance=SpellingDistance(normalized,item.Word,2);
-                if (distance == 2 && word.Length <= 5 && item.Rank > 15000) continue;
-                if(distance<=2)nearby.Add((item.Word,distance,item.Rank));
-            }
-        var similar = new List<RelatedWord>(8);
-        foreach (var candidate in nearby.OrderBy(value => value.Distance).ThenBy(value => value.Rank).ThenBy(value => value.Word, StringComparer.OrdinalIgnoreCase))
+        var (record, similar, derivatives, phrases) = await Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var entry = dictionary.Lookup(candidate.Word);
-            if (entry == null || entry.HasHistoricalDefinition || NonstandardSpelling.IsMatch(entry.translation) ||
-                !entry.translation.Any(c => c is >= '\u3400' and <= '\u9fff')) continue;
+            var rec = Read(word);
+            var nearby = new List<(string Word, int Distance, int Rank)>();
+            var normalized = word.ToLowerInvariant();
+            if (word.Length is >= 3 and <= 24 && word.All(char.IsAsciiLetter))
+                foreach (var item in _spellings)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (item.Word.Equals(word, StringComparison.OrdinalIgnoreCase) || Math.Abs(item.Word.Length - word.Length) > 2) continue;
+                    var distance = SpellingDistance(normalized, item.Word, 2);
+                    if (distance == 2 && word.Length <= 5 && item.Rank > 15000) continue;
+                    if (distance <= 2) nearby.Add((item.Word, distance, item.Rank));
+                }
+            var simList = new List<RelatedWord>(8);
+            foreach (var candidate in nearby.OrderBy(value => value.Distance).ThenBy(value => value.Rank).ThenBy(value => value.Word, StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var entry = dictionary.Lookup(candidate.Word);
+                if (entry == null || entry.HasHistoricalDefinition || NonstandardSpelling.IsMatch(entry.translation) ||
+                    !entry.translation.Any(c => c is >= '\u3400' and <= '\u9fff')) continue;
 
-            var meaning = entry.DisplayMeaning;
-            if (meaning.Length == 0) continue;
-            similar.Add(new RelatedWord(entry.word, meaning));
-            if (similar.Count == 8) break;
+                var meaning = entry.DisplayMeaning;
+                if (meaning.Length == 0) continue;
+                simList.Add(new RelatedWord(entry.word, meaning));
+                if (simList.Count == 8) break;
+            }
+            return (rec, (IReadOnlyList<RelatedWord>)simList, DescribeWords(word, rec?.derivatives ?? [], supplementPartOfSpeech: true, preferFrequency: true), _phrases.Lookup(word, cancellationToken));
+        }, cancellationToken);
+
+        var synonyms = await BuildSynonymsAsync(word, record?.synonyms ?? [], cancellationToken);
+        return new WordRelations(synonyms, similar, derivatives, phrases);
+    }
+
+    private IReadOnlyList<RelatedWord> DescribeWords(string word, IEnumerable<string> words, bool supplementPartOfSpeech = false, bool preferFrequency = false)
+    {
+        var items = words.Where(value => value.Length is > 0 and <= 100 && char.IsAsciiLetter(value[0])
+            && value.All(character => char.IsAsciiLetter(character) || character is ' ' or '.' or '’' or '\'' or '-')
+            && !value.Equals(word, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(value => (Word: value, Entry: dictionary.Lookup(value)));
+
+        var ordered = preferFrequency
+            ? items
+                .OrderBy(v => string.IsNullOrWhiteSpace(v.Entry?.translation) ? 1 : 0)
+                .ThenBy(v => v.Entry != null && (v.Entry.HasHistoricalDefinition || NonstandardSpelling.IsMatch(v.Entry.translation)) ? 1 : 0)
+                .ThenBy(v => v.Word.Contains(' ') ? 1 : 0)
+                .ThenBy(v => dictionary.FrequencyRank(v.Word))
+            : items.OrderBy(v => string.IsNullOrWhiteSpace(v.Entry?.translation) ? 1 : 0);
+
+        return ordered.Take(12).Select(value =>
+        {
+            var meaning = value.Entry?.DisplayMeaning ?? "";
+            if (meaning.Length == 0) meaning = DictionaryEntry.FormatDisplayMeaning(Read(value.Word)?.gloss ?? "暂无释义");
+            if (supplementPartOfSpeech && meaning.Length > 0 && DerivativeParts.Value.TryGetValue(value.Word, out var partOfSpeech)
+                && !meaning.Split('\n').Any(line => DictionaryEntry.SplitDisplaySense(line).PartOfSpeech.Length > 0))
+                meaning = partOfSpeech + " " + meaning;
+            return new RelatedWord(value.Word, meaning);
+        }).ToArray();
+    }
+
+    private async Task<IReadOnlyList<RelatedWord>> BuildSynonymsAsync(string word, IReadOnlyList<string> rawWordNet, CancellationToken cancellationToken)
+    {
+        var baseEntry = dictionary.Lookup(word);
+        var baseDisplay = baseEntry?.DisplayMeaning ?? "";
+        var firstPos = baseDisplay.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => DictionaryEntry.SplitDisplaySense(line).PartOfSpeech.Trim().ToLowerInvariant())
+            .FirstOrDefault() ?? "";
+        var isFunctionWord = firstPos is "prep." or "conj." or "pron." or "det." or "art." or "aux.";
+
+        var wordNetList = DescribeWords(word, rawWordNet, supplementPartOfSpeech: false, preferFrequency: true);
+
+        if (_chinese == null || !_chinese.Available || word.Contains(' ') || string.IsNullOrWhiteSpace(baseDisplay))
+            return wordNetList;
+
+        // Supplement via Chinese semantic overlap when WordNet has few synonyms or for function words (prepositions/conjunctions)
+        // where WordNet often lacks entries (e.g. "against" -> "oppose", "despite" -> "although").
+        if (!isFunctionWord && wordNetList.Count >= 8)
+            return wordNetList;
+
+        var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { word };
+        if (!string.IsNullOrWhiteSpace(baseEntry?.exchange))
+        {
+            foreach (var part in baseEntry.exchange.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var colon = part.IndexOf(':');
+                if (colon > 0 && colon < part.Length - 1) excluded.Add(part[(colon + 1)..].Trim());
+            }
         }
-        return new WordRelations(Describe(record?.synonyms??[]),similar,Describe(record?.derivatives??[], supplementPartOfSpeech: true),_phrases.Lookup(word,cancellationToken));
-    },cancellationToken);
+
+        var coreGlosses = ExtractCoreChineseGlosses(baseDisplay);
+        if (coreGlosses.Count == 0) return wordNetList;
+
+        var stem = word.ToLowerInvariant();
+        if (stem.Length > 4 && stem.EndsWith('e')) stem = stem[..^1];
+        var supplemental = new List<(string Word, string Meaning, int GlossIndex, double Score, int Rank)>();
+        var seenSup = new HashSet<string>(excluded, StringComparer.OrdinalIgnoreCase);
+
+        for (var gi = 0; gi < Math.Min(3, coreGlosses.Count); gi++)
+        {
+            var gloss = coreGlosses[gi];
+            cancellationToken.ThrowIfCancellationRequested();
+            ChineseSearchPage page;
+            try { page = await _chinese.SearchAsync(gloss, 18, cancellationToken); }
+            catch (Exception ex) when (ex is ArgumentException or IOException) { continue; }
+
+            foreach (var hit in page.Items)
+            {
+                var w = hit.Word.Trim();
+                if (w.Length is < 2 or > 28 || w.Contains(' ') || w.Contains('-') || !w.All(char.IsAsciiLetter)) continue;
+                var lowW = w.ToLowerInvariant();
+                if (stem.Length >= 5 && lowW.StartsWith(stem, StringComparison.Ordinal)) continue;
+                if (!seenSup.Add(w)) continue;
+                var entry = dictionary.Lookup(w);
+                if (entry == null || entry.HasHistoricalDefinition || NonstandardSpelling.IsMatch(entry.translation)) continue;
+                var rank = dictionary.FrequencyRank(w);
+                if (rank > 45000 && !hit.IsExactMatch) continue;
+                var display = entry.DisplayMeaning;
+                if (string.IsNullOrWhiteSpace(display)) continue;
+                supplemental.Add((entry.word, display, gi, hit.Score, rank));
+            }
+        }
+
+        if (supplemental.Count == 0) return wordNetList;
+
+        var rankedSup = supplemental
+            .OrderBy(x => x.GlossIndex)
+            .ThenByDescending(x => x.Score >= 1000 ? 1 : 0)
+            .ThenBy(x => x.Rank)
+            .ThenByDescending(x => x.Score)
+            .Select(x => new RelatedWord(x.Word, x.Meaning))
+            .ToList();
+
+        var merged = new List<RelatedWord>(12);
+        var added = new HashSet<string>(excluded, StringComparer.OrdinalIgnoreCase);
+
+        // For function words (e.g. "against", "despite"), Chinese core gloss synonyms reflect the real primary sense better than archaic WordNet noun senses.
+        var primary = isFunctionWord ? (IEnumerable<RelatedWord>)rankedSup : wordNetList;
+        var secondary = isFunctionWord ? (IEnumerable<RelatedWord>)wordNetList : rankedSup;
+
+        foreach (var item in primary.Concat(secondary))
+        {
+            if (added.Add(item.Word))
+            {
+                merged.Add(item);
+                if (merged.Count >= 12) break;
+            }
+        }
+        return merged;
+    }
+
+    private static List<string> ExtractCoreChineseGlosses(string displayMeaning)
+    {
+        var results = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var lines = displayMeaning.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var line in lines.Take(2))
+        {
+            var (_, rest) = DictionaryEntry.SplitDisplaySense(line);
+            var cleaned = AnnotationPattern.Replace(rest.Length > 0 ? rest : line, "");
+            foreach (var seg in cleaned.Split(['，', ',', '；', ';', '、', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var token = seg.Trim();
+                if (token.Length > 2 && (token.EndsWith('的') || token.EndsWith('地'))) token = token[..^1];
+                if (token.Length is >= 2 and <= 4 && token.All(c => c is >= '\u4E00' and <= '\u9FFF'))
+                {
+                    if (seen.Add(token)) results.Add(token);
+                }
+                else
+                {
+                    var m = HanTokenPattern.Match(token);
+                    if (m.Success && seen.Add(m.Value)) results.Add(m.Value);
+                }
+                if (results.Count >= 4) return results;
+            }
+        }
+        return results;
+    }
     // Optimal string alignment distance treats an adjacent transposition as one edit.
     internal static int SpellingDistance(string a,string b,int maximum)
     {

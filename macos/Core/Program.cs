@@ -92,6 +92,7 @@ internal static class Program
 
 internal sealed class CoreService : IDisposable
 {
+    private readonly string _profile;
     private readonly LocalDictionary _dictionary;
     private readonly RelatedWords _related;
     private readonly ChineseReverseSearch _chinese;
@@ -111,10 +112,12 @@ internal sealed class CoreService : IDisposable
 
     internal CoreService(string resources, string profile)
     {
+        _profile = profile;
         Environment.SetEnvironmentVariable("MEMOLEX_RESOURCES", resources);
         var data = Path.Combine(resources, "data");
         _dictionary = new(data);
         _related = new(_dictionary, data); _chinese = new(_dictionary, data);
+        _related.AttachChineseSearch(_chinese);
         _notes = new(Path.Combine(profile, "mnemonics.user.json"), Path.Combine(data, "mnemonics.json"));
         _contextSentences = new(Path.Combine(profile, "context-sentences.json"));
         _spellingMistakes = new(Path.Combine(profile, "spelling-mistakes.json"));
@@ -339,6 +342,26 @@ internal sealed class CoreService : IDisposable
                 }
                 return await ContextSentenceQuiz.BuildQuestionsAsync(selected, _dictionary, _related, _notes, _tokens.CredentialKey, cancellation);
             }
+            case "contextQuiz.load":
+            {
+                var validIds = _contextSentences.List(null, _tokens.CredentialKey)
+                    .Select(item => item.Id)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                return ContextQuizProgressStore.Load(_profile, _tokens.CredentialKey, validIds);
+            }
+            case "contextQuiz.save":
+            {
+                var snapshot = Program.Decode<ContextQuizProgressSnapshot>(p);
+                ContextQuizProgressStore.Save(_profile, _tokens.CredentialKey, snapshot);
+                return new { ok = true };
+            }
+            case "contextQuiz.clear":
+            {
+                var clearAll = p.ValueKind == JsonValueKind.Object && p.TryGetProperty("all", out var allEl) && allEl.ValueKind == JsonValueKind.True;
+                if (clearAll) ContextQuizProgressStore.RemoveAll(_profile);
+                else ContextQuizProgressStore.Remove(_profile, _tokens.CredentialKey);
+                return new { ok = true };
+            }
             case "spelling.getDrill":
                 return _spellingMistakes.GetActiveDrill(word);
             case "spelling.recordMistake":
@@ -393,6 +416,8 @@ internal sealed class CoreService : IDisposable
                 return _mistakeBook.PickWeightedRandom(filter, Number(p, "limit", 0, 0, 1000));
             }
             case "cache.stats":
+            {
+                var (contextQuizCount, contextQuizBytes) = ContextQuizProgressStore.MeasureAll(_profile);
                 return new
                 {
                     contextCount = _contextSentences.CountForAccount(_tokens.CredentialKey),
@@ -401,9 +426,12 @@ internal sealed class CoreService : IDisposable
                     spellingBytes = _spellingMistakes.FileSizeBytes,
                     mistakeCount = _mistakeBook.Count,
                     mistakeBytes = _mistakeBook.FileSizeBytes,
+                    contextQuizCount,
+                    contextQuizBytes,
                     memoryCount = _examples.CachedCount + _onlineDictionary.CachedCount + _translation.CachedCount + _pronunciation.CachedCount,
                     memoryBytes = _pronunciation.CachedBytes
                 };
+            }
             case "cache.clear":
                 _vocCache.Clear();
                 return new

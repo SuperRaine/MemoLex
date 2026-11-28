@@ -44,28 +44,29 @@ internal static class FlashcardProgressStore
 
     internal static (int Count, long Bytes) MeasureAll(string profile)
     {
+        var (ctxCount, ctxBytes) = ContextQuizProgressStore.MeasureAll(profile);
         try
         {
-            if (!Directory.Exists(profile)) return (0, 0);
+            if (!Directory.Exists(profile)) return (ctxCount, ctxBytes);
             var files = Directory.GetFiles(profile, "stubborn-flashcards-*.json");
-            long bytes = 0;
+            long bytes = ctxBytes;
             foreach (var file in files)
             {
                 try { bytes += new FileInfo(file).Length; }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             }
-            return (files.Length, bytes);
+            return (files.Length + ctxCount, bytes);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return (0, 0); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return (ctxCount, ctxBytes); }
     }
 
     internal static int RemoveAll(string profile)
     {
+        var removed = ContextQuizProgressStore.RemoveAll(profile);
         try
         {
-            if (!Directory.Exists(profile)) return 0;
+            if (!Directory.Exists(profile)) return removed;
             var files = Directory.GetFiles(profile, "stubborn-flashcards-*.json");
-            var removed = 0;
             foreach (var file in files)
             {
                 try { File.Delete(file); removed++; }
@@ -73,7 +74,7 @@ internal static class FlashcardProgressStore
             }
             return removed;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return removed; }
     }
 
     private static bool IsValid(FlashcardProgressSnapshot? snapshot) =>

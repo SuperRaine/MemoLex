@@ -66,7 +66,7 @@ internal static class MistakeBookDialog
             Padding = new Thickness(12, 6, 12, 6),
             FontSize = 12,
             Margin = new Thickness(0, 0, 7, 0),
-            ToolTip = "按错题权重加权随机抽测，直接进入拼写默写模式（答对权重 -1，答错 +3）"
+            ToolTip = "直接进入拼写默写模式随机抽测错词，常错词优先出现"
         };
         if (pillStyle != null) spellQuizBtn.Style = pillStyle;
         headerActions.Children.Add(spellQuizBtn);
@@ -77,7 +77,7 @@ internal static class MistakeBookDialog
             Padding = new Thickness(14, 6, 14, 6),
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
-            ToolTip = "像卡片一样按权重加权随机抽测错题（支持翻卡与拼写切换；答对权重 -1，归 0 自动移出）"
+            ToolTip = "像卡片一样随机抽测错词（支持翻卡与拼写切换，多次答对后自动移出）"
         };
         if (accentStyle != null) randomQuizBtn.Style = accentStyle;
         headerActions.Children.Add(randomQuizBtn);
@@ -109,7 +109,7 @@ internal static class MistakeBookDialog
         var toolbarStack = new StackPanel();
         var ruleStrip = new TextBlock
         {
-            Text = "权重规则：答错 / 拼错自动入本（权重 +3）· 答对 / 拼对（权重 -1）· 权重归 0 自动移出 · 抽测时高权重词优先随机出现",
+            Text = "答错或拼错的单词会自动收录到这里；抽测时常错词会优先出现，多次答对后自动移出。",
             FontSize = 11.5,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(1, 0, 0, 8)
@@ -156,7 +156,7 @@ internal static class MistakeBookDialog
             chipsRow.Children.Add(btn);
         }
         AddFilterChip(FilterKind.All, "全部");
-        AddFilterChip(FilterKind.HighWeight, "高权重 (≥6)");
+        AddFilterChip(FilterKind.HighWeight, "重点易错");
         AddFilterChip(FilterKind.Spelling, "拼写错误");
         AddFilterChip(FilterKind.Sentence, "例句填空");
         AddFilterChip(FilterKind.Flashcard, "卡片忘记");
@@ -197,7 +197,6 @@ internal static class MistakeBookDialog
         void Render()
         {
             var all = loadItems();
-            var totalWeight = all.Sum(i => i.Weight);
             var highCount = all.Count(i => i.Weight >= 6);
             var spellCount = all.Count(i => i.LastReason == "拼写错误");
             var sentCount = all.Count(i => i.LastReason == "例句填空");
@@ -206,11 +205,11 @@ internal static class MistakeBookDialog
             summaryText.Text = all.Count == 0
                 ? "当前没有待攻克错题，继续保持！"
                 : highCount > 0
-                    ? $"共 {all.Count} 词 · 总权重 {totalWeight} · 高权重（≥6）{highCount} 词"
-                    : $"共 {all.Count} 词 · 总权重 {totalWeight}";
+                    ? $"共 {all.Count} 个待巩固错词 · 重点易错 {highCount} 词"
+                    : $"共 {all.Count} 个待巩固错词";
 
             filterButtons[FilterKind.All].Content = $"全部 ({all.Count})";
-            filterButtons[FilterKind.HighWeight].Content = $"高权重 ({highCount})";
+            filterButtons[FilterKind.HighWeight].Content = $"重点易错 ({highCount})";
             filterButtons[FilterKind.Spelling].Content = $"拼写错误 ({spellCount})";
             filterButtons[FilterKind.Sentence].Content = $"例句填空 ({sentCount})";
             filterButtons[FilterKind.Flashcard].Content = $"卡片忘记 ({cardCount})";
@@ -280,7 +279,7 @@ internal static class MistakeBookDialog
                 var emptySub = new TextBlock
                 {
                     Text = all.Count == 0
-                        ? "在卡片自测、拼写默写、例句填空或同根辨析中答错的词，会自动收录并按权重安排抽测。"
+                        ? "在卡片自测、拼写默写、例句填空或同根辨析中答错的词，会自动收录到这里方便集中抽测。"
                         : "可以清空搜索关键词或切换筛选标签查看其他错题。",
                     FontSize = 12,
                     Margin = new Thickness(0, 6, 0, 0),
@@ -347,8 +346,13 @@ internal static class MistakeBookDialog
                 var leftRow = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
 
                 var (wBg, wBd, wFg) = WeightColors(captured.Weight, isDark);
-                var dots = captured.Weight <= 6 ? " " + new string('●', captured.Weight) : "";
-                var weightBadge = new Border
+                var levelLabel = MistakeBookStore.LevelLabel(captured.Weight);
+                var levelTip = captured.Weight >= 6
+                    ? "多次答错或拼错，抽测时会优先出现，多次答对后将自动移出"
+                    : captured.Weight >= 3
+                        ? "抽测时会优先巩固，连续答对后将自动移出错题本"
+                        : "已经快掌握了，再答对几次即可自动移出错题本";
+                var levelBadge = new Border
                 {
                     Background = wBg,
                     BorderBrush = wBd,
@@ -357,10 +361,10 @@ internal static class MistakeBookDialog
                     Padding = new Thickness(8, 2, 8, 2),
                     Margin = new Thickness(0, 0, 8, 2),
                     VerticalAlignment = VerticalAlignment.Center,
-                    ToolTip = $"当前权重 {captured.Weight}：再连续答对 {captured.Weight} 次将自动移出错题本；答错一次权重 +3",
-                    Child = new TextBlock { Text = $"权重 {captured.Weight}{dots}", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = wFg }
+                    ToolTip = levelTip,
+                    Child = new TextBlock { Text = levelLabel, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = wFg }
                 };
-                leftRow.Children.Add(weightBadge);
+                leftRow.Children.Add(levelBadge);
 
                 var wordBtn = new Button
                 {

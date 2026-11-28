@@ -703,7 +703,8 @@ struct StubbornFlashcardView: View {
     private var progressLineText: String {
         var parts = ["第 \(practice.groupNumber) / \(practice.groupCount) 组", "剩余 \(practice.queue.count) / \(practice.groupWordCount) 词", "已掌握 \(practice.masteredCount) / \(practice.totalWordCount)"]
         if let weight = currentMistakeWeight, weight > 0 {
-            parts.append("错题权重 \(weight)")
+            let level = weight >= 6 ? "重点易错" : weight >= 3 ? "待巩固" : "快掌握"
+            parts.append(level)
         }
         if !mistakeNotice.isEmpty {
             parts.append(mistakeNotice)
@@ -726,7 +727,7 @@ struct StubbornFlashcardView: View {
             if let rec = try? await core.request("mistakes.recordWrong", params), rec != .null {
                 let w = rec["weight"].integer
                 if practice.current == word { currentMistakeWeight = w }
-                mistakeNotice = "错题权重 +3（当前 \(w)）"
+                mistakeNotice = "已记入错题本"
                 onMistakeChanged?()
             }
         }
@@ -739,11 +740,11 @@ struct StubbornFlashcardView: View {
            res["wasInBook"].flag {
             if res["removed"].flag {
                 if practice.current == word { currentMistakeWeight = nil }
-                mistakeNotice = "错题权重归 0，已自动移出 ✓"
+                mistakeNotice = "已掌握，自动移出错题本 ✓"
             } else {
                 let rem = res["remainingWeight"].integer
                 if practice.current == word { currentMistakeWeight = rem }
-                mistakeNotice = "错题权重 -1（剩余 \(rem)）"
+                mistakeNotice = "错题已巩固一次"
             }
             onMistakeChanged?()
         }

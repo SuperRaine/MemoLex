@@ -47,8 +47,8 @@ public partial class MainWindow
             MinimizeWindowButton.Width = MaximizeButton.Width = CloseWindowButton.Width = compact ? 32 : 40;
             var iconWidth = compact ? 28 : 34;
             var iconMargin = new Thickness(0, 0, compact ? 1 : 2, 0);
-            DashboardButton.Width = ThemeToggleButton.Width = SettingsButton.Width = PinButton.Width = iconWidth;
-            DashboardButton.Margin = ThemeToggleButton.Margin = iconMargin;
+            ThemeToggleButton.Width = SettingsButton.Width = PinButton.Width = iconWidth;
+            ThemeToggleButton.Margin = iconMargin;
             SettingsButton.Margin = new Thickness(0, 0, compact ? 1 : 3, 0);
             PinButton.Margin = new Thickness(0, 0, compact ? 3 : 6, 0);
             WindowControlsSeparator.Margin = new Thickness(0, 0, compact ? 3 : 6, 0);

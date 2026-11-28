@@ -9,7 +9,8 @@ struct ContextReviewSheet: View {
     @ObservedObject var model: AppModel
     @State private var filterText = ""
     @State private var activeFilter: FilterKind = .all
-    @State private var quizQuestions: [J]? = nil
+    @State private var quizSession: (questions: [J], saved: J?, persists: Bool)? = nil
+    @State private var savedQuizProgress: J? = nil
     @State private var buildingQuiz = false
     @State private var showEditor = false
     @State private var editorItem: J? = nil
@@ -56,12 +57,18 @@ struct ContextReviewSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let questions = quizQuestions {
+            if let session = quizSession {
                 ContextQuizView(
                     model: model,
-                    initialQuestions: questions,
+                    initialQuestions: session.questions,
+                    savedProgress: session.saved,
+                    persistsProgress: session.persists,
                     onRebuild: { ids in await model.buildContextSentenceQuiz(ids: ids) },
-                    onExit: { quizQuestions = nil }
+                    onRebuildFreshAll: { await model.buildContextSentenceQuiz(ids: []) },
+                    onExit: {
+                        quizSession = nil
+                        Task { savedQuizProgress = await model.loadContextQuizProgress() }
+                    }
                 )
             } else if showEditor {
                 ContextSentenceEditorForm(
@@ -85,7 +92,10 @@ struct ContextReviewSheet: View {
         .font(.system(size: 13))
         .toggleStyle(.checkbox)
         .noFocusRing()
-        .task { await model.refreshContextSentences() }
+        .task {
+            await model.refreshContextSentences()
+            savedQuizProgress = await model.loadContextQuizProgress()
+        }
     }
 
     private var listContent: some View {
@@ -167,11 +177,20 @@ struct ContextReviewSheet: View {
     private func startQuiz() async {
         let ids = filteredItems.map { $0["id"].text }.filter { !$0.isEmpty }
         guard !ids.isEmpty else { return }
+        let persists = !isFiltered
         buildingQuiz = true
         defer { buildingQuiz = false }
-        let built = await model.buildContextSentenceQuiz(ids: ids)
+        if persists, let saved = await model.loadContextQuizProgress() {
+            let savedQs = saved["questions"].list
+            let savedIdx = saved["currentIndex"].integer
+            if !savedQs.isEmpty && savedIdx < savedQs.count {
+                quizSession = (questions: savedQs, saved: saved, persists: true)
+                return
+            }
+        }
+        let built = await model.buildContextSentenceQuiz(ids: persists ? [] : ids)
         if !built.isEmpty {
-            quizQuestions = built
+            quizSession = (questions: built, saved: nil, persists: persists)
         }
     }
 
@@ -187,7 +206,15 @@ struct ContextReviewSheet: View {
 
     private var reviewButtonTitle: String {
         if filteredItems.isEmpty { return "开始自测" }
-        return isFiltered ? "自测当前 (\(filteredItems.count))" : "开始自测 (\(filteredItems.count))"
+        if isFiltered { return "自测当前 (\(filteredItems.count))" }
+        if let saved = savedQuizProgress {
+            let idx = saved["currentIndex"].integer
+            let total = saved["questions"].list.count
+            if idx > 0 && idx < total {
+                return "继续自测 (\(idx)/\(total))"
+            }
+        }
+        return "开始自测 (\(filteredItems.count))"
     }
 
     private func filterChip(_ kind: FilterKind, title: String) -> some View {

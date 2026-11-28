@@ -454,7 +454,14 @@ public partial class MainWindow
                 dialogOwner: ownerWindow,
                 allowEditWord: item == null),
             deleteItem: (ownerWindow, item) => DeleteContextSentenceAsync(item, rethrowOnError: false, dialogOwner: ownerWindow),
-            startReview: (ownerWindow, deck) => OpenContextSentenceReviewAsync(deck, ownerWindow));
+            startReview: (ownerWindow, deck, persistProgress) => OpenContextSentenceReviewAsync(deck, ownerWindow, persistProgress),
+            loadSavedProgress: () =>
+            {
+                var validIds = _contextSentences.List(null, MnemonicAccountKey)
+                    .Select(x => x.Id)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                return ContextQuizProgressStore.Load(_tokens.ProfileDirectory, MnemonicAccountKey, validIds);
+            });
         dialog.ShowDialog();
         RefreshContextSentenceViews(_word);
     }
@@ -617,13 +624,13 @@ public partial class MainWindow
         var mistakes = _mistakeBook.Count;
         if (MistakeBookButton != null)
             MistakeBookButton.ToolTip = mistakes > 0
-                ? $"错题本（当前 {mistakes} 词 · 权重随机抽测）"
+                ? $"错题本（当前 {mistakes} 词待巩固 · 支持随机抽测）"
                 : "错题本（答错自动收录与随机抽测）";
         if (MistakeBookDot != null)
             MistakeBookDot.Visibility = mistakes > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async Task OpenContextSentenceReviewAsync(IReadOnlyList<ContextSentenceItem> deck, Window? dialogOwner = null)
+    private async Task OpenContextSentenceReviewAsync(IReadOnlyList<ContextSentenceItem> deck, Window? dialogOwner = null, bool persistProgress = false)
     {
         if (deck.Count == 0)
         {
@@ -631,14 +638,26 @@ public partial class MainWindow
             return;
         }
 
+        var profile = _tokens.ProfileDirectory;
         var accountKey = MnemonicAccountKey;
         var orderedItems = deck.ToArray();
-        var questions = await ContextSentenceQuiz.BuildQuestionsAsync(
-            orderedItems,
-            _dictionary,
-            _related,
-            _mnemonics,
-            accountKey);
+        var validIds = orderedItems.Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var savedProgress = persistProgress ? ContextQuizProgressStore.Load(profile, accountKey, validIds) : null;
+
+        IReadOnlyList<ContextQuizQuestion> questions;
+        if (savedProgress is { Questions.Length: > 0 } && savedProgress.CurrentIndex < savedProgress.Questions.Length)
+        {
+            questions = savedProgress.Questions;
+        }
+        else
+        {
+            questions = await ContextSentenceQuiz.BuildQuestionsAsync(
+                orderedItems,
+                _dictionary,
+                _related,
+                _mnemonics,
+                accountKey);
+        }
         if (questions.Count == 0) return;
 
         var byId = orderedItems.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
@@ -666,7 +685,21 @@ public partial class MainWindow
                 if (dialogOwner != null && dialogOwner != this) dialogOwner.Close();
                 _ = LoadWordAsync(w);
             },
-            mistakeBook: _mistakeBook);
+            mistakeBook: _mistakeBook,
+            savedProgress: savedProgress,
+            persistProgress: persistProgress,
+            onProgressChanged: snap => ContextQuizProgressStore.Save(profile, accountKey, snap),
+            onClearProgress: () => ContextQuizProgressStore.Remove(profile, accountKey),
+            rebuildFreshAll: async () =>
+            {
+                var latestAll = _contextSentences.List(null, accountKey);
+                return await ContextSentenceQuiz.BuildQuestionsAsync(
+                    latestAll.Count > 0 ? latestAll : orderedItems,
+                    _dictionary,
+                    _related,
+                    _mnemonics,
+                    accountKey);
+            });
         dialog.ShowDialog();
         UpdateContextReviewButtons();
         if (ValidWord(_word)) RenderSavedContexts(_word);
@@ -720,10 +753,10 @@ public partial class MainWindow
                 new CacheCategoryItem(
                     "mistakes",
                     "错题本记录",
-                    "在卡片、拼写、例句填空与同根辨析中答错收录的单词及权重。",
+                    "在卡片、拼写、例句填空与同根辨析中答错收录的待巩固单词。",
                     mistakeCount > 0 ? $"{mistakeCount} 个错题 · {CacheMaintenanceHost.FormatBytes(mistakeBytes)}" : "暂无错题",
                     mistakeCount > 0,
-                    "将清空本机错题本中的全部单词和权重记录。"),
+                    "将清空本机错题本中的全部待巩固单词记录。"),
                 new CacheCategoryItem(
                     "spelling",
                     "拼写易错记录",
@@ -733,11 +766,11 @@ public partial class MainWindow
                     "将清空已记录的拼写易错点，后续拼写练习会重新记录。"),
                 new CacheCategoryItem(
                     "flashcards",
-                    "卡片自测进度",
-                    "顽固单词与云词本的卡片自测进度。",
+                    "自测进度",
+                    "顽固单词、云词本与例句自测的本机进度。",
                     flashcardCount > 0 ? $"{flashcardCount} 份进度 · {CacheMaintenanceHost.FormatBytes(flashcardBytes)}" : "暂无进度",
                     flashcardCount > 0,
-                    "将清除所有本地卡片自测进度，下次打开将从第 1 组开始。"),
+                    "将清除所有本地卡片自测与例句自测进度，下次打开将重新开始。"),
                 new CacheCategoryItem(
                     "stubborn",
                     "顽固单词缓存",

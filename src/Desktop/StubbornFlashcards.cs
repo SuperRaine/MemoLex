@@ -401,9 +401,9 @@ internal static class StubbornFlashcards
             activeSpellingBox = null;
             var word = practice.Current;
             var currentMistake = word != null ? mistakeBook?.Get(word) : null;
-            var weightSuffix = currentMistake != null ? $" · 错题权重 {currentMistake.Weight}" : "";
+            var levelSuffix = currentMistake != null ? $" · {MistakeBookStore.LevelLabel(currentMistake.Weight)}" : "";
             var noticeSuffix = !string.IsNullOrWhiteSpace(mistakeNotice) ? $" · {mistakeNotice}" : "";
-            progress.Text = $"第 {practice.GroupNumber} / {practice.GroupCount} 组 · 剩余 {practice.Remaining} / {practice.GroupWordCount} 词 · 已掌握 {practice.MasteredCount} / {practice.TotalWordCount}{weightSuffix}{noticeSuffix}";
+            progress.Text = $"第 {practice.GroupNumber} / {practice.GroupCount} 组 · 剩余 {practice.Remaining} / {practice.GroupWordCount} 词 · 已掌握 {practice.MasteredCount} / {practice.TotalWordCount}{levelSuffix}{noticeSuffix}";
             resetButton.IsEnabled = practice.HasProgress || (word == null && !practice.HasNextGroup);
             speakNowBtn.IsEnabled = word != null;
             UpdateProgressBar();
@@ -1016,8 +1016,8 @@ internal static class StubbornFlashcards
                     {
                         mistakeEvaluatedOnCard = true;
                         var res = mistakeBook.RecordRight(word);
-                        if (res.Removed) mistakeNotice = "✓ 权重归 0，已移出错题本";
-                        else if (res.WasInBook) mistakeNotice = $"错题权重 -1（余 {res.RemainingWeight}）";
+                        if (res.Removed) mistakeNotice = "✓ 已掌握，移出错题本";
+                        else if (res.WasInBook) mistakeNotice = "错题已巩固一次";
                     }
                 }
                 spellingCorrect = true;
@@ -1041,9 +1041,9 @@ internal static class StubbornFlashcards
                 if (!mistakeEvaluatedOnCard && mistakeBook != null)
                 {
                     mistakeEvaluatedOnCard = true;
-                    var rec = mistakeBook.RecordWrong(word, "拼写错误", typed);
-                    mistakeNotice = $"已入错题本（权重 {rec.Weight}）";
-                    message += $" · 已入错题本（权重 {rec.Weight}）";
+                    mistakeBook.RecordWrong(word, "拼写错误", typed);
+                    mistakeNotice = "已记入错题本";
+                    message += " · 已记入错题本";
                 }
                 else if (recorded != null)
                 {
@@ -1097,8 +1097,8 @@ internal static class StubbornFlashcards
                 if (!mistakeEvaluatedOnCard && mistakeBook != null)
                 {
                     mistakeEvaluatedOnCard = true;
-                    var rec = mistakeBook.RecordWrong(word, "拼写错误", inputBox.Text.Trim());
-                    mistakeNotice = $"已入错题本（权重 {rec.Weight}）";
+                    mistakeBook.RecordWrong(word, "拼写错误", inputBox.Text.Trim());
+                    mistakeNotice = "已记入错题本";
                 }
                 spellingFeedback = "";
                 Flip();
@@ -1370,14 +1370,14 @@ internal static class StubbornFlashcards
                 if (answer == FlashcardAnswer.Known)
                 {
                     var res = mistakeBook.RecordRight(answeredWord);
-                    if (res.Removed) mistakeNotice = $"「{answeredWord}」权重归 0，已移出错题本";
-                    else if (res.WasInBook) mistakeNotice = $"「{answeredWord}」权重 -1（余 {res.RemainingWeight}）";
+                    if (res.Removed) mistakeNotice = $"「{answeredWord}」已掌握，自动移出错题本";
+                    else if (res.WasInBook) mistakeNotice = $"「{answeredWord}」已巩固一次";
                     else mistakeNotice = null;
                 }
                 else if (answer == FlashcardAnswer.Forgotten)
                 {
-                    var rec = mistakeBook.RecordWrong(answeredWord, "卡片忘记");
-                    mistakeNotice = $"「{answeredWord}」入错题本（权重 {rec.Weight}）";
+                    mistakeBook.RecordWrong(answeredWord, "卡片忘记");
+                    mistakeNotice = $"「{answeredWord}」已记入错题本";
                 }
                 else
                 {

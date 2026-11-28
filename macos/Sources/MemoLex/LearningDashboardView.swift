@@ -114,7 +114,7 @@ struct LearningDashboardView: View {
                                 var parts: [String] = []
                                 if !model.mistakeItems.isEmpty {
                                     let topWords = model.mistakeItems.prefix(4).map {
-                                        "\($0["word"].text)(\($0["weight"].integer))"
+                                        $0["word"].text
                                     }.joined(separator: "、")
                                     parts.append("错题本当前 \(model.mistakeItems.count) 词：\(topWords)")
                                 }
@@ -125,7 +125,7 @@ struct LearningDashboardView: View {
                                     parts.append("拼写易错点 \(model.activeSpellingMistakes.count) 词：\(sample)")
                                 }
                                 if parts.isEmpty {
-                                    return "答错或拼错会自动加入错题本（权重 +3），答对权重 -1，归 0 自动移出。"
+                                    return "答错或拼错会自动加入错题本，多次答对后自动移出。"
                                 }
                                 return parts.joined(separator: " · ")
                             }()

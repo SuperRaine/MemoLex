@@ -231,12 +231,12 @@ internal static class LearningDashboardDialog
 
             var descParts = new List<string>
             {
-                mistakeCount > 0 ? $"当前错题本 {mistakeCount} 词（权重总计 {mistakeBook!.TotalWeight}）" : "错题本暂无待攻克单词"
+                mistakeCount > 0 ? $"当前错题本 {mistakeCount} 个待巩固单词" : "错题本暂无待巩固单词"
             };
             if (activeMistakes.Count > 0)
                 descParts.Add($"易错拼写 {activeMistakes.Count} 词：{string.Join("、", activeMistakes.Take(3).Select(m => $"{m.Word}（{m.CorrectOption}/{m.WrongOption}）"))}");
             else
-                descParts.Add("答错自动入本（权重 +3），答对减 1，归 0 自动移出");
+                descParts.Add("答错或拼错会自动加入错题本，多次答对后自动移出");
 
             var practiceDesc = new TextBlock
             {

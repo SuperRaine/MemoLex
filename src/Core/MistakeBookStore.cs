@@ -27,6 +27,8 @@ public sealed class MistakeBookStore
     public const int MaxWeight = 99;
     public const int MaxWords = 1000;
 
+    public static string LevelLabel(int weight) => weight >= 6 ? "重点易错" : weight >= 3 ? "待巩固" : "快掌握";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = false };
     private readonly string _path;
     private readonly object _gate = new();

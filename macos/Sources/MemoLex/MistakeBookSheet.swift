@@ -15,10 +15,6 @@ struct MistakeBookSheet: View {
 
     private var allItems: [J] { model.mistakeItems }
 
-    private var totalWeight: Int {
-        allItems.reduce(0) { $0 + $1["weight"].integer }
-    }
-
     private var highWeightCount: Int {
         allItems.filter { $0["weight"].integer >= 6 }.count
     }
@@ -113,21 +109,21 @@ struct MistakeBookSheet: View {
                 }
                 .buttonStyle(PillButtonStyle(compact: false))
                 .disabled(filteredItems.isEmpty)
-                .help("按权重随机顺序直接进入拼写默写抽测（答对权重 -1，答错 +3）")
+                .help("直接进入拼写默写模式随机抽测错词，常错词优先出现")
 
                 Button(cardButtonTitle) {
                     Task { await startPractice(spellingMode: false) }
                 }
                 .buttonStyle(MemoButtonStyle(accent: true))
                 .disabled(filteredItems.isEmpty)
-                .help("像卡片一样按权重随机抽测错词（答对权重 -1，归 0 自动移出）")
+                .help("像卡片一样随机抽测错词，常错词优先出现，多次答对后自动移出")
             }
 
             HStack(spacing: 8) {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 12.5))
                     .foregroundStyle(Palette.deep)
-                Text("权重机制：答错进入错题本并 +3 权重；答对错题 -1 权重；权重归 0 自动移出。随机抽测时高权重词优先出现。")
+                Text("答错或拼错的单词会自动收录到这里；抽测时常错词会优先出现，多次答对后自动移出。")
                     .font(.system(size: 11.5))
                     .foregroundStyle(Palette.deep)
                     .fixedSize(horizontal: false, vertical: true)
@@ -154,7 +150,7 @@ struct MistakeBookSheet: View {
 
                 HStack(spacing: 6) {
                     filterChip(.all, title: "全部 (\(allItems.count))")
-                    filterChip(.highWeight, title: "高权重 ≥6 (\(highWeightCount))")
+                    filterChip(.highWeight, title: "重点易错 (\(highWeightCount))")
                     filterChip(.spelling, title: "拼写错误 (\(spellingCount))")
                     filterChip(.quiz, title: "例句/辨析 (\(quizCount))")
                     filterChip(.flashcard, title: "卡片忘记 (\(flashcardCount))")
@@ -193,7 +189,7 @@ struct MistakeBookSheet: View {
                 }
             }
 
-            Text("点击单词可跳转查词；点击「随机抽测」或「拼写抽测」可像卡片一样按权重随机练习，答对自动减权重直至归 0 移出。")
+            Text("点击单词可跳转查词；点击「随机抽测」或「拼写抽测」可像卡片一样随机巩固错词，熟练掌握后自动移出。")
                 .font(.system(size: 11.5))
                 .foregroundStyle(Palette.muted)
         }
@@ -202,9 +198,12 @@ struct MistakeBookSheet: View {
 
     private var summaryText: String {
         if allItems.isEmpty {
-            return "答错自动记入（权重 +3），答对逐步消化（权重 -1，归 0 移出）"
+            return "答错或拼错的单词会自动收录到这里，多次答对后自动移出"
         }
-        return "共 \(allItems.count) 词 · 总权重 \(totalWeight) · 高权重（≥6）\(highWeightCount) 词"
+        if highWeightCount > 0 {
+            return "共 \(allItems.count) 个待巩固错词 · 重点易错 \(highWeightCount) 词"
+        }
+        return "共 \(allItems.count) 个待巩固错词"
     }
 
     private var cardButtonTitle: String {
@@ -264,25 +263,17 @@ struct MistakeBookSheet: View {
         let meaning = item["meaning"].text.decodedLines.replacingOccurrences(of: "\n", with: "；")
         let sentence = item["contextSentence"].text
         let wColors = weightPalette(weight)
-        let dotCount = min(5, max(1, (weight + 2) / 3))
+        let levelLabel = weight >= 6 ? "重点易错" : weight >= 3 ? "待巩固" : "快掌握"
         let statsLabel = rightCount > 0 ? "\(lastReason) · 错 \(wrongCount) · 对 \(rightCount)" : "\(lastReason) · 错 \(wrongCount) 次"
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 6) {
-                HStack(spacing: 4) {
-                    Text("权重 \(weight)")
-                        .font(.system(size: 11, weight: .bold))
-                        .monospacedDigit()
-                    HStack(spacing: 2) {
-                        ForEach(0..<dotCount, id: \.self) { _ in
-                            Circle().fill(wColors.fg).frame(width: 4.5, height: 4.5)
-                        }
-                    }
-                }
-                .foregroundStyle(wColors.fg)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(wColors.bg, in: Capsule())
-                .overlay(Capsule().strokeBorder(wColors.border, lineWidth: 0.85))
+                Text(levelLabel)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(wColors.fg)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(wColors.bg, in: Capsule())
+                    .overlay(Capsule().strokeBorder(wColors.border, lineWidth: 0.85))
 
                 Button(word) {
                     model.sheet = nil

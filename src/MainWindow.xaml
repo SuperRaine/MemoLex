@@ -44,7 +44,7 @@
                     </StackPanel>
                     <Grid x:Name="HeaderCenterGrid" Grid.Column="2" Margin="10,0,10,0">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" MaxWidth="270"/>
+                            <ColumnDefinition Width="*" MaxWidth="440"/>
                         </Grid.ColumnDefinitions>
                         <Border x:Name="StubbornCard" Background="{DynamicResource CardSoftBrush}" BorderBrush="{DynamicResource PillBorderBrush}" BorderThickness="1" CornerRadius="11" Height="35" HorizontalAlignment="Stretch" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                             <Grid Margin="5,0,3,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -67,14 +67,6 @@
                                 <TextBlock x:Name="CloudStatusText" Text="未登录" FontSize="11.5" FontWeight="Medium" VerticalAlignment="Center" MaxWidth="104" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
                         </Button>
-                        <Button x:Name="MySentencesButton" Style="{StaticResource TitleButton}" Click="MySentencesButton_Click" ToolTip="我的例句（浏览、编辑与例句自测）" AutomationProperties.Name="我的例句" Margin="0,0,2,0"><TextBlock Text="&#xE8F2;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
-                        <Button x:Name="MistakeBookButton" Style="{StaticResource TitleButton}" Click="MistakeBookButton_Click" ToolTip="错题本（答错自动收录与随机抽测）" AutomationProperties.Name="错题本" Margin="0,0,2,0">
-                            <Grid Width="20" Height="20">
-                                <TextBlock Text="&#xE9D5;" FontFamily="Segoe MDL2 Assets" FontSize="14.5" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <Ellipse x:Name="MistakeBookDot" Width="6" Height="6" Fill="#EF4444" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,0,0" Visibility="Collapsed"/>
-                            </Grid>
-                        </Button>
-                        <Button x:Name="DashboardButton" Style="{StaticResource TitleButton}" Click="DashboardButton_Click" ToolTip="学习统计看板" AutomationProperties.Name="学习统计看板" Margin="0,0,2,0"><TextBlock Text="&#xE9D2;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
                         <Button x:Name="ThemeToggleButton" Style="{StaticResource TitleButton}" Click="ThemeToggleButton_Click" ToolTip="切换深色 / 浅色模式" AutomationProperties.Name="切换主题" Margin="0,0,2,0"><TextBlock x:Name="ThemeToggleGlyph" Text="&#xE708;" FontFamily="Segoe MDL2 Assets" FontSize="14.5"/></Button>
                         <Button x:Name="SettingsButton" Style="{StaticResource TitleButton}" Click="SettingsButton_Click" ToolTip="设置" AutomationProperties.Name="设置" Margin="0,0,3,0"><TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="15"/></Button>
                         <Button x:Name="PinButton" Style="{StaticResource TitleButton}" Click="PinButton_Click" ToolTip="窗口置顶" AutomationProperties.Name="窗口置顶" Margin="0,0,6,0"><Path x:Name="PinGlyph" Data="M6,2 H14 M8,2 V8 L5,12 H15 L12,8 V2 M10,12 V19" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="14" Height="18" Stretch="Uniform"/></Button>
@@ -130,11 +122,11 @@
                                 <TextBox x:Name="SearchBox" Height="42" TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14.5" ToolTip="输入英文查释义，或用中文找单词" Margin="0,0,6,0" AutomationProperties.Name="输入英文或中文查词"/>
                                 <Button x:Name="SearchButton" Grid.Column="1" Click="SearchButton_Click" Style="{StaticResource AccentButton}" Padding="0" Height="42" ToolTip="查询单词" AutomationProperties.Name="查询"><TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="16"/></Button>
                             </Grid>
-                            <Grid Margin="0,9,0,4">
+                            <Grid Margin="0,8,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/></Grid.ColumnDefinitions>
                                 <Grid.Resources>
                                     <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                        <Setter Property="Padding" Value="3,7"/>
+                                        <Setter Property="Padding" Value="3,6"/>
                                         <Setter Property="FontSize" Value="11.5"/>
                                         <Setter Property="FontWeight" Value="Medium"/>
                                         <Setter Property="Foreground" Value="{DynamicResource AccentDeepBrush}"/>
@@ -145,6 +137,27 @@
                                 <Button x:Name="TranslationModeButton" Content="段落翻译" Click="TranslationModeButton_Click" ToolTip="段落翻译（Ctrl+T）"/>
                                 <Button x:Name="ScreenshotButton" Grid.Column="2" Content="截图翻译" Click="ScreenshotButton_Click"/>
                                 <Button x:Name="TodayPlanButton" Grid.Column="4" Content="今日学习" Click="TodayPlanButton_Click"/>
+                            </Grid>
+                            <Grid Margin="0,5,0,4">
+                                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <Grid.Resources>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="Padding" Value="3,5.5"/>
+                                        <Setter Property="FontSize" Value="11.5"/>
+                                        <Setter Property="FontWeight" Value="Medium"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource InkBrush}"/>
+                                        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+                                    </Style>
+                                </Grid.Resources>
+                                <Button x:Name="MySentencesButton" Content="我的例句" Click="MySentencesButton_Click" ToolTip="我的例句（浏览、编辑与例句自测）" AutomationProperties.Name="我的例句"/>
+                                <Button x:Name="MistakeBookButton" Grid.Column="2" Click="MistakeBookButton_Click" ToolTip="错题本（答错自动收录与随机抽测）" AutomationProperties.Name="错题本">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock Text="错题本" VerticalAlignment="Center"/>
+                                        <Ellipse x:Name="MistakeBookDot" Width="6" Height="6" Fill="#EF4444" Margin="4,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="DashboardButton" Grid.Column="4" Content="学习统计" Click="DashboardButton_Click" ToolTip="学习统计看板" AutomationProperties.Name="学习统计看板"/>
                             </Grid>
                         </StackPanel>
                         <Grid Grid.Row="1" Margin="0,4,0,0">

@@ -448,8 +448,8 @@ internal static class MorphemeGroupPracticeDialog
                     if (mistakeBook != null)
                     {
                         var res = mistakeBook.RecordRight(current.Word);
-                        if (res.Removed) weightNote = " · 错题权重清零已移出";
-                        else if (res.WasInBook) weightNote = $" · 错题权重 -1（余 {res.RemainingWeight}）";
+                        if (res.Removed) weightNote = " · 已掌握，移出错题本";
+                        else if (res.WasInBook) weightNote = " · 错题已巩固一次";
                     }
                 }
                 feedbackText.Text = $"✓ 正确！{current.Word}：{current.Explanation}{weightNote}";
@@ -467,8 +467,8 @@ internal static class MorphemeGroupPracticeDialog
                 var weightNote = "";
                 if (firstMiss && mistakeBook != null)
                 {
-                    var rec = mistakeBook.RecordWrong(current.Word, "同根辨析", picked.Word);
-                    weightNote = $"（已入错题本，权重 {rec.Weight}）";
+                    mistakeBook.RecordWrong(current.Word, "同根辨析", picked.Word);
+                    weightNote = "（已记入错题本）";
                 }
                 feedbackText.Text = $"✗ {picked.Word} 表示「{picked.PromptMeaning}」，再看看其他词缀！{weightNote}";
                 feedbackText.Foreground = ThemeManager.Hex(ThemeManager.IsDark ? "#FB7185" : "#C4253F");

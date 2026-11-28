@@ -59,6 +59,7 @@ public partial class MainWindow : Window
         _translation=translation??new TranslationClient();
         _onlineDictionary = new OnlineDictionaryClient(_translation);
         _chinese=chinese??new ChineseReverseSearch(_dictionary);
+        _related.AttachChineseSearch(_chinese);
         _mnemonics=mnemonics??new MnemonicStore();
         ThemeManager.Apply(_preferences.ThemeMode);
         InitializeComponent();

@@ -19,7 +19,8 @@ internal static class MySentencesDialog
         Func<Button, string, Task> speakSentence,
         Action<Window, ContextSentenceItem?> openEditor,
         Func<Window, ContextSentenceItem, Task<bool>> deleteItem,
-        Func<Window, IReadOnlyList<ContextSentenceItem>, Task> startReview)
+        Func<Window, IReadOnlyList<ContextSentenceItem>, bool, Task> startReview,
+        Func<ContextQuizProgressSnapshot?>? loadSavedProgress = null)
     {
         var dialog = InputDialog.Shell(owner, "我的例句", out _);
         dialog.Width = 780;
@@ -244,12 +245,15 @@ internal static class MySentencesDialog
 
             currentFiltered = filtered.ToArray();
             var isFiltered = activeFilter != FilterKind.All || query.Length > 0;
+            var savedQuiz = !isFiltered ? loadSavedProgress?.Invoke() : null;
             startReviewBtn.IsEnabled = currentFiltered.Count > 0;
             startReviewBtn.Content = currentFiltered.Count == 0
                 ? "开始自测"
                 : isFiltered
                     ? $"自测当前 ({currentFiltered.Count})"
-                    : $"开始自测 ({currentFiltered.Count})";
+                    : savedQuiz != null && savedQuiz.CurrentIndex > 0 && savedQuiz.CurrentIndex < savedQuiz.Questions.Length
+                        ? $"继续自测 ({savedQuiz.CurrentIndex}/{savedQuiz.Questions.Length})"
+                        : $"开始自测 ({currentFiltered.Count})";
 
             listPanel.Children.Clear();
             if (currentFiltered.Count == 0)
@@ -501,12 +505,13 @@ internal static class MySentencesDialog
         {
             if (currentFiltered.Count == 0) return;
             var deck = currentFiltered;
+            var isFiltered = activeFilter != FilterKind.All || searchBox.Text.Trim().Length > 0;
             startReviewBtn.IsEnabled = false;
             var previousLabel = startReviewBtn.Content;
             startReviewBtn.Content = "正在出题…";
             try
             {
-                await startReview(dialog, deck);
+                await startReview(dialog, deck, !isFiltered);
             }
             finally
             {

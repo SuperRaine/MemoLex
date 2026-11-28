@@ -16,7 +16,12 @@ internal static class ContextSentenceQuizDialog
         Action<string> onReviewed,
         Func<Button, string, Task> speakSentence,
         Action<string> lookupWord,
-        MistakeBookStore? mistakeBook = null)
+        MistakeBookStore? mistakeBook = null,
+        ContextQuizProgressSnapshot? savedProgress = null,
+        bool persistProgress = false,
+        Action<ContextQuizProgressSnapshot>? onProgressChanged = null,
+        Action? onClearProgress = null,
+        Func<Task<IReadOnlyList<ContextQuizQuestion>>>? rebuildFreshAll = null)
     {
         var dialog = InputDialog.Shell(owner, "例句填空 · 四选一自测", out _);
         dialog.Width = 780;
@@ -37,10 +42,21 @@ internal static class ContextSentenceQuizDialog
         // 0. Top progress bar & score header
         var topStack = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
         var topDock = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
-        var scoreText = new TextBlock { FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        var topRight = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var scoreText = new TextBlock { FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
         scoreText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-        DockPanel.SetDock(scoreText, Dock.Right);
-        topDock.Children.Add(scoreText);
+        var resetBtn = new Button
+        {
+            Content = "重置进度",
+            Padding = new Thickness(10, 3.5, 10, 3.5),
+            FontSize = 11.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "清除本地保存的自测进度，重新随机出题并从第 1 题开始"
+        };
+        topRight.Children.Add(scoreText);
+        topRight.Children.Add(resetBtn);
+        DockPanel.SetDock(topRight, Dock.Right);
+        topDock.Children.Add(topRight);
 
         var progressTitle = new TextBlock { FontSize = 15, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center };
         progressTitle.SetResourceReference(TextBlock.ForegroundProperty, "InkStrongBrush");
@@ -93,16 +109,55 @@ internal static class ContextSentenceQuizDialog
 
         InputDialog.SetBody(dialog, root);
 
-        var questions = initialQuestions.ToList();
-        var currentIndex = 0;
-        var correctCount = 0;
-        var wrongCount = 0;
+        var resumeActive = persistProgress && savedProgress is { Questions.Length: > 0 } && savedProgress.CurrentIndex < savedProgress.Questions.Length;
+        var questions = (resumeActive ? savedProgress!.Questions : initialQuestions).ToList();
+        var currentIndex = resumeActive ? Math.Clamp(savedProgress!.CurrentIndex, 0, Math.Max(0, questions.Count - 1)) : 0;
+        var correctCount = resumeActive ? savedProgress!.CorrectCount : 0;
+        var wrongCount = resumeActive ? savedProgress!.WrongCount : 0;
+        var activePersist = persistProgress;
         ContextQuizOption? selectedOption = null;
-        string? lastWeightFeedback = null;
+        string? lastMistakeFeedback = null;
         var showHintTranslation = false;
         var inSummary = false;
         var wrongRecords = new List<(ContextQuizQuestion Question, ContextQuizOption Chosen)>();
         var mistakeKinds = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (resumeActive)
+        {
+            var qById = questions.ToDictionary(q => q.ItemId, StringComparer.OrdinalIgnoreCase);
+            foreach (var rec in savedProgress!.WrongRecords)
+            {
+                if (qById.TryGetValue(rec.ItemId, out var rq))
+                {
+                    var opt = rq.Options.FirstOrDefault(o => o.Label.Equals(rec.ChosenLabel, StringComparison.OrdinalIgnoreCase));
+                    if (opt != null) wrongRecords.Add((rq, opt));
+                }
+            }
+            foreach (var kv in savedProgress.MistakeKinds)
+                mistakeKinds[kv.Key] = kv.Value;
+        }
+
+        void SaveProgress(int nextIndex)
+        {
+            if (!activePersist) return;
+            if (nextIndex >= questions.Count)
+            {
+                onClearProgress?.Invoke();
+                return;
+            }
+            var snapshot = new ContextQuizProgressSnapshot(
+                questions.ToArray(),
+                Math.Clamp(nextIndex, 0, questions.Count),
+                correctCount,
+                wrongCount,
+                wrongRecords.Select(r => new ContextQuizWrongRecord(r.Question.ItemId, r.Chosen.Label)).ToArray(),
+                new Dictionary<string, int>(mistakeKinds, StringComparer.Ordinal));
+            onProgressChanged?.Invoke(snapshot);
+        }
+
+        void UpdateResetButton()
+        {
+            resetBtn.IsEnabled = currentIndex > 0 || selectedOption != null || inSummary;
+        }
 
         void UpdateProgressBar()
         {
@@ -209,12 +264,14 @@ internal static class ContextSentenceQuizDialog
             progressTitle.Text = $"第 {currentIndex + 1} / {questions.Count} 题 · 例句语境填空";
             scoreText.Text = $"答对 {correctCount} · 答错 {wrongCount}";
             UpdateProgressBar();
+            UpdateResetButton();
 
             nextBtn.IsEnabled = answered;
             nextBtn.Content = currentIndex + 1 >= questions.Count ? "查看成绩单 →" : "下一题 →";
+            var progressNote = activePersist ? "（进度自动保存，可随时重置）" : "（当前为专项自测，不覆盖全部进度）";
             shortcutHint.Text = answered
-                ? "按回车 / 空格进入下一题，点击解析中的单词可直接查词"
-                : "快捷键：按 1–4 或 A–D 作答";
+                ? $"按回车 / 空格进入下一题，点击解析中的单词可直接查词 {progressNote}"
+                : $"快捷键：按 1–4 或 A–D 作答 {progressNote}";
 
             bodyHost.Children.Clear();
 
@@ -436,11 +493,11 @@ internal static class ContextSentenceQuizDialog
                     Foreground = vFg,
                     TextWrapping = TextWrapping.Wrap
                 });
-                if (!string.IsNullOrWhiteSpace(lastWeightFeedback))
+                if (!string.IsNullOrWhiteSpace(lastMistakeFeedback))
                 {
                     verdictStack.Children.Add(new TextBlock
                     {
-                        Text = lastWeightFeedback,
+                        Text = lastMistakeFeedback,
                         FontSize = 12,
                         FontWeight = FontWeights.SemiBold,
                         Margin = new Thickness(0, 4, 0, 0),
@@ -612,7 +669,7 @@ internal static class ContextSentenceQuizDialog
         {
             if (inSummary || selectedOption != null) return;
             selectedOption = opt;
-            lastWeightFeedback = null;
+            lastMistakeFeedback = null;
             var q = questions[currentIndex];
             onReviewed(q.ItemId);
 
@@ -623,9 +680,9 @@ internal static class ContextSentenceQuizDialog
                 {
                     var res = mistakeBook.RecordRight(q.AnswerBaseWord);
                     if (res.Removed)
-                        lastWeightFeedback = "🎉 错题本权重已清零，自动移出错题本！";
+                        lastMistakeFeedback = "🎉 已熟练掌握，自动移出错题本！";
                     else if (res.WasInBook)
-                        lastWeightFeedback = $"错题本权重 -1（剩余权重 {res.RemainingWeight}）";
+                        lastMistakeFeedback = "错题已巩固一次，继续加油！";
                 }
             }
             else
@@ -635,16 +692,18 @@ internal static class ContextSentenceQuizDialog
                 mistakeKinds[opt.DistractorKind] = mistakeKinds.GetValueOrDefault(opt.DistractorKind) + 1;
                 if (mistakeBook != null)
                 {
-                    var rec = mistakeBook.RecordWrong(q.AnswerBaseWord, "例句填空", opt.DisplayText, q.FullSentence, q.Translation);
-                    lastWeightFeedback = $"已加入错题本 · 权重 +{MistakeBookStore.WrongDelta}（当前权重 {rec.Weight}）";
+                    mistakeBook.RecordWrong(q.AnswerBaseWord, "例句填空", opt.DisplayText, q.FullSentence, q.Translation);
+                    lastMistakeFeedback = "已记入错题本，后续抽测将优先巩固";
                 }
             }
+            SaveProgress(currentIndex + 1);
             RenderQuestion();
         }
 
         void RenderSummary()
         {
             inSummary = true;
+            if (activePersist) onClearProgress?.Invoke();
             footer.Visibility = Visibility.Collapsed;
             var total = Math.Max(1, questions.Count);
             var accuracy = (int)Math.Round(100.0 * correctCount / total);
@@ -652,6 +711,7 @@ internal static class ContextSentenceQuizDialog
             progressTitle.Text = "本轮例句自测完成";
             scoreText.Text = $"答对 {correctCount} / {questions.Count} · 正确率 {accuracy}%";
             UpdateProgressBar();
+            UpdateResetButton();
 
             bodyHost.Children.Clear();
 
@@ -702,7 +762,7 @@ internal static class ContextSentenceQuizDialog
                     retryWrongBtn.Content = "正在重新出题…";
                     var wrongOnly = wrongRecords.Select(r => r.Question).ToArray();
                     var rebuilt = await rebuildForRetry(wrongOnly);
-                    RestartWith(rebuilt);
+                    RestartWith(rebuilt, keepPersist: false);
                 };
                 actions.Children.Add(retryWrongBtn);
             }
@@ -719,8 +779,10 @@ internal static class ContextSentenceQuizDialog
             {
                 replayBtn.IsEnabled = false;
                 replayBtn.Content = "正在重新出题…";
-                var rebuilt = await rebuildForRetry(questions);
-                RestartWith(rebuilt);
+                var rebuilt = persistProgress && rebuildFreshAll != null
+                    ? await rebuildFreshAll()
+                    : await rebuildForRetry(questions);
+                RestartWith(rebuilt, keepPersist: persistProgress);
             };
             actions.Children.Add(replayBtn);
 
@@ -823,18 +885,21 @@ internal static class ContextSentenceQuizDialog
             scroll.ScrollToTop();
         }
 
-        void RestartWith(IReadOnlyList<ContextQuizQuestion> nextQuestions)
+        void RestartWith(IReadOnlyList<ContextQuizQuestion> nextQuestions, bool keepPersist)
         {
             if (nextQuestions.Count == 0) { dialog.Close(); return; }
+            activePersist = keepPersist;
             questions = nextQuestions.ToList();
             currentIndex = 0;
             correctCount = 0;
             wrongCount = 0;
             selectedOption = null;
-            lastWeightFeedback = null;
+            lastMistakeFeedback = null;
             showHintTranslation = false;
+            inSummary = false;
             wrongRecords.Clear();
             mistakeKinds.Clear();
+            if (activePersist) onClearProgress?.Invoke();
             scroll.ScrollToTop();
             RenderQuestion();
         }
@@ -849,11 +914,24 @@ internal static class ContextSentenceQuizDialog
             }
             currentIndex++;
             selectedOption = null;
-            lastWeightFeedback = null;
+            lastMistakeFeedback = null;
             showHintTranslation = false;
             scroll.ScrollToTop();
             RenderQuestion();
         }
+
+        resetBtn.Click += async (_, _) =>
+        {
+            if (!InputDialog.Confirm(dialog, "重置例句自测进度",
+                "将清除本地保存的例句自测进度，重新随机出题并从第 1 题开始。", "重置"))
+                return;
+            resetBtn.IsEnabled = false;
+            if (persistProgress) onClearProgress?.Invoke();
+            var rebuilt = persistProgress && rebuildFreshAll != null
+                ? await rebuildFreshAll()
+                : await rebuildForRetry(questions);
+            RestartWith(rebuilt, keepPersist: persistProgress);
+        };
 
         nextBtn.Click += (_, _) => GoNext();
 

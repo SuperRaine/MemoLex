@@ -3,13 +3,16 @@ import SwiftUI
 
 struct ContextQuizView: View {
     @ObservedObject var model: AppModel
-    @State private var questions: [J]
+    let persistsProgress: Bool
     var onRebuild: ([String]) async -> [J]
+    var onRebuildFreshAll: (() async -> [J])?
     var onExit: () -> Void
 
+    @State private var questions: [J]
     @State private var currentIndex = 0
     @State private var correctCount = 0
     @State private var wrongCount = 0
+    @State private var activePersist = false
     @State private var selectedLabel: String? = nil
     @State private var showHintTranslation = false
     @State private var inSummary = false
@@ -18,11 +21,58 @@ struct ContextQuizView: View {
     @State private var mistakeKinds: [String: Int] = [:]
     @State private var mistakeFeedback = ""
 
-    init(model: AppModel, initialQuestions: [J], onRebuild: @escaping ([String]) async -> [J], onExit: @escaping () -> Void) {
+    init(
+        model: AppModel,
+        initialQuestions: [J],
+        savedProgress: J? = nil,
+        persistsProgress: Bool = false,
+        onRebuild: @escaping ([String]) async -> [J],
+        onRebuildFreshAll: (() async -> [J])? = nil,
+        onExit: @escaping () -> Void
+    ) {
         self.model = model
-        self._questions = State(initialValue: initialQuestions)
+        self.persistsProgress = persistsProgress
         self.onRebuild = onRebuild
+        self.onRebuildFreshAll = onRebuildFreshAll
         self.onExit = onExit
+
+        let savedQuestions = savedProgress?["questions"].list ?? []
+        let savedIdx = savedProgress?["currentIndex"].integer ?? 0
+        let resume = persistsProgress && !savedQuestions.isEmpty && savedIdx < savedQuestions.count
+        let activeQuestions = resume ? savedQuestions : initialQuestions
+        self._questions = State(initialValue: activeQuestions)
+        self._currentIndex = State(initialValue: resume ? max(0, min(savedIdx, activeQuestions.count - 1)) : 0)
+        self._correctCount = State(initialValue: resume ? max(0, savedProgress?["correctCount"].integer ?? 0) : 0)
+        self._wrongCount = State(initialValue: resume ? max(0, savedProgress?["wrongCount"].integer ?? 0) : 0)
+        self._activePersist = State(initialValue: persistsProgress)
+
+        var restoredWrong: [(question: J, chosen: J)] = []
+        var restoredKinds: [String: Int] = [:]
+        if resume, let saved = savedProgress {
+            var byId: [String: J] = [:]
+            for q in activeQuestions {
+                let id = q["itemId"].text.lowercased()
+                if !id.isEmpty { byId[id] = q }
+            }
+            for rec in saved["wrongRecords"].list {
+                let id = rec["itemId"].text.lowercased()
+                let label = rec["chosenLabel"].text
+                if let q = byId[id], let opt = q["options"].list.first(where: { $0["label"].text.caseInsensitiveCompare(label) == .orderedSame }) {
+                    restoredWrong.append((question: q, chosen: opt))
+                }
+            }
+            if case .object(let dict) = saved["mistakeKinds"] {
+                for (k, v) in dict where v.integer > 0 {
+                    restoredKinds[k] = v.integer
+                }
+            }
+        }
+        self._wrongRecords = State(initialValue: restoredWrong)
+        self._mistakeKinds = State(initialValue: restoredKinds)
+    }
+
+    private var canReset: Bool {
+        currentIndex > 0 || selectedLabel != nil || inSummary
     }
 
     private var currentQuestion: J? {
@@ -46,7 +96,7 @@ struct ContextQuizView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 7) {
-                    HStack {
+                    HStack(spacing: 8) {
                         Text(inSummary ? "本轮例句自测完成" : "第 \(currentIndex + 1) / \(questions.count) 题 · 例句语境填空")
                             .font(.system(size: 15, weight: .bold))
                         Spacer()
@@ -55,6 +105,12 @@ struct ContextQuizView: View {
                              : "答对 \(correctCount) · 答错 \(wrongCount)")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Palette.muted)
+                        Button("重置进度") {
+                            resetProgress()
+                        }
+                        .buttonStyle(MemoButtonStyle(compact: true))
+                        .disabled(!canReset || rebuilding)
+                        .help("清除本地保存的例句自测进度，重新随机出题并从第 1 题开始")
                     }
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
@@ -76,7 +132,10 @@ struct ContextQuizView: View {
 
                 if !inSummary {
                     HStack {
-                        Text(selectedLabel == nil ? "快捷键：按 1–4 或 A–D 选择答案" : "按回车 / 空格进入下一题，点击解析中的单词可直接查词")
+                        let note = activePersist ? "（进度自动保存，可随时重置）" : "（当前为专项自测，不覆盖全部进度）"
+                        Text(selectedLabel == nil
+                             ? "快捷键：按 1–4 或 A–D 选择答案 \(note)"
+                             : "按回车 / 空格进入下一题，点击解析中的单词可直接查词 \(note)")
                             .font(.system(size: 11.5))
                             .foregroundStyle(Palette.muted)
                         Spacer()
@@ -408,7 +467,7 @@ struct ContextQuizView: View {
                                 let ids = wrongRecords.map { $0.question["itemId"].text }
                                 let next = await onRebuild(ids)
                                 rebuilding = false
-                                restart(with: next)
+                                restart(with: next, keepPersist: false)
                             }
                         }
                         .buttonStyle(MemoButtonStyle(accent: true))
@@ -417,10 +476,15 @@ struct ContextQuizView: View {
                     Button(rebuilding ? "正在出题…" : "再来一轮") {
                         Task {
                             rebuilding = true
-                            let ids = questions.map { $0["itemId"].text }
-                            let next = await onRebuild(ids)
+                            let next: [J]
+                            if persistsProgress, let rebuildAll = onRebuildFreshAll {
+                                next = await rebuildAll()
+                            } else {
+                                let ids = questions.map { $0["itemId"].text }
+                                next = await onRebuild(ids)
+                            }
                             rebuilding = false
-                            restart(with: next)
+                            restart(with: next, keepPersist: persistsProgress)
                         }
                     }
                     .buttonStyle(PillButtonStyle(compact: false))
@@ -497,8 +561,8 @@ struct ContextQuizView: View {
                     if let res = await model.recordMistakeRight(word: answerWord),
                        res["wasInBook"].flag, targetIndex == currentIndex {
                         mistakeFeedback = res["removed"].flag
-                            ? "错题本权重 -1 · 已归 0 自动移出错题本 ✓"
-                            : "错题本权重 -1 · 当前剩余权重 \(res["remainingWeight"].integer)"
+                            ? "已熟练掌握，自动移出错题本 ✓"
+                            : "错题已巩固一次，继续加油！"
                     }
                 }
             }
@@ -510,17 +574,59 @@ struct ContextQuizView: View {
             let wrongDisplay = opt["displayText"].text
             if !answerWord.isEmpty {
                 Task {
-                    if let rec = await model.recordMistakeWrong(
+                    if await model.recordMistakeWrong(
                         word: answerWord,
                         reason: "例句填空",
                         wrongInput: wrongDisplay,
                         contextSentence: fullSentence,
                         contextTranslation: translation
-                    ), targetIndex == currentIndex {
-                        mistakeFeedback = "已记入错题本 · 权重 +3（当前权重 \(rec["weight"].integer)）"
+                    ) != nil, targetIndex == currentIndex {
+                        mistakeFeedback = "已记入错题本，后续抽测将优先巩固"
                     }
                 }
             }
+        }
+        persistProgress(nextIndex: currentIndex + 1)
+    }
+
+    private func persistProgress(nextIndex: Int) {
+        guard activePersist else { return }
+        let qs = questions
+        let cc = correctCount
+        let wc = wrongCount
+        let wr = wrongRecords
+        let mk = mistakeKinds
+        Task {
+            await model.saveContextQuizProgress(
+                questions: qs,
+                currentIndex: nextIndex,
+                correctCount: cc,
+                wrongCount: wc,
+                wrongRecords: wr,
+                mistakeKinds: mk
+            )
+        }
+    }
+
+    private func resetProgress() {
+        guard !rebuilding else { return }
+        guard confirm("重置例句自测进度？", "将清除本地保存的例句自测进度，重新随机出题并从第 1 题开始。", action: "重置") else {
+            return
+        }
+        Task {
+            rebuilding = true
+            if persistsProgress {
+                await model.clearContextQuizProgress()
+            }
+            let next: [J]
+            if persistsProgress, let rebuildAll = onRebuildFreshAll {
+                next = await rebuildAll()
+            } else {
+                let ids = questions.map { $0["itemId"].text }
+                next = await onRebuild(ids)
+            }
+            rebuilding = false
+            restart(with: next, keepPersist: persistsProgress)
         }
     }
 
@@ -528,6 +634,9 @@ struct ContextQuizView: View {
         guard !inSummary, selectedLabel != nil else { return }
         if currentIndex + 1 >= questions.count {
             inSummary = true
+            if activePersist {
+                Task { await model.clearContextQuizProgress() }
+            }
             return
         }
         currentIndex += 1
@@ -536,8 +645,9 @@ struct ContextQuizView: View {
         mistakeFeedback = ""
     }
 
-    private func restart(with next: [J]) {
+    private func restart(with next: [J], keepPersist: Bool) {
         guard !next.isEmpty else { onExit(); return }
+        activePersist = keepPersist
         questions = next
         currentIndex = 0
         correctCount = 0
@@ -548,6 +658,9 @@ struct ContextQuizView: View {
         inSummary = false
         wrongRecords = []
         mistakeKinds = [:]
+        if activePersist {
+            Task { await model.clearContextQuizProgress() }
+        }
     }
 
     private func kindPill(_ text: String, key: String) -> some View {

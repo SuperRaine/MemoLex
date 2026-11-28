@@ -582,6 +582,51 @@ enum EnglishAccent: String, CaseIterable {
         return result.list
     }
 
+    func loadContextQuizProgress() async -> J? {
+        guard let result = try? await core.request("contextQuiz.load"),
+              result != .null,
+              !result["questions"].list.isEmpty else { return nil }
+        let idx = result["currentIndex"].integer
+        let total = result["questions"].list.count
+        return idx < total ? result : nil
+    }
+
+    func saveContextQuizProgress(
+        questions: [J],
+        currentIndex: Int,
+        correctCount: Int,
+        wrongCount: Int,
+        wrongRecords: [(question: J, chosen: J)],
+        mistakeKinds: [String: Int]
+    ) async {
+        guard !questions.isEmpty, currentIndex < questions.count else {
+            await clearContextQuizProgress()
+            return
+        }
+        let wrongArray: [J] = wrongRecords.map { pair in
+            .object([
+                "itemId": .string(pair.question["itemId"].text),
+                "chosenLabel": .string(pair.chosen["label"].text)
+            ])
+        }
+        var kindsObj: [String: J] = [:]
+        for (k, v) in mistakeKinds where v > 0 {
+            kindsObj[k] = .number(Double(v))
+        }
+        _ = try? await core.request("contextQuiz.save", [
+            "questions": .array(questions),
+            "currentIndex": .number(Double(currentIndex)),
+            "correctCount": .number(Double(correctCount)),
+            "wrongCount": .number(Double(wrongCount)),
+            "wrongRecords": .array(wrongArray),
+            "mistakeKinds": .object(kindsObj)
+        ])
+    }
+
+    func clearContextQuizProgress(all: Bool = false) async {
+        _ = try? await core.request("contextQuiz.clear", ["all": .bool(all)])
+    }
+
     func lookupFromTranslation(_ rawWord: String) {
         let englishCorpus = translationDirection == "zh-CN|en" ? translationOutput : translationSource
         let chineseCorpus = translationDirection == "zh-CN|en" ? translationSource : translationOutput
@@ -616,7 +661,7 @@ enum EnglishAccent: String, CaseIterable {
             "source": .string(lastTranslationSourceLabel)
         ])) != nil {
             await refreshContextSentences()
-            status = "已收藏「\(targetWord)」的例句，可在顶部「我的例句」中查看与自测"
+            status = "已收藏「\(targetWord)」的例句，可在左侧「我的例句」中查看与自测"
         }
     }
 
@@ -717,12 +762,15 @@ enum EnglishAccent: String, CaseIterable {
         let spellingBytes = Int64(stats?["spellingBytes"].doubleValue ?? 0)
         let mistakeCount = stats?["mistakeCount"].integer ?? mistakeItems.count
         let mistakeBytes = Int64(stats?["mistakeBytes"].doubleValue ?? 0)
+        let contextQuizCount = stats?["contextQuizCount"].integer ?? 0
+        let contextQuizBytes = Int64(stats?["contextQuizBytes"].doubleValue ?? 0)
         let memoryCount = stats?["memoryCount"].integer ?? 0
         let memoryBytes = Int64(stats?["memoryBytes"].doubleValue ?? 0)
 
         let historyCount = history.count
         let flashcardFiles = matchingProfileFiles(prefix: "flashcards-")
-        let flashcardBytes = measureFilesBytes(flashcardFiles)
+        let flashcardCount = flashcardFiles.count + contextQuizCount
+        let flashcardBytes = measureFilesBytes(flashcardFiles) + contextQuizBytes
         let stubbornFiles = matchingProfileFiles(prefix: "stubborn-")
         let stubbornBytes = measureFilesBytes(stubbornFiles)
         let updatesBytes = measureDirectoryBytes(AppPaths.profile.appendingPathComponent("updates", isDirectory: true))
@@ -767,18 +815,18 @@ enum EnglishAccent: String, CaseIterable {
             CacheCategoryInfo(
                 id: "mistakes",
                 title: "错题本记录",
-                description: "例句自测、卡片自测、拼写默写与同根辨析累计的错词及权重。",
+                description: "例句自测、卡片自测、拼写默写与同根辨析累计的待巩固错词。",
                 summary: mistakeCount > 0 ? "\(mistakeCount) 个错词 · \(formatCacheBytes(mistakeBytes))" : "暂无错词",
                 hasData: mistakeCount > 0,
-                confirmMessage: "将清空错题本中的全部错词与权重记录，不会影响云词本和账号数据。"
+                confirmMessage: "将清空错题本中的全部待巩固错词记录，不会影响云词本和账号数据。"
             ),
             CacheCategoryInfo(
                 id: "flashcards",
-                title: "卡片自测进度",
-                description: "顽固单词与云词本的卡片自测进度。",
-                summary: !flashcardFiles.isEmpty ? "\(flashcardFiles.count) 份进度 · \(formatCacheBytes(flashcardBytes))" : "暂无进度",
-                hasData: !flashcardFiles.isEmpty,
-                confirmMessage: "将清除所有本地卡片自测进度，下次打开将从第 1 组开始。"
+                title: "自测进度",
+                description: "顽固单词、云词本与例句自测的本机进度。",
+                summary: flashcardCount > 0 ? "\(flashcardCount) 份进度 · \(formatCacheBytes(flashcardBytes))" : "暂无进度",
+                hasData: flashcardCount > 0,
+                confirmMessage: "将清除所有本地卡片自测与例句自测进度，下次打开将重新开始。"
             ),
             CacheCategoryInfo(
                 id: "stubborn",
@@ -820,7 +868,8 @@ enum EnglishAccent: String, CaseIterable {
             for url in matchingProfileFiles(prefix: "flashcards-") {
                 try? FileManager.default.removeItem(at: url)
             }
-            return "已清除所有卡片自测进度。"
+            await clearContextQuizProgress(all: true)
+            return "已清除所有自测进度。"
         case "stubborn":
             for url in matchingProfileFiles(prefix: "stubborn-") {
                 try? FileManager.default.removeItem(at: url)

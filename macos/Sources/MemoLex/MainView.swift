@@ -150,6 +150,23 @@ struct MainView: View {
                         else { model.openAccountSettings() }
                     }.tourTarget("today-plan")
                 }.buttonStyle(LookupButtonStyle(small: true, expands: true))
+                HStack(spacing: 7) {
+                    Button("我的例句") { model.openMySentences() }
+                        .help(model.contextSentences.isEmpty ? "我的例句（浏览、编辑与例句自测）" : "我的例句（共 \(model.contextSentences.count) 条）")
+                    Button { model.openMistakeBook() } label: {
+                        HStack(spacing: 4) {
+                            Text("错题本")
+                            if !model.mistakeItems.isEmpty {
+                                Circle()
+                                    .fill(Color(red: 0.90, green: 0.22, blue: 0.32))
+                                    .frame(width: 5.5, height: 5.5)
+                            }
+                        }
+                    }
+                    .help(model.mistakeItems.isEmpty ? "错题本（答错自动收录与随机抽测）" : "错题本（待巩固 \(model.mistakeItems.count) 词）")
+                    Button("学习统计") { model.sheet = .dashboard }
+                        .help("学习统计看板")
+                }.buttonStyle(LookupButtonStyle(small: true, expands: true))
             }
             SidebarSplit {
                 VStack(alignment: .leading, spacing: 7) {
@@ -334,7 +351,7 @@ private struct MainTitlebar: View {
                 titleButton("chevron.left", label: "后退") { model.move(-1) }.disabled(!model.canGoBack)
                 titleButton("chevron.right", label: "前进") { model.move(1) }.disabled(!model.canGoForward)
             }
-            stubbornBar.frame(minWidth: 168, maxWidth: compact ? 250 : 300).layoutPriority(1).tourTarget("stubborn")
+            stubbornBar.frame(minWidth: 190, maxWidth: compact ? 320 : 440).layoutPriority(1).tourTarget("stubborn")
             Spacer(minLength: 0)
             if preferences.showCountdown {
                 TimelineView(.periodic(from: Date(), by: 30)) { context in countdown(at: context.date) }
@@ -349,24 +366,6 @@ private struct MainTitlebar: View {
                 }
             }.buttonStyle(PillButtonStyle()).fixedSize(horizontal: true, vertical: false).layoutPriority(2)
                 .help(model.titleAccount + " · " + model.accountStatus)
-            titleButton("text.quote", label: "我的例句") { model.openMySentences() }
-            Button { model.openMistakeBook() } label: {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "checklist").font(.system(size: 13, weight: .medium))
-                        .frame(width: compact ? 25 : 29, height: 28).contentShape(Rectangle())
-                    if !model.mistakeItems.isEmpty {
-                        Circle()
-                            .fill(Color(red: 0.90, green: 0.22, blue: 0.32))
-                            .frame(width: 6, height: 6)
-                            .offset(x: -3, y: 4)
-                    }
-                }
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(Palette.ink)
-            .help(model.mistakeItems.isEmpty ? "错题本" : "错题本（\(model.mistakeItems.count) 词）")
-            .accessibilityLabel("错题本")
-            titleButton("chart.bar", label: "学习统计看板") { model.sheet = .dashboard }
             titleButton("gearshape", label: "设置") { model.sheet = .settings }
             HStack(spacing: 7) {
                 OwlImage().frame(width: 28, height: 28).accessibilityHidden(true)
